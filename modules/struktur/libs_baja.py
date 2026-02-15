@@ -44,6 +44,44 @@ class SNI_Steel_1729:
             "Status": "AMAN" if ratio <= 1.0 else "TIDAK AMAN (Bahaya Tekuk)",
             "Keterangan": f"Faktor Reduksi Tekuk LTB: {int(faktor_tekuk*100)}% (Lb={Lb_m}m)"
         }
+class SNI_Steel_2020:
+    def __init__(self, fy, E=200000):
+        self.fy = fy
+        self.E = E
+        
+    def hitung_kekakuan_dam(self, I_profil, P_required, P_yield):
+        """
+        Direct Analysis Method (DAM) - SNI 1729:2020
+        Menghitung Kekakuan Tereduksi (EI*)
+        """
+        # 1. Tau_b (Faktor Reduksi Kekakuan Inelastis)
+        # Jika beban aksial rasio (Pr/Py) <= 0.5, tau_b = 1.0
+        # Jika > 0.5, ada rumus reduksi (simplified here)
+        ratio = P_required / P_yield
+        
+        if ratio <= 0.5:
+            tau_b = 1.0
+        else:
+            tau_b = 4 * ratio * (1 - ratio) # Rumus parabolik SNI
+            
+        # 2. Kekakuan Tereduksi (EI*)
+        # Rumus: EI* = 0.8 * tau_b * EI
+        EI_star = 0.8 * tau_b * self.E * I_profil
+        
+        return EI_star, tau_b
+
+    def cek_kapasitas_lentur(self, Mn, Mu):
+        # Gunakan LRFD (Load & Resistance Factor Design)
+        phi = 0.9 # Faktor reduksi lentur baja
+        phi_Mn = phi * Mn
+        
+        # Gunakan helper numerik biar gak kena bug desimal
+        # (Asumsi helper ada di luar class atau diimport)
+        eps = 1e-9
+        ratio = Mu / phi_Mn
+        
+        status = "AMAN" if ratio <= (1.0 + eps) else "TIDAK AMAN"
+        return status, ratio
 
 # ==========================================
 # CLASS 2: BAJA RINGAN (ATAP) - ESTIMASI
@@ -69,3 +107,4 @@ class Baja_Ringan_Calc:
             "Reng 30.45 (Btg)": int(btg_reng),
             "Sekrup (Box)": int(total_sekrup/1000) + 1
         }
+
