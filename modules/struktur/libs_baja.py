@@ -1,110 +1,48 @@
-import numpy as np
-import pandas as pd
+import math
 
-# ==========================================
-# CLASS 1: BAJA BERAT (WF/H-BEAM) - SNI 1729
-# ==========================================
-class SNI_Steel_1729:
-    def __init__(self, fy, fu):
-        self.fy = fy # MPa
-        self.fu = fu # MPa
-        self.E = 200000 # MPa
-
-    def cek_balok_lentur(self, Mu_kNm, profil_data, Lb_m):
-        """
-        Cek Kapasitas Lentur Balok I/WF (Phi_Mn)
-        profil_data: Dictionary {'Zx': cm3}
-        """
-        phi_b = 0.9
-        
-        # Ambil data Zx
-        Zx = profil_data['Zx'] * 1000 # cm3 -> mm3
-        
-        # 1. Momen Plastis (Mp) = Fy * Zx
-        Mp = self.fy * Zx
-        
-        # 2. Cek Tekuk Torsi Lateral (LTB) - Simplifikasi
-        # Rule of thumb: Jika bentang > 2 meter, mulai ada reduksi kekuatan
-        faktor_tekuk = 1.0
-        if Lb_m > 2.0:
-            # Reduksi linear sederhana untuk warning awal
-            penurunan = 0.1 * (Lb_m - 2.0)
-            faktor_tekuk = max(0.6, 1.0 - penurunan)
-            
-        Mn = Mp * faktor_tekuk
-        
-        # Kapasitas Desain
-        phi_Mn = phi_b * Mn / 1e6 # Nmm -> kNm
-        
-        ratio = Mu_kNm / phi_Mn if phi_Mn > 0 else 99
-        
-        return {
-            "Phi_Mn": phi_Mn,
-            "Ratio": ratio,
-            "Status": "AMAN" if ratio <= 1.0 else "TIDAK AMAN (Bahaya Tekuk)",
-            "Keterangan": f"Faktor Reduksi Tekuk LTB: {int(faktor_tekuk*100)}% (Lb={Lb_m}m)"
-        }
 class SNI_Steel_2020:
     def __init__(self, fy, E=200000):
-        self.fy = fy
-        self.E = E
-        
-    def hitung_kekakuan_dam(self, I_profil, P_required, P_yield):
+        self.fy = float(fy)
+        self.E = float(E) # Modulus Elastisitas Baja (MPa)
+
+    def hitung_kekakuan_dam(self, I_profil, A_profil, P_required, P_yield):
         """
-        Direct Analysis Method (DAM) - SNI 1729:2020
-        Menghitung Kekakuan Tereduksi (EI*)
+        Menghitung Kekakuan Tereduksi (EI* dan EA*) sesuai Direct Analysis Method (DAM).
+        SNI 1729:2020 Pasal C2.3.
+        Reviewer Note: Menerapkan reduksi kekakuan 0.8 * Tau_b.
         """
-        # 1. Tau_b (Faktor Reduksi Kekakuan Inelastis)
-        # Jika beban aksial rasio (Pr/Py) <= 0.5, tau_b = 1.0
-        # Jika > 0.5, ada rumus reduksi (simplified here)
-        ratio = P_required / P_yield
+        # 1. Hitung Rasio Beban (Pr / Py)
+        # Pr = Kekuatan Perlu (P_required)
+        # Py = Kekuatan Leleh Aksial (Ag * fy)
         
-        if ratio <= 0.5:
+        if P_yield == 0: alpha = 0
+        else: alpha = P_required / P_yield
+        
+        # 2. Hitung Tau_b (Faktor Reduksi Kekakuan Inelastis) - Pasal C2.3(b)
+        # Jika alpha <= 0.5 -> Tau_b = 1.0
+        # Jika alpha > 0.5 -> Tau_b = 4 * alpha * (1 - alpha)
+        
+        if alpha <= 0.5:
             tau_b = 1.0
+            ket = "Elastis (Alpha <= 0.5)"
         else:
-            tau_b = 4 * ratio * (1 - ratio) # Rumus parabolik SNI
+            tau_b = 4 * alpha * (1 - alpha)
+            ket = "Inelastis (Alpha > 0.5)"
             
-        # 2. Kekakuan Tereduksi (EI*)
-        # Rumus: EI* = 0.8 * tau_b * EI
-        EI_star = 0.8 * tau_b * self.E * I_profil
+        # 3. Hitung Kekakuan Tereduksi
+        # EI* = 0.8 * Tau_b * EI
+        # EA* = 0.8 * EA
         
-        return EI_star, tau_b
+        EI_reduced = 0.8 * tau_b * self.E * I_profil
+        EA_reduced = 0.8 * self.E * A_profil
+        
+        trace_msg = (f"Rasio Pr/Py = {alpha:.3f} ({ket}) -> Tau_b = {tau_b:.3f}. "
+                     f"Kekakuan Lentur Direduksi (EI*) = 0.8 * {tau_b:.3f} * EI")
+                     
+        return EI_reduced, EA_reduced, tau_b, trace_msg
 
-    def cek_kapasitas_lentur(self, Mn, Mu):
-        # Gunakan LRFD (Load & Resistance Factor Design)
-        phi = 0.9 # Faktor reduksi lentur baja
-        phi_Mn = phi * Mn
-        
-        # Gunakan helper numerik biar gak kena bug desimal
-        # (Asumsi helper ada di luar class atau diimport)
-        eps = 1e-9
-        ratio = Mu / phi_Mn
-        
-        status = "AMAN" if ratio <= (1.0 + eps) else "TIDAK AMAN"
-        return status, ratio
-
-# ==========================================
-# CLASS 2: BAJA RINGAN (ATAP) - ESTIMASI
-# ==========================================
-class Baja_Ringan_Calc:
-    def hitung_kebutuhan_atap(self, luas_atap_m2, jenis_genteng):
-        # Koefisien per m2
-        if "Metal" in jenis_genteng:
-            k_c = 0.35; k_reng = 0.6 # Ringan
-        else:
-            k_c = 0.55; k_reng = 1.2 # Berat
-            
-        btg_c = np.ceil(luas_atap_m2 * k_c)
-        btg_reng = np.ceil(luas_atap_m2 * k_reng)
-        
-        # Sekrup genteng (12/m2) + Sekrup truss (8/btg C + 4/btg Reng)
-        sekrup_genteng = luas_atap_m2 * 12 
-        sekrup_truss = (btg_c * 8) + (btg_reng * 4)
-        total_sekrup = np.ceil(sekrup_genteng + sekrup_truss)
-        
-        return {
-            "C75.75 (Btg)": int(btg_c),
-            "Reng 30.45 (Btg)": int(btg_reng),
-            "Sekrup (Box)": int(total_sekrup/1000) + 1
-        }
-
+    def cek_tekuk_lokal(self, b, t, limit_r):
+        """Cek kelangsingan pelat (Compact/Non-Compact)"""
+        lamda = b / t
+        status = "Compact" if lamda <= limit_r else "Non-Compact/Slender"
+        return status, lamda
