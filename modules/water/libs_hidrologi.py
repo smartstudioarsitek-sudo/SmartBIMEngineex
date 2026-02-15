@@ -26,14 +26,10 @@ class Hidrologi_Engine:
         Ra = ra_table[bulan_idx % 12]
         
         Rs = (0.25 + 0.54 * (sun_pct / 100)) * Ra
-        Rns = 0.75 * Rs
         
-        # Longwave
-        ft = 2.043e-10 * ((t_mean + 273.16)**4)
-        fed = 0.34 - 0.044 * math.sqrt(ed)
-        fsun = 0.1 + 0.9 * (sun_pct / 100)
-        Rnl = ft * fed * fsun
-        Rn = Rns - Rnl
+        # Longwave & Net Radiation
+        # Simplified for robustness
+        Rn = 0.75 * Rs - (2.043e-10 * ((t_mean + 273.16)**4) * (0.34 - 0.044 * math.sqrt(ed)) * (0.1 + 0.9 * (sun_pct / 100)))
         
         # Weighting Factor W
         delta = 4098 * (0.6108 * math.exp(17.27 * t_mean / (t_mean + 237.3))) / ((t_mean + 237.3)**2)
@@ -61,10 +57,8 @@ class Hidrologi_Engine:
         hasil_gumbel = {}
         for T in periods:
             prob = 1 - (1/T)
-            # Loc & Scale approximation
-            sn = 0.9496 # Approx for n=10-100 (Simplified)
-            yn = 0.4952
-            val = mu + (std/sn) * (-math.log(-math.log(prob)) - yn) # Rumus umum Gumbel
+            # Loc & Scale approximation simplified
+            val = mu - (std * 0.45) + (std * 0.78) * (-math.log(-math.log(prob)))
             hasil_gumbel[f"R{T}"] = val
             
         return {
@@ -83,9 +77,7 @@ class Hidrologi_Engine:
             WS = R - E # Water Surplus
             
             # Storage change
-            V_new = V_storage + WS
-            if V_new < 0: V_new = 0
-            if V_new > 200: V_new = 200 # Soil Cap
+            V_new = max(0, min(200, V_storage + WS))
             dV = V_new - V_storage
             V_storage = V_new
             
