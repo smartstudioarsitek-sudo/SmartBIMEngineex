@@ -82,6 +82,13 @@ class Irrigation_Engine:
             "Catatan": ", ".join(warns) if warns else "Hidrolis OK"
         }
 
+    # ... (taruh di bawah method hitung_dimensi_saluran) ...
+
+    # --- ALIAS / WRAPPER UNTUK AI ---
+    def hitung_dimensi_ekonomis(self, Q, S, n, m):
+        """Wrapper agar AI tidak error jika salah panggil nama fungsi."""
+        # Mapping parameter ke fungsi utama
+        return self.hitung_dimensi_saluran(Q, m=m, S=S, n=n)
     # =========================================
     # 2. GENERATOR GAMBAR CAD (.DXF)
     # =========================================
@@ -172,3 +179,4 @@ class Irrigation_Engine:
             "H_MukaAir_Hulu_m": round(Ha, 3),
             "Q_Max_Capacity": round(2.3 * W * (0.8**1.6), 2) # Asumsi H max 0.8m
         }
+
