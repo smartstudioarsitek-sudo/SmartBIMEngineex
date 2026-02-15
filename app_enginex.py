@@ -13,41 +13,30 @@ import zipfile
 from pptx import Presentation
 import re
 import os
+from fpdf import FPDF # Library PDF yang baru kita tambah
 
 # ==========================================
-# 1. IMPORT LIBRARY ENGINEERING (THE FIX)
+# 1. IMPORT LIBRARY ENGINEERING (MODULAR)
 # ==========================================
-# Disini perbaikannya. Kita panggil dari dalam folder modules.
-
 try:
-    # A. Modul Core (Otak & Memori)
+    # Core
     from core.backend_enginex import EnginexBackend
     from core.persona import gems_persona, get_persona_list
 
-    # B. Modul Struktur (Sesuai GitHub: modules/struktur)
+    # Modules
     from modules.struktur import libs_sni, libs_baja, libs_bridge, libs_gempa
-    # (Optional: Geoteknik & Pondasi jika file sudah ada di folder geotek)
-    # Jika belum ada di github, comment dulu baris bawah ini biar gak error
-    # from modules.geotek import libs_geoteknik, libs_pondasi 
-
-    # C. Modul Water (Sesuai GitHub: modules/water)
-    # Pastikan file libs_hidrologi.py dll sudah ada di folder water
     from modules.water import libs_hidrologi, libs_irigasi, libs_jiat, libs_bendung
-
-    # D. Modul Cost (Sesuai GitHub: modules/cost)
     from modules.cost import libs_ahsp, libs_rab_engine, libs_optimizer, libs_research
-
-    # E. Modul Utils (Sesuai GitHub: modules/utils)
+    from modules.arch import libs_arch, libs_zoning, libs_green
     from modules.utils import libs_pdf, libs_export, libs_bim_importer
     
-    # F. Modul Arsitektur (Sesuai GitHub: modules/arch)
-    from modules.arch import libs_arch, libs_zoning, libs_green
+    # Optional Geotek (jika file ada)
+    try: from modules.geotek import libs_geoteknik, libs_pondasi
+    except: pass
 
 except ImportError as e:
-    # Error Handling yang informatif
     st.error(f"⚠️ **SISTEM ERROR: Gagal Import Modul**")
-    st.code(str(e), language='bash')
-    st.info("💡 **Diagnosa:** Python tidak bisa menemukan file di folder modules. Pastikan nama file di `import` sama persis dengan nama file di GitHub.")
+    st.code(str(e))
     st.stop()
 
 # ==========================================
@@ -62,108 +51,85 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .main-header {font-size: 30px; font-weight: bold; color: #1E3A8A; margin-bottom: 10px;}
-    [data-testid="stSidebar"] {background-color: #f8f9fa;}
+    .main-header {font-size: 28px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px;}
+    .sub-header {font-size: 14px; color: #64748B; margin-bottom: 20px;}
+    [data-testid="stSidebar"] {background-color: #F8FAFC; border-right: 1px solid #E2E8F0;}
     .stChatInput textarea {font-size: 16px !important;}
-    .stChatMessage .avatar {background-color: #1E3A8A; color: white;}
-    .auto-pilot-msg {background-color: #e0f7fa; border-left: 5px solid #00acc1; padding: 10px; border-radius: 5px; color: #006064; font-weight: bold;}
+    .stDownloadButton button {width: 100%; border-radius: 6px; font-weight: 600;}
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. ENGINE EKSEKUSI KODE (LOGIC INJECTION)
+# 3. ENGINE EKSEKUSI (LOGIC INJECTION)
 # ==========================================
 def execute_generated_code(code_str, file_ifc_path=None):
-    """
-    Menjalankan kode Python dari AI dan menyuntikkan Library kita ke dalamnya.
-    """
+    """Menjalankan kode Python AI dengan akses ke Library Engineering"""
     try:
-        # KOTAK PERKAKAS: Kita kasih 'jalan pintas' ke library yang sudah diimport di atas
         local_vars = {
             "pd": pd, "np": np, "plt": plt, "st": st,
             
-            # Struktur
-            "libs_sni": libs_sni, 
-            "libs_baja": libs_baja,
-            "libs_bridge": libs_bridge,
-            "libs_gempa": libs_gempa,
-            
-            # Water
-            "libs_hidrologi": libs_hidrologi,
-            "libs_irigasi": libs_irigasi,
-            "libs_bendung": libs_bendung,
-            "libs_jiat": libs_jiat,
-            
-            # Cost
-            "libs_ahsp": libs_ahsp,
-            "libs_rab_engine": libs_rab_engine,
-            "libs_optimizer": libs_optimizer,
-            "libs_research": libs_research,
-            
-            # Arch & Utils
-            "libs_arch": libs_arch,
-            "libs_zoning": libs_zoning,
-            "libs_green": libs_green,
-            "libs_pdf": libs_pdf,
-            "libs_export": libs_export,
+            # Daftarkan semua library di sini agar AI kenal
+            "libs_sni": libs_sni, "libs_baja": libs_baja, "libs_bridge": libs_bridge,
+            "libs_gempa": libs_gempa, "libs_hidrologi": libs_hidrologi,
+            "libs_irigasi": libs_irigasi, "libs_bendung": libs_bendung, "libs_jiat": libs_jiat,
+            "libs_ahsp": libs_ahsp, "libs_rab_engine": libs_rab_engine,
+            "libs_optimizer": libs_optimizer, "libs_research": libs_research,
+            "libs_arch": libs_arch, "libs_zoning": libs_zoning, "libs_green": libs_green,
+            "libs_pdf": libs_pdf, "libs_export": libs_export,
             "libs_bim_importer": libs_bim_importer
         }
         
-        # Inject IFC File jika ada
-        if file_ifc_path:
-            local_vars["file_ifc_user"] = file_ifc_path
+        # Inject Geotek jika ada
+        if 'libs_geoteknik' in globals(): local_vars['libs_geoteknik'] = libs_geoteknik
+        if 'libs_pondasi' in globals(): local_vars['libs_pondasi'] = libs_pondasi
         
-        # Eksekusi
+        if file_ifc_path: local_vars["file_ifc_user"] = file_ifc_path
+        
         exec(code_str, {}, local_vars)
         return True
     except Exception as e:
-        st.error(f"⚠️ Gagal Eksekusi Kode: {e}")
-        with st.expander("Lihat Kode Error"):
-            st.code(code_str, language='python')
+        st.error(f"⚠️ Eksekusi Kode Gagal: {e}")
+        with st.expander("Lihat Kode Error"): st.code(code_str, language='python')
         return False
 
 # ==========================================
-# 4. FUNGSI UTILITAS (DOCX & EXCEL)
+# 4. FUNGSI EXPORT DOKUMEN (WORD/EXCEL/PDF)
 # ==========================================
-def create_docx_from_text(text_content):
-    try:
-        doc = docx.Document()
-        doc.add_heading('Laporan Output ENGINEX', 0)
-        for line in text_content.split('\n'):
-            clean = line.strip()
-            if clean.startswith('## '): doc.add_heading(clean.replace('## ', ''), level=2)
-            elif clean.startswith('### '): doc.add_heading(clean.replace('### ', ''), level=3)
-            elif clean.startswith('- '): 
-                try: doc.add_paragraph(clean, style='List Bullet')
-                except: doc.add_paragraph(clean)
-            elif clean: doc.add_paragraph(clean)
-        bio = io.BytesIO()
-        doc.save(bio)
-        bio.seek(0)
-        return bio
-    except: return None
+def create_docx(text):
+    doc = docx.Document()
+    doc.add_heading('Laporan ENGINEX', 0)
+    for line in text.split('\n'):
+        doc.add_paragraph(line)
+    bio = io.BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio
 
-def extract_table_to_excel(text_content):
-    try:
-        lines = text_content.split('\n')
-        data = []
-        for line in lines:
-            if "|" in line and "---" not in line:
-                row = [c.strip() for c in line.split('|') if c.strip()]
-                if row: data.append(row)
-        if len(data) < 2: return None
-        df = pd.DataFrame(data[1:], columns=data[0])
-        out = io.BytesIO()
-        with pd.ExcelWriter(out, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Data')
-        out.seek(0)
-        return out
-    except: return None
+def create_excel(text):
+    data = []
+    for line in text.split('\n'):
+        if "|" in line and "---" not in line:
+            row = [c.strip() for c in line.split('|') if c.strip()]
+            if row: data.append(row)
+    if len(data) < 2: return None
+    df = pd.DataFrame(data[1:], columns=data[0])
+    bio = io.BytesIO()
+    with pd.ExcelWriter(bio) as writer: df.to_excel(writer, index=False)
+    bio.seek(0)
+    return bio
+
+def create_pdf(text):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=11)
+    # FPDF standar tidak support Unicode kompleks, kita ganti karakter spesial
+    clean_text = text.encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 6, clean_text)
+    return pdf.output(dest='S').encode('latin-1')
 
 # ==========================================
-# 5. SIDEBAR & SETUP
+# 5. SIDEBAR: KONTROL UTAMA
 # ==========================================
-# Init Session
 if 'backend' not in st.session_state: st.session_state.backend = EnginexBackend()
 if 'processed_files' not in st.session_state: st.session_state.processed_files = set()
 if 'current_expert_active' not in st.session_state: st.session_state.current_expert_active = "👑 The GEMS Grandmaster"
@@ -173,129 +139,158 @@ db = st.session_state.backend
 with st.sidebar:
     st.title("🏗️ ENGINEX ULTIMATE")
     
-    # API Key Handling
-    api_key_input = st.text_input("🔑 API Key:", type="password")
+    # 1. API KEY
+    api_key_input = st.text_input("🔑 Google API Key:", type="password")
     raw_key = api_key_input if api_key_input else st.secrets.get("GOOGLE_API_KEY")
+    if not raw_key: st.warning("Butuh API Key."); st.stop()
+    genai.configure(api_key=raw_key.strip(), transport="rest")
     
-    if not raw_key:
-        st.warning("⚠️ Masukkan API Key.")
-        st.stop()
+    # 2. PILIH MODEL (MANUAL LIST)
+    # Daftar lengkap sesuai permintaan Kakak
+    AVAILABLE_MODELS = [
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-2.0-flash-exp",
+        "gemini-exp-1206",
+        "gemini-1.5-flash-8b"
+    ]
+    model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
     
-    genai.configure(api_key=raw_key, transport="rest")
+    # Info Mode
+    if "pro" in model_name: st.success("⚡ Mode: HIGH REASONING")
+    elif "exp" in model_name: st.warning("🧪 Mode: EXPERIMENTAL")
+    else: st.info("🚀 Mode: HIGH SPEED")
     
-    # Model Selection
-    model_opts = ["gemini-1.5-flash", "gemini-1.5-pro"]
-    selected_model = st.selectbox("🧠 Model AI:", model_opts)
-    use_auto_pilot = st.checkbox("🤖 Auto-Pilot", value=True)
+    use_auto_pilot = st.checkbox("🤖 Auto-Pilot (Smart Router)", value=True)
     
     st.divider()
     
-    # Proyek
+    # 3. MANAJEMEN PROYEK (OPEN/SAVE)
+    st.markdown("### 📂 Proyek")
+    col_p1, col_p2 = st.columns(2)
+    # Save/Backup
+    col_p1.download_button("💾 Backup", db.export_data(), "backup_enginex.json", "application/json")
+    # Restore
+    uploaded_backup = col_p2.file_uploader("📂 Restore", type=["json"], label_visibility="collapsed")
+    if uploaded_backup:
+        ok, msg = db.import_data(uploaded_backup)
+        if ok: st.success("Restored!"); st.rerun()
+    
+    # Pilih Proyek Aktif
     projects = db.daftar_proyek()
-    mode_prj = st.radio("Proyek:", ["Baru", "Buka"], horizontal=True)
-    nama_proyek = st.text_input("Nama:", "Proyek 1") if mode_prj == "Baru" else st.selectbox("Pilih:", projects)
+    mode = st.radio("Mode:", ["Buka Proyek", "Buat Baru"], horizontal=True, label_visibility="collapsed")
+    if mode == "Buat Baru":
+        nama_proyek = st.text_input("Nama Proyek Baru:", "Proyek-01")
+    else:
+        nama_proyek = st.selectbox("Pilih Proyek:", projects) if projects else "Default Project"
 
-# ==========================================
-# 6. UPLOAD & MAIN AREA
-# ==========================================
-def process_file(f):
-    name = f.name.lower()
-    if name.endswith(('.png','.jpg')): return "image", Image.open(f)
-    elif name.endswith('.pdf'): 
-        reader = PyPDF2.PdfReader(f)
-        return "text", "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
-    elif name.endswith(('.xlsx','.xls')):
-        return "text", pd.read_excel(f).head(50).to_markdown()
-    elif name.endswith('.ifc'): return "ifc_bytes", f
-    return "unknown", None
-
-with st.sidebar:
-    st.markdown("### 📂 Upload")
-    uploaded_files = st.file_uploader("File:", accept_multiple_files=True)
-    if st.button("🧹 Reset"):
+    st.divider()
+    
+    # 4. UPLOAD FILE
+    st.markdown("### 📎 Upload Data")
+    uploaded_files = st.file_uploader("", type=["png","jpg","pdf","xlsx","docx","ifc","py"], accept_multiple_files=True)
+    
+    if st.button("🧹 Reset Chat"):
         db.clear_chat(nama_proyek, st.session_state.current_expert_active)
-        st.session_state.processed_files.clear()
         st.rerun()
 
-# Header & Chat History
+# ==========================================
+# 6. AREA CHAT UTAMA
+# ==========================================
 st.markdown(f'<div class="main-header">{nama_proyek}</div>', unsafe_allow_html=True)
-current_persona = st.session_state.current_expert_active
-history = db.get_chat_history(nama_proyek, current_persona)
+st.markdown(f'<div class="sub-header">Ahli Aktif: <b>{st.session_state.current_expert_active}</b></div>', unsafe_allow_html=True)
 
+# Tampilkan History
+history = db.get_chat_history(nama_proyek, st.session_state.current_expert_active)
 for msg in history:
     with st.chat_message(msg['role']): st.markdown(msg['content'])
 
-# Input & Logic
-prompt = st.chat_input(f"Diskusi dengan {current_persona}...")
+# Input User
+prompt = st.chat_input("Ketik perintah desain, hitungan, atau analisa...")
 
 if prompt:
-    # Auto Pilot Logic
-    target_expert = current_persona
+    # A. Auto-Pilot Logic (Router)
+    target_expert = st.session_state.current_expert_active
     if use_auto_pilot:
-        with st.status("🧠 Menganalisis...", expanded=True) as s:
+        with st.status("🧠 Menganalisis kebutuhan...", expanded=False):
             try:
                 router = genai.GenerativeModel("gemini-1.5-flash")
                 list_ahli = list(gems_persona.keys())
-                res = router.generate_content(f"Pertanyaan: '{prompt}'. Siapa ahli paling tepat dari: {list_ahli}? Jawab HANYA nama.")
+                res = router.generate_content(f"User: '{prompt}'. Siapa ahli paling pas dari: {list_ahli}? Jawab HANYA nama.")
                 sug = res.text.strip()
-                if sug in list_ahli: target_expert = sug; st.session_state.current_expert_active = sug
-                s.write(f"Dialihkan ke: **{target_expert}**")
+                if sug in list_ahli: 
+                    target_expert = sug
+                    st.session_state.current_expert_active = sug
             except: pass
 
+    # B. Simpan Chat User
     db.simpan_chat(nama_proyek, target_expert, "user", prompt)
     with st.chat_message("user"): st.markdown(prompt)
 
-    # Context Building
+    # C. Proses Konteks & File
     full_prompt = [prompt]
     file_ifc_obj = None
     if uploaded_files:
         for f in uploaded_files:
             if f.name not in st.session_state.processed_files:
-                tipe, konten = process_file(f)
-                if tipe == "image": 
-                    full_prompt.append(konten)
+                name = f.name.lower()
+                if name.endswith(('.png','.jpg')): 
+                    full_prompt.append(Image.open(f))
                     with st.chat_message("user"): st.image(f, width=200)
-                elif tipe == "text":
-                    full_prompt[0] += f"\n\n[FILE: {f.name}]\n{konten}"
-                    with st.chat_message("user"): st.caption(f"📄 {f.name} terbaca")
-                elif tipe == "ifc_bytes":
-                    file_ifc_obj = f
-                    with st.chat_message("user"): st.caption(f"🏗️ Model BIM {f.name} siap")
+                elif name.endswith('.pdf'):
+                    reader = PyPDF2.PdfReader(f)
+                    txt = "\n".join([p.extract_text() for p in reader.pages])
+                    full_prompt[0] += f"\n\n[FILE: {f.name}]\n{txt}"
+                elif name.endswith('.ifc'):
+                    file_ifc_obj = f # Simpan untuk engine
+                    with st.chat_message("user"): st.caption(f"🏗️ BIM Model: {f.name}")
                 st.session_state.processed_files.add(f.name)
 
-    # AI Response
+    # D. Generate Jawaban AI
     with st.chat_message("assistant"):
         with st.spinner(f"{target_expert} sedang bekerja..."):
             try:
-                # Instruksi Visualisasi
-                VISUAL_PROMPT = """
+                # Instruksi Coding
+                SYS = gems_persona[target_expert] + """
                 \n[ATURAN CODE]:
-                1. Jika diminta hitungan/grafik, TULIS KODE PYTHON (```python).
-                2. Gunakan library custom: libs_sni, libs_irigasi, libs_hidrologi, libs_rab_engine.
-                3. Tampilkan grafik dengan `st.pyplot(plt.gcf())`.
-                4. Tampilkan tabel dengan `st.dataframe(df)`.
+                1. Jika butuh hitungan/grafik, TULIS KODE PYTHON (```python).
+                2. Gunakan library `libs_...` yang tersedia.
+                3. Tampilkan grafik: `st.pyplot(plt.gcf())`.
+                4. Tampilkan tabel: `st.dataframe(df)`.
+                5. Jika diminta file DXF, gunakan `libs_irigasi.generate_dxf_script()` dan tampilkan tombol download.
                 """
                 
-                model = genai.GenerativeModel(selected_model, system_instruction=gems_persona[target_expert] + VISUAL_PROMPT)
-                chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
-                chat = model.start_chat(history=chat_hist)
-                response = chat.send_message(full_prompt)
+                model = genai.GenerativeModel(model_name, system_instruction=SYS)
+                chat = model.start_chat(history=[{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt])
                 
+                response = chat.send_message(full_prompt)
                 st.markdown(response.text)
                 db.simpan_chat(nama_proyek, target_expert, "assistant", response.text)
                 
-                # Eksekusi Kode
-                code_matches = re.findall(r"```python(.*?)```", response.text, re.DOTALL)
-                for code in code_matches:
+                # E. Eksekusi Kode Python (Plotting & DXF)
+                code_blocks = re.findall(r"```python(.*?)```", response.text, re.DOTALL)
+                for code in code_blocks:
                     st.markdown("---")
+                    st.caption("⚙️ **Engine Output:**")
                     execute_generated_code(code, file_ifc_path=file_ifc_obj)
                 
-                # Download
-                c1, c2 = st.columns(2)
-                doc = create_docx_from_text(response.text)
-                if doc: c1.download_button("📄 Laporan (.docx)", doc, "Laporan.docx")
-                xl = extract_table_to_excel(response.text)
-                if xl: c2.download_button("📊 Data (.xlsx)", xl, "Data.xlsx")
+                # F. EXPORT BUTTONS (Word, Excel, PDF)
+                st.markdown("---")
+                c1, c2, c3 = st.columns(3)
                 
+                # PDF Export
+                try:
+                    pdf_bytes = create_pdf(response.text)
+                    c1.download_button("📄 Export PDF", pdf_bytes, "Laporan.pdf", "application/pdf")
+                except: c1.caption("PDF N/A")
+                
+                # Word Export
+                doc_bytes = create_docx(response.text)
+                if doc_bytes: c2.download_button("📝 Export Word", doc_bytes, "Laporan.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                
+                # Excel Export
+                xls_bytes = create_excel(response.text)
+                if xls_bytes: c3.download_button("📊 Export Excel", xls_bytes, "Data.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
             except Exception as e:
                 st.error(f"Error: {e}")
