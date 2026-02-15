@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
-import libs_sni as sni
+
+# --- PERBAIKAN: Panggil dari alamat yang benar ---
+from modules.struktur import libs_sni as sni 
 
 class BeamOptimizer:
     def __init__(self, fc, fy, harga_satuan):
@@ -17,6 +19,7 @@ class BeamOptimizer:
         h_min_rec = int(bentang_m * 1000 / 15) 
         range_h = range(max(300, h_min_rec), 1050, 50)
         
+        # Memanggil Engine SNI
         engine_sni = sni.SNI_Concrete_2847(self.fc, self.fy)
 
         for b in range_b:
