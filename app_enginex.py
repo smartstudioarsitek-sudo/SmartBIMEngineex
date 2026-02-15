@@ -233,6 +233,7 @@ with st.sidebar:
         "gemini-3-flash-preview",
         "gemini-1.5-pro",
         "gemini-1.5-flash"
+        "models/gemini-robotics-er-1-preview",
     ]
     model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
     
@@ -420,6 +421,7 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
 
 
 
