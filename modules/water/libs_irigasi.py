@@ -5,13 +5,13 @@ class Irrigation_Engine:
     
     def __init__(self):
         pass
+
     # =========================================
-    # 1. DESAIN SALURAN (MANNING & TRAPESIUM) - IMPROVED
+    # 1. DESAIN SALURAN (CORE LOGIC)
     # =========================================
     def hitung_dimensi_saluran(self, Q, b_ratio=1.5, m=1.0, S=0.0005, n=0.025):
         """
         Mencari dimensi saluran trapesium yang ekonomis secara iteratif.
-        Versi Improved: Range iterasi lebih luas & toleransi lebih baik.
         """
         # Iterasi mencari tinggi air (h)
         h = 0.1
@@ -40,7 +40,7 @@ class Irrigation_Engine:
                     best_diff = diff
                     best_h = h
                 
-                # Jika sudah cukup dekat (toleransi 5%) atau Q_calc melebihi Q
+                # Jika sudah cukup dekat atau Q_calc melebihi Q
                 if Q_calc >= Q: 
                     found = True
                     break
@@ -51,7 +51,7 @@ class Irrigation_Engine:
         h = best_h
         b = h * b_ratio
         
-        # Hitung ulang parameter final
+        # Hitung ulang parameter final untuk output
         A = (b + m * h) * h
         V = Q / A if A > 0 else 0
         T = b + 2 * m * h 
@@ -96,20 +96,45 @@ class Irrigation_Engine:
             "Status": status,
             "Catatan": ", ".join(warns) if warns else "Hidrolis OK"
         }
+
+    # =========================================
+    # [BUG FIX] ALIAS / WRAPPER UNTUK AI
+    # =========================================
+    def hitung_dimensi_ekonomis(self, Q, S, n, m):
+        """
+        Wrapper Function: Menerima panggilan dari AI yang 'salah nama'
+        dan meneruskannya ke fungsi utama 'hitung_dimensi_saluran'.
+        """
+        # Mapping parameter: Q->Q, S->S, n->n, m->m
+        return self.hitung_dimensi_saluran(Q=Q, S=S, n=n, m=m)
+
     # =========================================
     # 2. GENERATOR GAMBAR CAD (.DXF)
     # =========================================
-    def generate_dxf_script(self, desain_data):
+    def generate_dxf_script(self, desain_data_or_b, h_total=None, m=None, t=None, filename="out.dxf"):
         """
-        Membuat string konten file .DXF sederhana (Text Based) untuk Cross Section.
-        Tidak membutuhkan library ezdxf (Manual String Construction).
+        Membuat string konten file .DXF sederhana.
+        Fleksibel: Bisa terima object dictionary LENGKAP atau parameter terpisah.
         """
-        b = desain_data['Dimensi']['b']
-        H = desain_data['Dimensi']['H_total']
-        h_air = desain_data['Dimensi']['h_air']
-        m = desain_data['Dimensi']['m']
-        
+        # Cek input: apakah dictionary hasil hitungan atau parameter satuan?
+        if isinstance(desain_data_or_b, dict):
+            # Input adalah Dictionary dari hitung_dimensi_saluran
+            data = desain_data_or_b
+            b = data['Dimensi']['b']
+            H = data['Dimensi']['H_total']
+            h_air = data['Dimensi']['h_air']
+            m = data['Dimensi']['m']
+            t_beton = 0.2 # Default tebal beton jika pakai dict
+        else:
+            # Input adalah parameter satuan (b, h, m, t)
+            b = desain_data_or_b
+            H = h_total
+            h_air = H - 0.6 # Asumsi freeboard 0.6
+            m = m
+            t_beton = t
+
         # Koordinat Trapesium (0,0 di as dasar saluran)
+        # Sisi Luar (Tanah)
         x_bl = -b/2
         y_b = 0
         x_br = b/2
@@ -118,65 +143,52 @@ class Irrigation_Engine:
         y_t = H
         x_tr = b/2 + (m*H)
         
-        # Koordinat Muka Air
+        # Sisi Muka Air
         x_wl = -b/2 - (m*h_air)
         y_w = h_air
         x_wr = b/2 + (m*h_air)
         
-        # Header DXF Standard
+        # Header DXF
         dxf = "0\nSECTION\n2\nENTITIES\n"
         
-        # Fungsi Helper bikin Garis
         def dxf_line(x1, y1, x2, y2, layer):
             return f"0\nLINE\n8\n{layer}\n10\n{x1}\n20\n{y1}\n30\n0.0\n11\n{x2}\n21\n{y2}\n31\n0.0\n"
         
-        # Fungsi Helper bikin Teks
         def dxf_text(x, y, text, height, layer):
             return f"0\nTEXT\n8\n{layer}\n10\n{x}\n20\n{y}\n30\n0.0\n40\n{height}\n1\n{text}\n"
 
-        # 1. Gambar Tanah/Saluran (Layer: STRUKTUR)
-        dxf += dxf_line(x_tl, y_t, x_bl, y_b, "STRUKTUR") # Kiri
-        dxf += dxf_line(x_bl, y_b, x_br, y_b, "STRUKTUR") # Dasar
-        dxf += dxf_line(x_br, y_b, x_tr, y_t, "STRUKTUR") # Kanan
+        # Gambar Garis Saluran
+        dxf += dxf_line(x_tl, y_t, x_bl, y_b, "STRUKTUR")
+        dxf += dxf_line(x_bl, y_b, x_br, y_b, "STRUKTUR")
+        dxf += dxf_line(x_br, y_b, x_tr, y_t, "STRUKTUR")
         
-        # 2. Gambar Air (Layer: AIR)
+        # Gambar Garis Air
         dxf += dxf_line(x_wl, y_w, x_wr, y_w, "AIR")
         
-        # 3. Dimensi Teks
-        dxf += dxf_text(0, -0.5, f"b = {b}m", 0.2, "TEXT")
-        dxf += dxf_text(x_tr + 0.5, H/2, f"H = {H}m", 0.2, "TEXT")
-        dxf += dxf_text(0, y_w + 0.1, "MAT", 0.15, "TEXT")
+        # Teks
+        dxf += dxf_text(0, -0.5, f"b = {b:.2f}m", 0.2, "TEXT")
+        dxf += dxf_text(0, y_w + 0.1, "Muka Air", 0.15, "TEXT")
         
-        # Footer DXF
         dxf += "0\nENDSEC\n0\nEOF"
-        
         return dxf
 
     # =========================================
-    # 3. PARSHALL FLUME (ALAT UKUR DEBIT)
+    # 3. PARSHALL FLUME
     # =========================================
     def hitung_parshall_flume(self, Q_input_m3s, lebar_leher_m=None):
-        """
-        Menghitung dimensi Parshall Flume atau Debit dari tinggi muka air.
-        """
-        # Rekomendasi Lebar Leher (W) berdasarkan Debit (USBR Standard)
         if lebar_leher_m is None:
-            if Q_input_m3s < 0.03: W = 0.0762 # 3 inch
-            elif Q_input_m3s < 0.11: W = 0.1524 # 6 inch
-            elif Q_input_m3s < 0.25: W = 0.2286 # 9 inch
-            elif Q_input_m3s < 0.45: W = 0.3048 # 1 ft
-            elif Q_input_m3s < 1.00: W = 0.6096 # 2 ft
-            elif Q_input_m3s < 2.50: W = 1.2192 # 4 ft
-            else: W = 2.4384 # 8 ft (Besar)
+            if Q_input_m3s < 0.03: W = 0.0762 
+            elif Q_input_m3s < 0.11: W = 0.1524 
+            elif Q_input_m3s < 0.25: W = 0.2286 
+            elif Q_input_m3s < 0.45: W = 0.3048 
+            elif Q_input_m3s < 1.00: W = 0.6096 
+            elif Q_input_m3s < 2.50: W = 1.2192 
+            else: W = 2.4384 
         else:
             W = lebar_leher_m
             
-        # Rumus Q = C * H^n (Metrik Aproksimasi)
-        # Untuk W dalam meter, Q dalam m3/s, Rumus umum: Q = 2.3 * W * Ha^1.6
-        # Kita balik rumusnya untuk cari H: Ha = (Q / (2.3 * W)) ^ (1/1.6)
-        
         try:
-            Ha = (Q_input_m3s / (2.25 * W)) ** (1/1.55) # Konstanta disesuaikan USBR Metric
+            Ha = (Q_input_m3s / (2.25 * W)) ** (1/1.55)
         except:
             Ha = 0
             
@@ -184,7 +196,5 @@ class Irrigation_Engine:
             "Tipe": f"Parshall Flume W={W*100:.0f} cm",
             "Lebar_Leher_m": round(W, 3),
             "H_MukaAir_Hulu_m": round(Ha, 3),
-            "Q_Max_Capacity": round(2.3 * W * (0.8**1.6), 2) # Asumsi H max 0.8m
+            "Q_Max_Capacity": round(2.3 * W * (0.8**1.6), 2)
         }
-
-
