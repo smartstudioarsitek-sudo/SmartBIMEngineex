@@ -13,7 +13,7 @@ import zipfile
 from pptx import Presentation
 import re
 import os
-from fpdf import FPDF # Library PDF yang baru kita tambah
+from fpdf import FPDF 
 
 # ==========================================
 # 1. IMPORT LIBRARY ENGINEERING (MODULAR)
@@ -145,21 +145,35 @@ with st.sidebar:
     if not raw_key: st.warning("Butuh API Key."); st.stop()
     genai.configure(api_key=raw_key.strip(), transport="rest")
     
-    # 2. PILIH MODEL (MANUAL LIST)
-    # Daftar lengkap sesuai permintaan Kakak
+    # 2. PILIH MODEL (FULL LIST UPDATE 2026)
+    # Daftar lengkap termasuk Gemini 3, 2.5, Robotics, dll
     AVAILABLE_MODELS = [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
         "gemini-2.0-flash-exp",
-        "gemini-exp-1206",
-        "gemini-1.5-flash-8b"
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+        "gemini-flash-latest",
+        "gemini-3-flash-preview",
+        "gemini-2.5-flash-preview",
+        "gemini-2.5-flash-lite-preview",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash-image",
+        "gemini-2.5-computer",
+        "gemini-robotics-er-1",
+        "gemini-exp-1206"
     ]
     model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
     
-    # Info Mode
-    if "pro" in model_name: st.success("⚡ Mode: HIGH REASONING")
-    elif "exp" in model_name: st.warning("🧪 Mode: EXPERIMENTAL")
-    else: st.info("🚀 Mode: HIGH SPEED")
+    # Info Mode (Updated Logic)
+    if "3-flash" in model_name:
+        st.success("🚀 Mode: NEXT-GEN SPEED (Gemini 3)")
+    elif "2.5" in model_name:
+        st.info("⚡ Mode: ULTRA EFFICIENT (Gemini 2.5)")
+    elif "robotics" in model_name:
+        st.warning("🤖 Mode: ROBOTICS SPECIALIST")
+    elif "pro" in model_name:
+        st.success("🧠 Mode: HIGH REASONING")
+    else:
+        st.info("🚀 Mode: STANDARD SPEED")
     
     use_auto_pilot = st.checkbox("🤖 Auto-Pilot (Smart Router)", value=True)
     
