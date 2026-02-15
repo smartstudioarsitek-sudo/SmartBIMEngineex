@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 class SNI_Concrete_2847:
     """
@@ -63,3 +64,37 @@ class SNI_Load_1727:
         k1 = 1.4 * D
         k2 = 1.2 * D + 1.6 * L
         return max(k1, k2)
+
+class SNI_Concrete_2019:
+    def __init__(self, fc, fy):
+        self.fc = fc
+        self.fy = fy
+
+    def hitung_geser_beton_vc(self, bw, d, Av_terpasang=0, Nu=0, Ag=0):
+        """
+        Menghitung Kuat Geser Beton (Vc) sesuai SNI 2847:2019.
+        Memperhitungkan Size Effect Factor (lambda_s).
+        """
+        # 1. Tentukan Lambda_s (Size Effect)
+        # Jika ada tulangan geser (sengkang) memadai, lambda_s = 1.0
+        # Jika tidak ada sengkang (plat/footing), lambda_s dihitung.
+        if Av_terpasang > 0:
+            lambda_s = 1.0
+        else:
+            # Rumus Size Effect: sqrt(2 / (1 + 0.004*d))
+            lambda_s = math.sqrt(2.0 / (1.0 + 0.004 * d))
+            if lambda_s > 1.0: lambda_s = 1.0
+        
+        # 2. Rumus Vc Baru (Tabel 22.5.5.1 SNI 2847:2019)
+        # Vc = [0.66 * lambda_s * (rho_w)^(1/3) * sqrt(fc) + (Nu/6Ag)] * bw * d
+        # Sederhananya untuk balok umum (rho_w dianggap min 0.015 untuk konservatif jika data kurang)
+        
+        # Versi Simplified (Konservatif & Aman):
+        # 0.17 * lambda_s * sqrt(fc) * bw * d
+        vc = 0.17 * lambda_s * math.sqrt(self.fc) * bw * d
+        
+        # Koreksi jika ada gaya aksial tekan (Nu) - Opsional
+        if Nu > 0 and Ag > 0:
+            vc += (Nu / (6 * Ag)) * bw * d
+            
+        return vc, lambda_s
