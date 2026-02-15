@@ -20,7 +20,6 @@ from fpdf import FPDF
 # ==========================================
 # 1. IMPORT LIBRARY ENGINEERING (MODULAR)
 # ==========================================
-# Menggunakan Try-Except untuk menangani modul yang belum terupload
 try:
     # A. Core Modules
     from core.backend_enginex import EnginexBackend
@@ -52,15 +51,11 @@ try:
 except ImportError as e:
     st.error(f"⚠️ **CRITICAL SYSTEM ERROR**")
     st.write(f"Gagal memuat modul engineering. Pesan Error: `{e}`")
-    st.info("Saran: Pastikan struktur folder `modules/` di GitHub sudah lengkap dan memiliki file `__init__.py`.")
     st.stop()
 
 # ==========================================
-# [FIX 1] REGISTRASI MODUL KE SYSTEM (IMPORT HACK)
+# [FIX 1] REGISTRASI MODUL KE SYSTEM
 # ==========================================
-# Ini agar AI bisa menulis 'import libs_sni' tanpa error 'ModuleNotFoundError'
-# Kita memetakan modul yang diimport manual ke dalam sys.modules
-
 sys.modules['libs_sni'] = libs_sni
 sys.modules['libs_baja'] = libs_baja
 sys.modules['libs_bridge'] = libs_bridge
@@ -112,20 +107,19 @@ st.markdown("""
 # 3. ENGINE EKSEKUSI KODE (SHARED MEMORY)
 # ==========================================
 # [FIX 2] Shared Memory Initialization
+# Inilah kunci agar 'np' tidak hilang antar blok kode
 if 'shared_execution_vars' not in st.session_state:
     st.session_state.shared_execution_vars = {}
 
 def execute_generated_code(code_str, file_ifc_path=None):
     """
     Menjalankan kode Python AI dengan Memori Persisten.
-    Variabel yang dibuat di Blok 1 (misal: L_bentang) akan tersimpan
-    dan bisa dibaca di Blok 2 (misal: Plotting).
     """
     try:
-        # 1. Ambil variabel dari memori sebelumnya
+        # 1. Ambil variabel dari memori sebelumnya (agar L_bentang, Mu, dll tersimpan)
         local_vars = st.session_state.shared_execution_vars.copy()
         
-        # 2. Suntikkan Library Engineering (agar selalu tersedia)
+        # 2. Suntikkan Library Wajib (Agar 'np' selalu ada meskipun AI lupa import)
         library_kits = {
             "pd": pd, "np": np, "plt": plt, "st": st,
             
@@ -144,6 +138,7 @@ def execute_generated_code(code_str, file_ifc_path=None):
             library_kits['libs_geoteknik'] = libs_geoteknik
             library_kits['libs_pondasi'] = libs_pondasi
             
+        # Update local_vars dengan library kits
         local_vars.update(library_kits)
         
         # 3. Suntikkan File IFC jika ada
@@ -151,11 +146,12 @@ def execute_generated_code(code_str, file_ifc_path=None):
             local_vars["file_ifc_user"] = file_ifc_path
         
         # 4. EKSEKUSI KODE
-        exec(code_str, {}, local_vars)
+        # Gunakan local_vars sebagai globals dan locals agar persistensi maksimal
+        exec(code_str, local_vars)
         
-        # 5. SIMPAN HASIL KE MEMORI (Kecuali Modul/Library)
-        # Kita hanya simpan variabel data (angka, list, df) agar tidak membebani memori
+        # 5. SIMPAN HASIL KE MEMORI (Kecuali Modul/Library/Fungsi Bawaan)
         for k, v in local_vars.items():
+            # Filter agar memori tidak penuh sampah
             if k not in library_kits and not k.startswith('__') and not isinstance(v, types.ModuleType):
                 st.session_state.shared_execution_vars[k] = v
                 
@@ -202,7 +198,6 @@ def create_pdf(text):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=11)
-        # Encode latin-1 handle special chars
         clean_text = text.encode('latin-1', 'replace').decode('latin-1')
         pdf.multi_cell(0, 6, clean_text)
         return pdf.output(dest='S').encode('latin-1')
@@ -236,7 +231,7 @@ with st.sidebar:
     except Exception as e:
         st.error(f"API Error: {e}")
     
-    # 2. MODEL SELECTION (FULL LIST UPDATE 2026)
+    # 2. MODEL SELECTION (SESUAI SCREENSHOT)
     AVAILABLE_MODELS = [
         "gemini-flash-latest",
         "gemini-2.5-flash-lite",
@@ -244,7 +239,7 @@ with st.sidebar:
         "gemini-2.5-flash-preview",
         "gemini-2.5-flash-lite-preview",
         "gemini-3-flash-preview",
-        "gemini-robotics-er-1",
+        "gemini-robotics-er-1.5-preview",
         "gemini-2.5-computer",
         "gemini-2.0-flash-exp",
         "gemini-1.5-pro",
@@ -252,8 +247,9 @@ with st.sidebar:
     ]
     model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
     
+    # Info Mode
     if "3-flash" in model_name: st.success("🚀 Mode: NEXT-GEN (Gemini 3)")
-    elif "2.5" in model_name: st.info("⚡ Mode: ULTRA EFFICIENT (Gemini 2.5)")
+    elif "2.5" in model_name: st.info("⚡ Mode: ULTRA EFFICIENT")
     elif "robotics" in model_name: st.warning("🤖 Mode: ROBOTICS")
     else: st.caption("Mode: Standard")
     
@@ -311,9 +307,10 @@ if prompt:
     if use_auto_pilot:
         with st.status("🧠 Menganalisis kebutuhan...", expanded=False):
             try:
+                # Gunakan model ringan untuk routing
                 router = genai.GenerativeModel("gemini-1.5-flash")
                 list_ahli = list(gems_persona.keys())
-                res = router.generate_content(f"User: '{prompt}'. Siapa ahli paling pas dari: {list_ahli}? Jawab HANYA nama.")
+                router_prompt = f"User bertanya: '{prompt}'. Siapa ahli paling pas dari: {list_ahli}? Jawab HANYA nama."
                 sug = res.text.strip()
                 if sug in list_ahli: 
                     target_expert = sug
@@ -355,7 +352,7 @@ if prompt:
                 3. Import library di dalam kode: `import libs_irigasi`, dll.
                 4. Tampilkan grafik: `st.pyplot(plt.gcf())`.
                 5. Tampilkan tabel: `st.dataframe(df)`.
-                6. Variabel Anda tersimpan antar blok kode, jadi tidak perlu deklarasi ulang jika sudah dihitung sebelumnya.
+                6. Variabel Anda tersimpan antar blok kode.
                 """
                 
                 model = genai.GenerativeModel(model_name, system_instruction=SYS)
