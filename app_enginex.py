@@ -240,8 +240,19 @@ with st.sidebar:
     st.markdown("### 🎭 Mode Persona")
     use_auto_pilot = st.checkbox("🤖 Auto-Pilot (Smart Router)", value=True)
 
-    # ... (setelah checkbox Auto-Pilot) ...
+    # Ambil Daftar Ahli
+    daftar_ahli = get_persona_list()
     
+    if use_auto_pilot:
+        st.info(f"📍 Ahli Aktif: **{st.session_state.current_expert_active}**")
+        st.caption("AI otomatis memilih ahli sesuai pertanyaan.")
+    else:
+        # Dropdown Manual Muncul Disini
+        selected_expert = st.selectbox("👨‍💼 Pilih Spesialis Manual:", daftar_ahli, index=0)
+        st.session_state.current_expert_active = selected_expert
+    
+    st.divider()
+      
     if use_auto_pilot:
         st.info(f"📍 Ahli Aktif: **{st.session_state.current_expert_active}**")
         st.caption("AI otomatis memilih ahli sesuai pertanyaan.")
@@ -264,21 +275,7 @@ with st.sidebar:
         st.info(f"Setting Aktif: Ss={ss_input:.4f}, S1={s1_input:.4f}")
 
     st.divider()
-    # ... (lanjut ke bagian Manajemen Proyek) ...
-    
-    # Ambil Daftar Ahli
-    daftar_ahli = get_persona_list()
-    
-    if use_auto_pilot:
-        st.info(f"📍 Ahli Aktif: **{st.session_state.current_expert_active}**")
-        st.caption("AI otomatis memilih ahli sesuai pertanyaan.")
-    else:
-        # Dropdown Manual Muncul Disini
-        selected_expert = st.selectbox("👨‍💼 Pilih Spesialis Manual:", daftar_ahli, index=0)
-        st.session_state.current_expert_active = selected_expert
-    
-    st.divider()
-    
+      
     # 3. MANAJEMEN PROYEK
     st.markdown("### 📂 Proyek")
     col_p1, col_p2 = st.columns(2)
@@ -424,4 +421,5 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
 
