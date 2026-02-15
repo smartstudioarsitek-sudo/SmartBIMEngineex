@@ -106,8 +106,6 @@ st.markdown("""
 # ==========================================
 # 3. ENGINE EKSEKUSI KODE (SHARED MEMORY)
 # ==========================================
-# [FIX 2] Shared Memory Initialization
-# Inilah kunci agar 'np' tidak hilang antar blok kode
 if 'shared_execution_vars' not in st.session_state:
     st.session_state.shared_execution_vars = {}
 
@@ -116,14 +114,12 @@ def execute_generated_code(code_str, file_ifc_path=None):
     Menjalankan kode Python AI dengan Memori Persisten.
     """
     try:
-        # 1. Ambil variabel dari memori sebelumnya (agar L_bentang, Mu, dll tersimpan)
+        # 1. Ambil variabel dari memori sebelumnya
         local_vars = st.session_state.shared_execution_vars.copy()
         
-        # 2. Suntikkan Library Wajib (Agar 'np' selalu ada meskipun AI lupa import)
+        # 2. Suntikkan Library Wajib
         library_kits = {
             "pd": pd, "np": np, "plt": plt, "st": st,
-            
-            # Modules Dictionary
             "libs_sni": libs_sni, "libs_baja": libs_baja, "libs_bridge": libs_bridge,
             "libs_gempa": libs_gempa, "libs_hidrologi": libs_hidrologi,
             "libs_irigasi": libs_irigasi, "libs_bendung": libs_bendung, "libs_jiat": libs_jiat,
@@ -138,7 +134,6 @@ def execute_generated_code(code_str, file_ifc_path=None):
             library_kits['libs_geoteknik'] = libs_geoteknik
             library_kits['libs_pondasi'] = libs_pondasi
             
-        # Update local_vars dengan library kits
         local_vars.update(library_kits)
         
         # 3. Suntikkan File IFC jika ada
@@ -146,12 +141,10 @@ def execute_generated_code(code_str, file_ifc_path=None):
             local_vars["file_ifc_user"] = file_ifc_path
         
         # 4. EKSEKUSI KODE
-        # Gunakan local_vars sebagai globals dan locals agar persistensi maksimal
         exec(code_str, local_vars)
         
-        # 5. SIMPAN HASIL KE MEMORI (Kecuali Modul/Library/Fungsi Bawaan)
+        # 5. SIMPAN HASIL KE MEMORI
         for k, v in local_vars.items():
-            # Filter agar memori tidak penuh sampah
             if k not in library_kits and not k.startswith('__') and not isinstance(v, types.ModuleType):
                 st.session_state.shared_execution_vars[k] = v
                 
@@ -231,29 +224,32 @@ with st.sidebar:
     except Exception as e:
         st.error(f"API Error: {e}")
     
-    # 2. MODEL SELECTION (SESUAI SCREENSHOT)
+    # 2. MODEL SELECTION
     AVAILABLE_MODELS = [
         "gemini-flash-latest",
         "gemini-2.5-flash-lite",
         "gemini-2.5-flash-image",
         "gemini-2.5-flash-preview",
-        "gemini-2.5-flash-lite-preview",
         "gemini-3-flash-preview",
-        "gemini-robotics-er-1.5-preview",
-        "gemini-2.5-computer",
-        "gemini-2.0-flash-exp",
         "gemini-1.5-pro",
         "gemini-1.5-flash"
     ]
     model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
     
-    # Info Mode
-    if "3-flash" in model_name: st.success("🚀 Mode: NEXT-GEN (Gemini 3)")
-    elif "2.5" in model_name: st.info("⚡ Mode: ULTRA EFFICIENT")
-    elif "robotics" in model_name: st.warning("🤖 Mode: ROBOTICS")
-    else: st.caption("Mode: Standard")
-    
+    # [FIX] BAGIAN UI PERSONA YANG HILANG DI KODE LAMA ANDA
+    st.markdown("### 🎭 Mode Persona")
     use_auto_pilot = st.checkbox("🤖 Auto-Pilot (Smart Router)", value=True)
+    
+    # Ambil Daftar Ahli
+    daftar_ahli = get_persona_list()
+    
+    if use_auto_pilot:
+        st.info(f"📍 Ahli Aktif: **{st.session_state.current_expert_active}**")
+        st.caption("AI otomatis memilih ahli sesuai pertanyaan.")
+    else:
+        # Dropdown Manual Muncul Disini
+        selected_expert = st.selectbox("👨‍💼 Pilih Spesialis Manual:", daftar_ahli, index=0)
+        st.session_state.current_expert_active = selected_expert
     
     st.divider()
     
@@ -281,10 +277,9 @@ with st.sidebar:
     uploaded_files = st.file_uploader("", type=["png","jpg","pdf","xlsx","docx","ifc","py"], accept_multiple_files=True)
     
     if st.button("🧹 Reset Chat"):
-        # Reset Chat dan Memori Variabel
         db.clear_chat(nama_proyek, st.session_state.current_expert_active)
         st.session_state.processed_files.clear()
-        st.session_state.shared_execution_vars = {} # Reset memori hitungan
+        st.session_state.shared_execution_vars = {}
         st.rerun()
 
 # ==========================================
@@ -302,29 +297,32 @@ for msg in history:
 prompt = st.chat_input("Ketik perintah desain, hitungan, atau analisa...")
 
 if prompt:
-    # A. AUTO-PILOT
+    # A. AUTO-PILOT LOGIC
     target_expert = st.session_state.current_expert_active
+    
     if use_auto_pilot:
         with st.status("🧠 Menganalisis kebutuhan...", expanded=False):
             try:
-                # Gunakan model ringan untuk routing
                 router = genai.GenerativeModel("gemini-1.5-flash")
-                list_ahli = list(gems_persona.keys())
-                router_prompt = f"User bertanya: '{prompt}'. Siapa ahli paling pas dari: {list_ahli}? Jawab HANYA nama."
+                list_ahli = get_persona_list()
+                router_prompt = f"User bertanya: '{prompt}'. Siapa ahli paling pas dari daftar ini: {list_ahli}? Jawab HANYA nama ahlinya persis."
+                res = router.generate_content(router_prompt)
                 sug = res.text.strip()
-                if sug in list_ahli: 
+                if any(sug in ahli for ahli in list_ahli): 
                     target_expert = sug
                     st.session_state.current_expert_active = sug
             except: pass
+    else:
+        # Jika Manual, gunakan yang dipilih di sidebar
+        target_expert = st.session_state.current_expert_active
 
     # B. SIMPAN USER CHAT
     db.simpan_chat(nama_proyek, target_expert, "user", prompt)
     with st.chat_message("user"): st.markdown(prompt)
 
-
     # C. SIAPKAN KONTEKS & FILE
     full_prompt = [prompt]
-    file_ifc_path = None # Variabel penampung path
+    file_ifc_path = None # Variabel penampung path untuk IFC
     
     if uploaded_files:
         for f in uploaded_files:
@@ -342,36 +340,29 @@ if prompt:
                     txt = "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
                     full_prompt[0] += f"\n\n[FILE CONTENT: {f.name}]\n{txt}"
                 
-                # [UPDATE] Proses IFC (Simpan ke Temp agar bisa dibaca ifcopenshell)
+                # Proses IFC (Save Temp)
                 elif name.endswith('.ifc'):
-                    # Simpan file fisik sementara
-                    with open(f.name, "wb") as buffer:
-                        buffer.write(f.getbuffer())
-                    
-                    file_ifc_path = f.name # Simpan path-nya
-                    
-                    # Beritahu AI bahwa ada file IFC
-                    full_prompt[0] += f"\n\n[SYSTEM]: User mengupload file BIM IFC di path '{f.name}'. Gunakan `libs_bim_importer` untuk membacanya."
-                    
-                    with st.chat_message("user"): 
-                        st.caption(f"🏗️ BIM Model: {f.name} (Uploaded & Ready)")
+                    with open(f.name, "wb") as buffer: buffer.write(f.getbuffer())
+                    file_ifc_path = f.name
+                    full_prompt[0] += f"\n\n[SYSTEM]: User mengupload IFC di '{f.name}'. Gunakan `libs_bim_importer`."
+                    with st.chat_message("user"): st.caption(f"🏗️ BIM Model: {f.name}")
                 
-                # Tandai sudah diproses
                 st.session_state.processed_files.add(f.name)
-    
-    # D. GENERATE JAWABAN AI
+
+    # D. GENERATE JAWABAN
     with st.chat_message("assistant"):
         with st.spinner(f"{target_expert} sedang bekerja..."):
             try:
-                # Instruksi Coding Wajib
-                SYS = gems_persona[target_expert] + """
+                # Ambil Instruksi Persona
+                from core.persona import gems_persona
+                persona_instr = gems_persona.get(target_expert, gems_persona["👑 The GEMS Grandmaster"])
+                
+                SYS = persona_instr + """
                 \n[INSTRUKSI CODING WAJIB]:
-                1. Jika butuh hitungan/grafik, TULIS KODE PYTHON (```python).
-                2. Gunakan library custom: `libs_sni`, `libs_irigasi`, `libs_hidrologi`, `libs_rab_engine`, `libs_optimizer`.
-                3. Import library di dalam kode: `import libs_irigasi`, dll.
-                4. Tampilkan grafik: `st.pyplot(plt.gcf())`.
-                5. Tampilkan tabel: `st.dataframe(df)`.
-                6. Variabel Anda tersimpan antar blok kode.
+                1. TULIS KODE PYTHON (```python) untuk hitungan/grafik.
+                2. Gunakan library engineering yang tersedia.
+                3. Tampilkan grafik: `st.pyplot(plt.gcf())`.
+                4. Tampilkan tabel: `st.dataframe(df)`.
                 """
                 
                 model = genai.GenerativeModel(model_name, system_instruction=SYS)
@@ -388,22 +379,22 @@ if prompt:
                 for code in code_blocks:
                     st.markdown("---")
                     st.caption("⚙️ **Engine Output:**")
-                    execute_generated_code(code, file_ifc_path=file_ifc_obj)
+                    # [FIX VARIABLE BUG] Menggunakan file_ifc_path bukan file_ifc_obj
+                    execute_generated_code(code, file_ifc_path=file_ifc_path)
                 
                 # F. EXPORT
                 st.markdown("---")
                 c1, c2, c3 = st.columns(3)
                 try:
                     pdf_bytes = create_pdf(response.text)
-                    if pdf_bytes: c1.download_button("📄 Export PDF", pdf_bytes, "Laporan.pdf", "application/pdf")
+                    if pdf_bytes: c1.download_button("📄 PDF", pdf_bytes, "Laporan.pdf")
                 except: pass
                 
                 doc_bytes = create_docx(response.text)
-                if doc_bytes: c2.download_button("📝 Export Word", doc_bytes, "Laporan.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                if doc_bytes: c2.download_button("📝 Word", doc_bytes, "Laporan.docx")
                 
                 xls_bytes = create_excel(response.text)
-                if xls_bytes: c3.download_button("📊 Export Excel", xls_bytes, "Data.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                if xls_bytes: c3.download_button("📊 Excel", xls_bytes, "Data.xlsx")
 
             except Exception as e:
                 st.error(f"Error: {e}")
-
