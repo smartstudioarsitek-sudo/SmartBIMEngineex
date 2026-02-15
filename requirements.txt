@@ -16,6 +16,7 @@ xlrd
 numpy
 google-generativeai
 scipy
+fpdf
 
 
 
