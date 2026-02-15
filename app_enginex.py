@@ -321,25 +321,44 @@ if prompt:
     db.simpan_chat(nama_proyek, target_expert, "user", prompt)
     with st.chat_message("user"): st.markdown(prompt)
 
-    # C. PROSES FILE
+
+    # C. SIAPKAN KONTEKS & FILE
     full_prompt = [prompt]
-    file_ifc_obj = None
+    file_ifc_path = None # Variabel penampung path
+    
     if uploaded_files:
         for f in uploaded_files:
             if f.name not in st.session_state.processed_files:
                 name = f.name.lower()
+                
+                # Proses Gambar
                 if name.endswith(('.png','.jpg','.jpeg')): 
                     full_prompt.append(Image.open(f))
                     with st.chat_message("user"): st.image(f, width=200)
+                
+                # Proses PDF
                 elif name.endswith('.pdf'):
                     reader = PyPDF2.PdfReader(f)
                     txt = "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
-                    full_prompt[0] += f"\n\n[FILE: {f.name}]\n{txt}"
+                    full_prompt[0] += f"\n\n[FILE CONTENT: {f.name}]\n{txt}"
+                
+                # [UPDATE] Proses IFC (Simpan ke Temp agar bisa dibaca ifcopenshell)
                 elif name.endswith('.ifc'):
-                    file_ifc_obj = f 
-                    with st.chat_message("user"): st.caption(f"🏗️ BIM Model: {f.name}")
+                    # Simpan file fisik sementara
+                    with open(f.name, "wb") as buffer:
+                        buffer.write(f.getbuffer())
+                    
+                    file_ifc_path = f.name # Simpan path-nya
+                    
+                    # Beritahu AI bahwa ada file IFC
+                    full_prompt[0] += f"\n\n[SYSTEM]: User mengupload file BIM IFC di path '{f.name}'. Gunakan `libs_bim_importer` untuk membacanya."
+                    
+                    with st.chat_message("user"): 
+                        st.caption(f"🏗️ BIM Model: {f.name} (Uploaded & Ready)")
+                
+                # Tandai sudah diproses
                 st.session_state.processed_files.add(f.name)
-
+    
     # D. GENERATE JAWABAN AI
     with st.chat_message("assistant"):
         with st.spinner(f"{target_expert} sedang bekerja..."):
@@ -387,3 +406,4 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
