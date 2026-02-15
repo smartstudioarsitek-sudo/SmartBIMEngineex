@@ -239,6 +239,32 @@ with st.sidebar:
     # [FIX] BAGIAN UI PERSONA YANG HILANG DI KODE LAMA ANDA
     st.markdown("### 🎭 Mode Persona")
     use_auto_pilot = st.checkbox("🤖 Auto-Pilot (Smart Router)", value=True)
+
+    # ... (setelah checkbox Auto-Pilot) ...
+    
+    if use_auto_pilot:
+        st.info(f"📍 Ahli Aktif: **{st.session_state.current_expert_active}**")
+        st.caption("AI otomatis memilih ahli sesuai pertanyaan.")
+    else:
+        selected_expert = st.selectbox("👨‍💼 Pilih Spesialis Manual:", daftar_ahli, index=0)
+        st.session_state.current_expert_active = selected_expert
+    
+    # [UPDATE BARU: PARAMETER PRESISI TINGGI SESUAI REVIEWER]
+    with st.expander("⚙️ Parameter Gempa (SNI 1726:2019)"):
+        st.caption("Input Presisi (4 Desimal) untuk Interpolasi Eksak")
+        
+        # Menggunakan format="%.4f" sesuai permintaan audit
+        ss_input = st.number_input("Ss (Batuan Dasar)", value=0.6000, format="%.4f", step=0.0001)
+        s1_input = st.number_input("S1 (Periode 1 Detik)", value=0.2500, format="%.4f", step=0.0001)
+        
+        # Simpan ke session state agar bisa dibaca oleh libs_gempa
+        st.session_state.shared_execution_vars['Ss_user'] = ss_input
+        st.session_state.shared_execution_vars['S1_user'] = s1_input
+        
+        st.info(f"Setting Aktif: Ss={ss_input:.4f}, S1={s1_input:.4f}")
+
+    st.divider()
+    # ... (lanjut ke bagian Manajemen Proyek) ...
     
     # Ambil Daftar Ahli
     daftar_ahli = get_persona_list()
@@ -398,3 +424,4 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
