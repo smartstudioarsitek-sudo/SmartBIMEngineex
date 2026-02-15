@@ -249,7 +249,7 @@ with st.sidebar:
         "gemini-2.5-flash-preview",
         "gemini-2.5-flash-lite-preview",
         "gemini-3-flash-preview",
-        "gemini-robotics-er-1",
+        "gemini-robotics-er-1.5-preview",
         "gemini-2.5-computer",
         "gemini-2.0-flash-exp",
         "gemini-1.5-pro",
@@ -426,3 +426,4 @@ if prompt:
             except Exception as e:
                 st.error(f"⚠️ Error: {e}")
                 st.info("Jika error terkait model (404), coba ganti Model AI di sidebar.")
+
