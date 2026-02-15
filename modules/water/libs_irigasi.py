@@ -5,56 +5,59 @@ class Irrigation_Engine:
     
     def __init__(self):
         pass
-
     # =========================================
-    # 1. DESAIN SALURAN (MANNING & TRAPESIUM)
+    # 1. DESAIN SALURAN (MANNING & TRAPESIUM) - IMPROVED
     # =========================================
     def hitung_dimensi_saluran(self, Q, b_ratio=1.5, m=1.0, S=0.0005, n=0.025):
         """
         Mencari dimensi saluran trapesium yang ekonomis secara iteratif.
+        Versi Improved: Range iterasi lebih luas & toleransi lebih baik.
         """
         # Iterasi mencari tinggi air (h)
         h = 0.1
+        best_diff = float('inf')
+        best_h = 0.1
         found = False
-        max_h = 10.0 # Safety break
         
-        while h < max_h:
+        # Iterasi sampai h = 10 meter (cukup besar untuk irigasi)
+        while h < 10.0:
             b = h * b_ratio # Lebar dasar proporsional terhadap tinggi
             
             # Properti Geometris
             A = (b + m * h) * h
             P = b + 2 * h * math.sqrt(1 + m**2)
-            R = A / P
             
-            # Rumus Manning
-            Q_calc = (1/n) * A * (R**(2/3)) * (S**0.5)
+            if P > 0:
+                R = A / P
+                # Rumus Manning
+                Q_calc = (1/n) * A * (R**(2/3)) * (S**0.5)
+                
+                # Cek selisih debit hitung vs debit target
+                diff = abs(Q_calc - Q)
+                
+                # Simpan solusi terdekat
+                if diff < best_diff:
+                    best_diff = diff
+                    best_h = h
+                
+                # Jika sudah cukup dekat (toleransi 5%) atau Q_calc melebihi Q
+                if Q_calc >= Q: 
+                    found = True
+                    break
             
-            if Q_calc >= Q:
-                found = True
-                break
             h += 0.05
             
-        if not found:
-            return None
+        # Gunakan best_h yang ditemukan
+        h = best_h
+        b = h * b_ratio
         
-        # Validasi Hidrolis
-        V = Q / A
-        T = b + 2 * m * h # Lebar muka air
-        D = A / T # Kedalaman hidrolis
-        Fr = V / math.sqrt(9.81 * D)
+        # Hitung ulang parameter final
+        A = (b + m * h) * h
+        V = Q / A if A > 0 else 0
+        T = b + 2 * m * h 
+        D = A / T if T > 0 else 0
+        Fr = V / math.sqrt(9.81 * D) if D > 0 else 0
         
-        status = "AMAN"
-        warns = []
-        if Fr >= 1.0: 
-            status = "BAHAYA"
-            warns.append("Aliran Superkritis (Gerusan)")
-        if V < 0.6: 
-            status = "PERHATIAN"
-            warns.append("Kecepatan < 0.6 m/s (Endapan)")
-        if V > 2.0:
-            status = "BAHAYA"
-            warns.append("Kecepatan > 2.0 m/s (Erosi)")
-            
         # Tinggi Jagaan (Freeboard) KP-03
         if Q < 0.5: w = 0.20
         elif Q < 1.5: w = 0.20
@@ -64,6 +67,19 @@ class Irrigation_Engine:
         
         H_total = h + w
         
+        # Status Keamanan
+        status = "AMAN"
+        warns = []
+        if Fr >= 1.0: 
+            status = "BAHAYA"
+            warns.append("Aliran Superkritis")
+        if V < 0.6: 
+            status = "PERHATIAN"
+            warns.append("Kecepatan Rendah (Endapan)")
+        if V > 2.0:
+            status = "BAHAYA"
+            warns.append("Kecepatan Tinggi (Erosi)")
+            
         return {
             "Dimensi": {
                 "b": round(b, 2),
@@ -75,20 +91,11 @@ class Irrigation_Engine:
             "Hidrolis": {
                 "V": round(V, 2),
                 "Fr": round(Fr, 2),
-                "Q_cap": round(Q_calc, 3),
                 "Area": round(A, 2)
             },
             "Status": status,
             "Catatan": ", ".join(warns) if warns else "Hidrolis OK"
         }
-
-    # ... (taruh di bawah method hitung_dimensi_saluran) ...
-
-    # --- ALIAS / WRAPPER UNTUK AI ---
-    def hitung_dimensi_ekonomis(self, Q, S, n, m):
-        """Wrapper agar AI tidak error jika salah panggil nama fungsi."""
-        # Mapping parameter ke fungsi utama
-        return self.hitung_dimensi_saluran(Q, m=m, S=S, n=n)
     # =========================================
     # 2. GENERATOR GAMBAR CAD (.DXF)
     # =========================================
@@ -179,4 +186,5 @@ class Irrigation_Engine:
             "H_MukaAir_Hulu_m": round(Ha, 3),
             "Q_Max_Capacity": round(2.3 * W * (0.8**1.6), 2) # Asumsi H max 0.8m
         }
+
 
