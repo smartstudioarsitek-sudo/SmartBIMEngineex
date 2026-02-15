@@ -1,0 +1,55 @@
+SmartENGINEX/
+│
+├── 📄 app_enginex.py           <-- (JANTUNG) Main Application Streamlit
+├── 📄 requirements.txt         <-- Daftar Library (pandas, numpy, ifcopenshell, dll)
+├── 📄 packages.txt             <-- (Opsional) Untuk dependencies Linux di Cloud
+├── 📄 .gitignore               <-- Biar file sampah gak ke-upload
+│
+├── 📂 core/                    <-- (OTAK & MEMORI)
+│   ├── __init__.py
+│   ├── persona.py              <-- Instruksi & Karakter AI
+│   └── backend_enginex.py      <-- Database Chat History (JSON/SQLite)
+│
+├── 📂 assets/                  <-- (GUDANG GAMBAR/LOGO)
+│   ├── logo_enginex.png
+│   └── template_laporan.docx
+│
+└── 📂 modules/                 <-- (TANGAN & KAKI - LIBRARY TEKNIS)
+    ├── __init__.py
+    ├── libs_tools.py           <-- (CONNECTOR UTAMA) Yang dipanggil AI
+    │
+    ├── 📂 struktur/            <-- (Modul Sipil Keras)
+    │   ├── __init__.py
+    │   ├── libs_sni.py         # Beton
+    │   ├── libs_baja.py        # Baja
+    │   ├── libs_bridge.py      # Jembatan
+    │   └── libs_gempa.py       # Beban Gempa
+    │
+    ├── 📂 geotek/              <-- (Modul Tanah)
+    │   ├── __init__.py
+    │   ├── libs_geoteknik.py   # Dinding Penahan/Talud
+    │   └── libs_pondasi.py     # Pancang & Dangkal
+    │
+    ├── 📂 water/               <-- (Modul Air - Pindahan Hydro Planner)
+    │   ├── __init__.py
+    │   ├── libs_irigasi.py     # Saluran Terbuka & Gambar
+    │   ├── libs_jiat.py        # Pompa Air Tanah
+    │   └── libs_hidrologi.py   # Hujan & Banjir
+    │
+    ├── 📂 arch/                <-- (Modul Arsitektur - Baru)
+    │   ├── __init__.py
+    │   ├── libs_arch.py        # Neufert & Program Ruang
+    │   ├── libs_zoning.py      # Regulasi Kota
+    │   └── libs_green.py       # Greenship
+    │
+    ├── 📂 cost/                <-- (Modul Uang)
+    │   ├── __init__.py
+    │   ├── libs_ahsp.py        # Analisa Harga
+    │   ├── libs_optimizer.py   # Cari yang termurah
+    │   └── libs_research.py    # Validasi Harga Pasar
+    │
+    └── 📂 utils/               <-- (Modul Pendukung)
+        ├── __init__.py
+        ├── libs_bim_importer.py # Baca IFC
+        ├── libs_export.py       # Bikin DXF/Excel
+        └── libs_pdf.py          # Bikin Laporan
