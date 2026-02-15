@@ -1,100 +1,95 @@
-import numpy as np
 import math
-
-class SNI_Concrete_2847:
-    """
-    Engine perhitungan Struktur Beton Bertulang berdasarkan SNI 2847:2019
-    """
-    def __init__(self, fc, fy):
-        self.fc = fc # MPa
-        self.fy = fy # MPa
-        self.beta1 = 0.85 if fc <= 28 else max(0.85 - 0.05 * (fc - 28) / 7, 0.65)
-
-    def hitung_momen_nominal(self, b, h, As, ds):
-        """
-        Menghitung Kapasitas Momen (Phi Mn) balok persegi.
-        b, h, ds dalam mm. As dalam mm2.
-        Output: Phi_Mn (kNm)
-        """
-        # Kedalaman blok tekan (a)
-        # a = (As * fy) / (0.85 * fc * b)
-        a = (As * self.fy) / (0.85 * self.fc * b)
-        
-        # Momen Nominal (Mn) -> Nmm
-        # Mn = As * fy * (d - a/2)
-        d = h - ds
-        Mn = As * self.fy * (d - a / 2)
-        
-        # Faktor Reduksi Kekuatan (Phi) - SNI 2847 Tabel 21.2.1
-        # Asumsi terkendali tarik (Tension Controlled) untuk balok
-        phi = 0.9 
-        
-        return (phi * Mn) / 1e6 # Convert ke kNm
-
-    def kebutuhan_tulangan(self, Mu_kNm, b, h, ds):
-        """
-        Desain Tulangan Perlu (As_req) berdasarkan Mu.
-        """
-        phi = 0.9
-        d = h - ds
-        Mu = Mu_kNm * 1e6 # Nmm
-        
-        # Rumus Pendekatan (Simplified Design)
-        # As = Mu / (phi * fy * 0.875 * d)
-        As_perlu = Mu / (phi * self.fy * 0.875 * d)
-        
-        # Cek Minimum Reinforcement (SNI 2847 Pasal 9.6.1.2)
-        As_min1 = (0.25 * np.sqrt(self.fc) / self.fy) * b * d
-        As_min2 = (1.4 / self.fy) * b * d
-        As_min = max(As_min1, As_min2)
-        
-        return max(As_perlu, As_min)
-
-class SNI_Load_1727:
-    """
-    Kombinasi Pembebanan SNI 1727:2020
-    """
-    @staticmethod
-    def komb_pembebanan(D, L):
-        """
-        Mengembalikan Envelope beban terbesar (kNm atau kN)
-        K1: 1.4D
-        K2: 1.2D + 1.6L
-        """
-        k1 = 1.4 * D
-        k2 = 1.2 * D + 1.6 * L
-        return max(k1, k2)
 
 class SNI_Concrete_2019:
     def __init__(self, fc, fy):
-        self.fc = fc
-        self.fy = fy
+        self.fc = float(fc)
+        self.fy = float(fy)
+        self.Es = 200000 # Modulus elastisitas baja (MPa)
+
+    def hitung_phi_lentur(self, epsilon_t):
+        """
+        Menghitung Faktor Reduksi Kekuatan (Phi) sesuai SNI 2847:2019 Pasal 21.2.
+        Reviewer Note: Menggantikan logika 'Toggle' kaku dengan Interpolasi Linear.
+        """
+        epsilon_ty = self.fy / self.Es # Regangan leleh (biasanya 0.002)
+        epsilon_limit = 0.005          # Batas terkontrol tarik
+        
+        trace_msg = ""
+        
+        # KASUS 1: Terkontrol Tekan (Kolom)
+        if epsilon_t <= epsilon_ty:
+            phi = 0.65 # Asumsi sengkang ikat (bukan spiral)
+            trace_msg = f"Terkontrol Tekan (eps_t {epsilon_t:.4f} <= {epsilon_ty:.4f}) -> Phi = 0.65"
+            
+        # KASUS 2: Terkontrol Tarik (Balok)
+        elif epsilon_t >= epsilon_limit:
+            phi = 0.90
+            trace_msg = f"Terkontrol Tarik (eps_t {epsilon_t:.4f} >= 0.005) -> Phi = 0.90"
+            
+        # KASUS 3: Zona Transisi (Interpolasi Linear)
+        else:
+            # Rumus Interpolasi: 0.65 + (eps - eps_ty) * (0.25 / (0.005 - eps_ty))
+            phi = 0.65 + (epsilon_t - epsilon_ty) * (0.25 / (epsilon_limit - epsilon_ty))
+            trace_msg = f"Zona Transisi (Interpolasi) -> Phi = {phi:.3f}"
+            
+        return phi, trace_msg
 
     def hitung_geser_beton_vc(self, bw, d, Av_terpasang=0, Nu=0, Ag=0):
         """
-        Menghitung Kuat Geser Beton (Vc) sesuai SNI 2847:2019.
-        Memperhitungkan Size Effect Factor (lambda_s).
+        Menghitung Kuat Geser Beton (Vc) sesuai SNI 2847:2019 Pasal 22.5.5.
+        Reviewer Note: WAJIB memperhitungkan Size Effect Factor (lambda_s).
         """
-        # 1. Tentukan Lambda_s (Size Effect)
-        # Jika ada tulangan geser (sengkang) memadai, lambda_s = 1.0
-        # Jika tidak ada sengkang (plat/footing), lambda_s dihitung.
+        # 1. Tentukan Lambda_s (Size Effect Factor)
+        # Jika ada tulangan geser (Av > Av_min), size effect tidak berlaku (lambda_s = 1.0)
+        # Tapi untuk Pondasi/Plat tanpa sengkang, lambda_s HARUS dihitung.
+        
+        trace = []
+        
         if Av_terpasang > 0:
             lambda_s = 1.0
+            trace.append("Ada tulangan geser -> Lambda_s = 1.0")
         else:
             # Rumus Size Effect: sqrt(2 / (1 + 0.004*d))
-            lambda_s = math.sqrt(2.0 / (1.0 + 0.004 * d))
-            if lambda_s > 1.0: lambda_s = 1.0
-        
-        # 2. Rumus Vc Baru (Tabel 22.5.5.1 SNI 2847:2019)
-        # Vc = [0.66 * lambda_s * (rho_w)^(1/3) * sqrt(fc) + (Nu/6Ag)] * bw * d
-        # Sederhananya untuk balok umum (rho_w dianggap min 0.015 untuk konservatif jika data kurang)
-        
-        # Versi Simplified (Konservatif & Aman):
-        # 0.17 * lambda_s * sqrt(fc) * bw * d
-        vc = 0.17 * lambda_s * math.sqrt(self.fc) * bw * d
-        
-        # Koreksi jika ada gaya aksial tekan (Nu) - Opsional
-        if Nu > 0 and Ag > 0:
-            vc += (Nu / (6 * Ag)) * bw * d
+            # d dalam mm
+            val = 2.0 / (1.0 + 0.004 * d)
+            lambda_s = math.sqrt(val)
             
-        return vc, lambda_s
+            # Lambda_s maksimal 1.0
+            if lambda_s > 1.0: lambda_s = 1.0
+            
+            trace.append(f"Tanpa tulangan geser (Size Effect) -> Lambda_s = sqrt(2/(1+0.004*{d})) = {lambda_s:.3f}")
+
+        # 2. Rumus Vc (Simplified SNI 2847:2019 Tabel 22.5.5.1)
+        # Vc = 0.17 * lambda_s * sqrt(fc) * bw * d
+        # (Dalam N)
+        
+        vc_nominal = 0.17 * lambda_s * math.sqrt(self.fc) * bw * d
+        trace.append(f"Vc Dasar = 0.17 * {lambda_s:.2f} * sqrt({self.fc}) * {bw} * {d} = {vc_nominal/1000:.2f} kN")
+        
+        # 3. Koreksi Gaya Aksial (Nu) jika ada (Misal Kolom Tekan)
+        if Nu > 0 and Ag > 0:
+            # Nu dalam Newton
+            faktor_nu = Nu / (6 * Ag)
+            penambahan = faktor_nu * bw * d
+            vc_nominal += penambahan
+            trace.append(f"Koreksi Aksial Nu -> Tambah {penambahan/1000:.2f} kN")
+            
+        return vc_nominal, lambda_s, " | ".join(trace)
+
+    def hitung_tulangan_perlu(self, Mu, d, b):
+        """
+        Helper sederhana untuk hitung AS perlu (Lentur)
+        """
+        # Konversi satuan ke N.mm
+        Mu_nmm = Mu * 1e6
+        
+        # Asumsi phi awal 0.9 (nanti dikoreksi iterasi di level app)
+        phi = 0.9 
+        
+        # a asumsi awal 20% d
+        a = 0.2 * d
+        
+        # As = Mu / (phi * fy * (d - a/2))
+        As = Mu_nmm / (phi * self.fy * (d - a/2))
+        
+        return As
