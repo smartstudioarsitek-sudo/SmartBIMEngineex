@@ -18,6 +18,8 @@ google-generativeai
 scipy
 fpdf
 ifcopenshell
+ezdxf
+
 
 
 
