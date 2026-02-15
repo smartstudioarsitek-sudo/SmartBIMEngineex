@@ -19,6 +19,8 @@ scipy
 fpdf
 ifcopenshell
 ezdxf
+fitz
+
 
 
 
