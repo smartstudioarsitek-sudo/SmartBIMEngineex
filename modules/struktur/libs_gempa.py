@@ -1,109 +1,95 @@
 import numpy as np
 
-class SNI_Gempa_1726:
+class SNI_Gempa_2019:
     def __init__(self, Ss, S1, Kelas_Situs):
         self.Ss = float(Ss)
         self.S1 = float(S1)
         self.Site = Kelas_Situs
-        self.Fa, self.Fv = self.tentukan_koefisien_situs()
         
+        # 1. Hitung Koefisien Situs dengan INTERPOLASI LINEAR (Bukan Step Function)
+        self.Fa, self.Fv, self.Note = self.hitung_koefisien_interpolasi()
+        
+        # 2. Hitung Parameter Spektrum
         self.Sms = self.Fa * self.Ss
         self.Sm1 = self.Fv * self.S1
         self.Sds = (2/3) * self.Sms
         self.Sd1 = (2/3) * self.Sm1
         
-        # Periode Transisi
-        if self.Sds > 0:
+        # 3. Hitung Periode (T0 dan Ts)
+        # Menghindari pembagian nol
+        if self.Sds == 0:
+            self.T0 = 0
+            self.Ts = 0
+        else:
             self.T0 = 0.2 * (self.Sd1 / self.Sds)
             self.Ts = self.Sd1 / self.Sds
-        else:
-            self.T0 = 0; self.Ts = 0
 
-    def tentukan_koefisien_situs(self):
-        # Logika Sederhana Fa
-        if self.Site == 'SE': Fa = 0.9 if self.Ss >= 1.0 else 2.5
-        elif self.Site == 'SD': Fa = 1.1 if self.Ss >= 1.0 else 1.6
-        else: Fa = 1.0
-            
-        # Logika Sederhana Fv
-        if self.Site == 'SE': Fv = 2.4 if self.S1 >= 0.5 else 3.5
-        elif self.Site == 'SD': Fv = 1.7 if self.S1 >= 0.5 else 2.4
-        else: Fv = 1.0
-            
-        return Fa, Fv
-
-    def hitung_base_shear(self, Berat_W_kN, R_redaman=8.0):
-        Cs = self.Sds / (R_redaman / 1.0)
-        V = Cs * Berat_W_kN
-        return V, self.Sds, self.Sd1
-
-    # ===============================================
-    # [FIX] FUNGSI UTAMA & ALIAS BAHASA INGGRIS
-    # ===============================================
-    def get_respons_spektrum(self, T_max=4.0):
-        """Fungsi Utama (Bahasa Indonesia)"""
-        T_vals = np.linspace(0, T_max, 100)
-        Sa_vals = []
-        for T in T_vals:
-            if T < self.T0: val = self.Sds * (0.4 + 0.6 * (T / self.T0))
-            elif T <= self.Ts: val = self.Sds
-            else: val = self.Sd1 / T if T > 0 else 0
-            Sa_vals.append(val)
-        return T_vals, np.array(Sa_vals)
-
-    def get_response_spectrum_data(self, T_max=4.0):
+    def hitung_koefisien_interpolasi(self):
         """
-        [ALIAS] Wrapper Bahasa Inggris.
-        Jaga-jaga kalau AI halusinasi pakai bahasa Inggris.
+        Melakukan Interpolasi Linear sesuai Tabel 6 & 7 SNI 1726:2019.
+        Menggantikan logika 'Tangga' (Step Function) yang dilarang reviewer.
         """
-        return self.get_respons_spektrum(T_max)
-
-class SNI_Gempa_2019:
-    def __init__(self, Ss, S1, Kelas_Situs):
-        self.Ss = Ss
-        self.S1 = S1
-        self.Site = Kelas_Situs
-        self.Fa, self.Fv, self.Note = self.tentukan_koefisien_situs()
-        
-        # Hitung Parameter
-        self.Sms = self.Fa * self.Ss
-        self.Sm1 = self.Fv * self.S1
-        self.Sds = (2/3) * self.Sms
-        self.Sd1 = (2/3) * self.Sm1
-
-    def tentukan_koefisien_situs(self):
         note = "Normal"
         
-        # --- LOGIKA BARU SESUAI AUDIT ---
-        # Cek Tanah Lunak (SE)
+        # --- DATABASE TABEL SNI 1726:2019 ---
+        # Format: {Kelas_Situs: [Nilai untuk header kolom]}
+        # Header Ss = [0.25, 0.5, 0.75, 1.0, 1.25]
+        # Header S1 = [0.1, 0.2, 0.3, 0.4, 0.5]
+        
+        header_Ss = [0.25, 0.5, 0.75, 1.0, 1.25]
+        header_S1 = [0.1, 0.2, 0.3, 0.4, 0.5]
+        
+        table_Fa = {
+            'SA': [0.8, 0.8, 0.8, 0.8, 0.8],
+            'SB': [1.0, 1.0, 1.0, 1.0, 1.0],
+            'SC': [1.2, 1.2, 1.1, 1.0, 1.0],
+            'SD': [1.6, 1.4, 1.2, 1.1, 1.0],
+            'SE': [2.5, 1.7, 1.2, 0.9, 0.9], # Perhatikan nilai ini
+            'SF': [None, None, None, None, None] # SS (Site Specific)
+        }
+        
+        table_Fv = {
+            'SA': [0.8, 0.8, 0.8, 0.8, 0.8],
+            'SB': [1.0, 1.0, 1.0, 1.0, 1.0],
+            'SC': [1.7, 1.6, 1.5, 1.4, 1.3],
+            'SD': [2.4, 2.0, 1.8, 1.6, 1.5],
+            'SE': [3.5, 3.2, 2.8, 2.4, 2.4], # Perhatikan nilai ini
+            'SF': [None, None, None, None, None]
+        }
+
+        # --- LOGIKA PENENTUAN Fa (INTERPOLASI) ---
+        if self.Site == 'SF':
+            return 0, 0, "BAHAYA: Kelas Situs SF Wajib Analisis Respon Spesifik!"
+            
+        vals_Fa = table_Fa.get(self.Site, table_Fa['SD']) # Default SD jika typo
+        Fa = np.interp(self.Ss, header_Ss, vals_Fa)
+        
+        # --- LOGIKA PENENTUAN Fv (INTERPOLASI) ---
+        vals_Fv = table_Fv.get(self.Site, table_Fv['SD'])
+        Fv = np.interp(self.S1, header_S1, vals_Fv)
+
+        # --- VALIDASI KHUSUS TANAH LUNAK (SE) - SESUAI REQUEST REVIEWER ---
+        # Pasal 6.10.1: Jika S1 >= 0.2 di SE, tidak boleh pakai tabel langsung.
         if self.Site == 'SE':
-            # Aturan SNI 1726:2019 Tabel 6 & 7
-            # Jika Ss >= 1.0, Fa harus SS (Site Specific)
             if self.Ss >= 1.0:
-                Fa = 0.9 # Fallback value (tapi harus warning)
-                note = "BAHAYA: Ss >= 1.0 pada Tanah Lunak (SE). SNI mewajibkan Analisis Respons Spesifik Situs!"
-            else:
-                # Interpolasi manual sederhana
-                if self.Ss <= 0.25: Fa = 2.5
-                elif self.Ss <= 0.5: Fa = 1.7
-                elif self.Ss <= 0.75: Fa = 1.2
-                else: Fa = 0.9
+                 note = "PERINGATAN (Pasal 6.10.1): Ss >= 1.0 di Tanah Lunak. Sebaiknya Analisis Spesifik Situs."
             
-            # Jika S1 >= 0.2, Fv harus SS (Site Specific)
             if self.S1 >= 0.2:
-                Fv = 2.4 # Nilai default konservatif jika tidak SS (Pasal 6.9)
-                note += " | PERHATIAN: S1 >= 0.2 pada SE. Gunakan Fv konservatif atau Analisis Spesifik."
+                # Reviewer bilang: "Aplikasi langsung mengeluarkan nilai tanpa peringatan... pelanggaran kritis"
+                note = "⛔ CRITICAL WARNING (SNI Pasal 6.10.1): S1 >= 0.2 pada Tanah Lunak (SE). SNI mewajibkan Analisis Respons Spesifik Situs! Nilai Fv di sini hanya estimasi awal."
+
+        return round(Fa, 3), round(Fv, 3), note
+
+    def get_response_spectrum(self):
+        """Helper untuk plotting grafik"""
+        T = np.linspace(0, 4, 100)
+        Sa = []
+        for t in T:
+            if t < self.T0:
+                val = self.Sds * (0.4 + 0.6 * t / self.T0)
+            elif t < self.Ts:
+                val = self.Sds
             else:
-                if self.S1 <= 0.1: Fv = 3.5
-                else: Fv = 3.2 # Interpolasi 0.1-0.2
-                
-        # --- LOGIKA TANAH SEDANG (SD) & KERAS (SC) ---
-        elif self.Site == 'SD':
-            Fa = 1.2 if self.Ss <= 0.5 else (1.1 if self.Ss <= 1.0 else 1.0) # Simplified
-            Fv = 1.7 if self.S1 <= 0.5 else (2.4 if self.S1 >= 0.6 else 1.7) # Simplified range
-        else:
-            # Default SC/SB
-            Fa = 1.0
-            Fv = 1.0
-            
-        return Fa, Fv, note
+                val = self.Sd1 / t
+            Sa.append(val)
+        return T, Sa
