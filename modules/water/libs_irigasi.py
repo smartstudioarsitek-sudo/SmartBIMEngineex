@@ -1,100 +1,105 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
+import math
 
 class Irrigation_Engine:
-    def __init__(self):
-        pass
-
-    def hitung_dan_gambar_saluran(self, Q, S, n=0.015, m=1.0):
+    
+    def hitung_dimensi_saluran(self, Q, b_ratio=1.5, m=1.0, S=0.0005, n=0.025):
         """
-        1. Menghitung dimensi ekonomis.
-        2. Mengembalikan object Gambar (Figure) untuk ditampilkan AI.
+        Desain Dimensi Saluran Trapesium Otomatis.
+        b_ratio = b/h (rasio lebar terhadap tinggi)
         """
-        # --- A. LOGIKA HITUNGAN (Otak Hydro Planner) ---
-        # Rumus Manning: Q = A * (1/n) * R^(2/3) * S^(1/2)
-        # Mencari lebar dasar (b) dan tinggi air (h) optimal
-        # Simplifikasi: b = h (biar mendekati hidrolis terbaik untuk trapesium m=1)
-        
-        target_found = False
-        h_desain = 0.5
-        b_desain = 0.5
-        
-        # Iterasi mencari h yang pas
-        for h in np.arange(0.1, 5.0, 0.05):
-            b = h # Asumsi b = h
+        # Iterasi mencari h
+        h = 0.1
+        found = False
+        for _ in range(100):
+            b = h * b_ratio
             A = (b + m * h) * h
-            P = b + 2 * h * np.sqrt(1 + m**2)
+            P = b + 2 * h * math.sqrt(1 + m**2)
             R = A / P
+            
+            # Manning
             Q_calc = (1/n) * A * (R**(2/3)) * (S**0.5)
             
             if Q_calc >= Q:
-                h_desain = h
-                b_desain = b
-                target_found = True
+                found = True
                 break
+            h += 0.05
+            
+        if not found: return None
         
-        if not target_found:
-            return None, "Debit terlalu besar, butuh dimensi khusus."
-
-        # Tinggi Jagaan (Freeboard) - Standar KP-03
-        w = 0.6 if Q > 1.0 else 0.4
-        H_total = h_desain + w
+        # Cek Froude & Kecepatan
+        V = Q / A
+        T = b + 2 * m * h
+        D = A / T
+        Fr = V / math.sqrt(9.81 * D)
         
-        # --- B. LOGIKA GAMBAR (Matplotlib) ---
-        fig, ax = plt.subplots(figsize=(8, 4))
+        status = "AMAN"
+        if Fr >= 1.0: status = "SUPERKRITIS (Bahaya Gerusan)"
+        if V < 0.6: status += " (Bahaya Endapan)"
         
-        # Koordinat Titik Tanah (Trapezoid)
-        # Kiri Atas, Kiri Bawah, Kanan Bawah, Kanan Atas
-        x_tanah = [
-            0,                  # Kiri Atas
-            m * H_total,        # Kiri Bawah
-            m * H_total + b_desain, # Kanan Bawah
-            2 * m * H_total + b_desain # Kanan Atas
-        ]
-        y_tanah = [H_total, 0, 0, H_total]
+        # Tinggi Jagaan (KP-03)
+        w = 0.2 + (0.04 * (Q**(1/3))) # Rumus empiris simple
+        H_total = h + w
         
-        # Plot Saluran (Garis Tanah)
-        ax.plot(x_tanah, y_tanah, 'k-', linewidth=2, label='Tanah Asli')
-        
-        # Plot Air (Area Biru)
-        # Koordinat permukaan air
-        top_width_water = b_desain + 2 * m * h_desain
-        x_air = [
-            m * (H_total - h_desain) + (m * h_desain), # Salah hitung dikit di koordinat visual, kita simplifikasi:
-            m * H_total,        # Kiri Bawah Air
-            m * H_total + b_desain, # Kanan Bawah Air
-            m * H_total + b_desain  # Kanan Atas Air (perlu offset m)
-        ]
-        
-        # Menggunakan Fill Polygon untuk Air
-        x_poly = [
-            m * (H_total - h_desain),           # Kiri Atas Air
-            m * H_total,                        # Kiri Bawah
-            m * H_total + b_desain,             # Kanan Bawah
-            m * H_total + b_desain + m*h_desain # Kanan Atas Air
-        ]
-        y_poly = [h_desain, 0, 0, h_desain]
-        
-        polygon = patches.Polygon(list(zip(x_poly, y_poly)), closed=True, facecolor='#00BFFF', alpha=0.6, label='Air Irigasi')
-        ax.add_patch(polygon)
-
-        # Anotasi Dimensi
-        ax.text(sum(x_tanah)/len(x_tanah), -0.2, f"b = {b_desain:.2f} m", ha='center')
-        ax.text(x_poly[2] + 0.2, h_desain/2, f"h = {h_desain:.2f} m", color='blue')
-        ax.text(x_tanah[3], H_total, f"H = {H_total:.2f} m", va='bottom')
-
-        ax.set_title(f"DESAIN PENAMPANG SALURAN (Q = {Q} m3/s)")
-        ax.set_aspect('equal')
-        ax.grid(True, linestyle=':', alpha=0.6)
-        ax.legend()
-        
-        # Data Teks untuk Laporan
-        info = {
-            "b": b_desain,
-            "h": h_desain,
-            "w": w,
-            "V_ijin": Q / ((b_desain + m*h_desain)*h_desain)
+        return {
+            "Dimensi": {"b": round(b, 2), "h_air": round(h, 2), "H_total": round(H_total, 2), "m": m},
+            "Hidrolis": {"V": round(V, 2), "Fr": round(Fr, 2), "Q_cap": round(Q_calc, 2)},
+            "Status": status
         }
+
+    def generate_dxf_script(self, desain_data):
+        """Generates simple DXF content (text format) for the channel."""
+        b = desain_data['Dimensi']['b']
+        H = desain_data['Dimensi']['H_total']
+        m = desain_data['Dimensi']['m']
         
-        return fig, info
+        # Koordinat Trapesium (0,0 di as dasar)
+        x_bl = -b/2; y_b = 0
+        x_br = b/2
+        x_tl = -b/2 - (m*H); y_t = H
+        x_tr = b/2 + (m*H)
+        
+        dxf = "0\nSECTION\n2\nENTITIES\n"
+        
+        # Fungsi Line Helper
+        def add_line(x1, y1, x2, y2, layer):
+            return f"0\nLINE\n8\n{layer}\n10\n{x1}\n20\n{y1}\n30\n0.0\n11\n{x2}\n21\n{y2}\n31\n0.0\n"
+            
+        dxf += add_line(x_tl, y_t, x_bl, y_b, "TANAH")
+        dxf += add_line(x_bl, y_b, x_br, y_b, "DASAR")
+        dxf += add_line(x_br, y_b, x_tr, y_t, "TANAH")
+        
+        dxf += "0\nENDSEC\n0\nEOF"
+        return dxf
+
+    def hitung_parshall_flume(self, Q_input, lebar_leher_m=None):
+        """
+        Menghitung dimensi Parshall Flume atau Debit dari tinggi muka air.
+        Jika lebar_leher_m diisi, hitung H. Jika tidak, rekomendasikan lebar.
+        """
+        # Tabel Konstanta Parshall (Simple version)
+        # W(ft) -> C, n
+        # Konversi W meter ke ft: W_ft = W_m / 0.3048
+        
+        # Rekomendasi W berdasarkan Q (KP-01/USBR)
+        if lebar_leher_m is None:
+            if Q_input < 0.03: W = 0.076 # 3 inch
+            elif Q_input < 0.18: W = 0.152 # 6 inch
+            elif Q_input < 0.40: W = 0.305 # 1 ft
+            elif Q_input < 1.10: W = 0.610 # 2 ft
+            else: W = 1.0
+        else:
+            W = lebar_leher_m
+            
+        # Rumus Q = C * H^n (Metric Unit Approx: Q = K * H^u)
+        # Simplified Metric formula: Q = 2.3 * W * H^1.6 (Agak kasar tapi cukup untuk estimasi)
+        # H = (Q / (2.3 * W)) ^ (1/1.6)
+        
+        H_needed = (Q_input / (2.3 * W)) ** (1/1.6)
+        
+        return {
+            "Tipe": f"Parshall Flume W={W*100:.0f} cm",
+            "Lebar_Leher": W,
+            "H_MukaAir_Hulu": round(H_needed, 3),
+            "Q_Max": round(2.3 * W * (0.8**1.6), 2) # Asumsi H max 0.8m
+        }
