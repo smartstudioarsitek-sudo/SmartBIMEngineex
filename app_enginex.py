@@ -239,20 +239,7 @@ with st.sidebar:
     # [FIX] BAGIAN UI PERSONA YANG HILANG DI KODE LAMA ANDA
     st.markdown("### 🎭 Mode Persona")
     use_auto_pilot = st.checkbox("🤖 Auto-Pilot (Smart Router)", value=True)
-
-    # Ambil Daftar Ahli
-    daftar_ahli = get_persona_list()
-    
-    if use_auto_pilot:
-        st.info(f"📍 Ahli Aktif: **{st.session_state.current_expert_active}**")
-        st.caption("AI otomatis memilih ahli sesuai pertanyaan.")
-    else:
-        # Dropdown Manual Muncul Disini
-        selected_expert = st.selectbox("👨‍💼 Pilih Spesialis Manual:", daftar_ahli, index=0)
-        st.session_state.current_expert_active = selected_expert
-    
-    st.divider()
-      
+     
     if use_auto_pilot:
         st.info(f"📍 Ahli Aktif: **{st.session_state.current_expert_active}**")
         st.caption("AI otomatis memilih ahli sesuai pertanyaan.")
@@ -421,5 +408,6 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
 
 
