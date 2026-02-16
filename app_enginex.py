@@ -58,7 +58,7 @@ except ImportError as e:
 # ==========================================
 # REGISTRASI MODUL KE SYSTEM
 # ==========================================
-# Tujuannya agar AI bisa memanggil 'import libs_sni' tanpa path panjang
+# Ini memastikan AI bisa memanggil modul tanpa path yang rumit
 sys.modules['libs_sni'] = libs_sni
 sys.modules['libs_baja'] = libs_baja
 sys.modules['libs_bridge'] = libs_bridge
@@ -97,13 +97,14 @@ st.set_page_config(
 )
 
 # [SECURITY FIX] Style CSS dipisah agar aman.
+# Mengatur tampilan agar terlihat profesional (Sales Ready).
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {background-color: #F8FAFC; border-right: 1px solid #E2E8F0;}
     .stChatInput textarea {font-size: 16px !important;}
     .stDownloadButton button {width: 100%; border-radius: 6px; font-weight: 600;}
     
-    /* Sembunyikan Elemen Default Streamlit */
+    /* Sembunyikan Elemen Default Streamlit agar terlihat seperti App sendiri */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -127,6 +128,7 @@ if 'shared_execution_vars' not in st.session_state:
 def execute_generated_code(code_str, file_ifc_path=None):
     """
     Menjalankan kode Python AI dengan Memori Persisten.
+    Menangani Plotly agar grafik interaktif muncul.
     """
     try:
         # 1. Ambil variabel dari memori sebelumnya
@@ -166,8 +168,7 @@ def execute_generated_code(code_str, file_ifc_path=None):
                 
         return True
     except Exception as e:
-        # Suppress error visual di history agar bersih
-        # st.error(f"Runtime Error: {e}") 
+        # Suppress error visual di history agar tampilan bersih
         return False
 
 # ==========================================
@@ -175,14 +176,22 @@ def execute_generated_code(code_str, file_ifc_path=None):
 # ==========================================
 def clean_text_for_report(text):
     """
-    Membersihkan teks dari blok kode Python sebelum dicetak ke PDF/Word.
-    Agar laporan terlihat profesional (No Leaking Code).
+    [FITUR PENTING] Membersihkan teks dari blok kode Python dan artefak CSV mentah.
+    Agar laporan terlihat profesional (No Leaking Code & No Raw CSV).
+    Sesuai permintaan Reviewer di 'Stress Test 5'.
     """
-    # Hapus blok kode ```python ... ```
+    # 1. Hapus blok kode ```python ... ```
     clean = re.sub(r"```python.*?```", "", text, flags=re.DOTALL)
-    # Hapus blok kode ``` ... ``` umum
+    # 2. Hapus blok kode ``` ... ``` umum
     clean = re.sub(r"```.*?```", "", clean, flags=re.DOTALL)
-    # Rapikan baris kosong berlebih
+    
+    # 3. [FIX] Bersihkan Artefak CSV/DataFrame mentah
+    # Contoh sampah: "0","Luas DAS","50.0" -> Dibuang
+    clean = re.sub(r'^"\d+",', '', clean, flags=re.MULTILINE)
+    # Menghapus tanda kutip berlebih dari output dataframe default
+    clean = clean.replace('","', ' | ').replace('"', '')
+    
+    # 4. Rapikan baris kosong berlebih
     clean = re.sub(r'\n\s*\n', '\n\n', clean)
     return clean.strip()
 
@@ -230,14 +239,14 @@ def create_pdf(text_content):
     """
     if libs_pdf:
         try:
-            # Panggil fungsi 'create_tabg_report'
+            # Panggil fungsi 'create_tabg_report' dari modul PDF canggih
             pdf_bytes = libs_pdf.create_tabg_report(st.session_state, project_name="Proyek SmartBIM")
             return pdf_bytes
         except Exception as e:
-            # Fallback ke PDF sederhana
+            # Fallback ke PDF sederhana jika modul canggih error
             from fpdf import FPDF
             
-            # [FIX] Bersihkan kode sebelum masuk PDF Sederhana
+            # [FIX] Bersihkan kode & CSV mentah sebelum masuk PDF Sederhana
             clean_content = clean_text_for_report(text_content)
             
             pdf = FPDF()
@@ -285,7 +294,6 @@ with st.sidebar:
         "gemini-3-flash-preview",
         "gemini-1.5-pro",
         "gemini-1.5-flash",
-        "models/gemini-robotics-er-1-preview",
     ]
     model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
     
@@ -355,7 +363,7 @@ st.caption(f"Ahli Aktif: {st.session_state.current_expert_active}")
 # Tampilkan History
 history = db.get_chat_history(nama_proyek, st.session_state.current_expert_active)
 
-# Counter unik untuk tombol download agar tidak bentrok (Streamlit Key Issue)
+# Counter unik untuk tombol download agar tidak bentrok
 download_btn_counter = 0
 
 for msg in history:
@@ -377,8 +385,7 @@ for msg in history:
                 with st.expander("🛠️ Lihat Detail Teknis (Engine Output)"):
                     st.code(code_content, language='python')
                     
-                    # 2. [FITUR BARU] TOMBOL DOWNLOAD SCRIPT
-                    # Key harus unik agar tidak crash
+                    # 2. TOMBOL DOWNLOAD SCRIPT (.py)
                     unique_key = f"dl_btn_{download_btn_counter}"
                     st.download_button(
                         label="📥 Download Script (.py)",
@@ -388,7 +395,7 @@ for msg in history:
                         key=unique_key
                     )
                 
-                # 3. JALANKAN KODE (TAMPILKAN HASIL VISUAL)
+                # 3. JALANKAN KODE (TAMPILKAN HASIL VISUAL/GRAFIK)
                 execute_generated_code(code_content)
             else:
                 # Ini adalah Teks Narasi -> Tampilkan
@@ -453,13 +460,16 @@ if prompt:
                 from core.persona import gems_persona
                 persona_instr = gems_persona.get(target_expert, gems_persona["👑 The GEMS Grandmaster"])
                 
-                # [UPDATE SYSTEM INSTRUCTION] - MEMAKSA AI JADI PROFESIONAL
+                # [UPDATE SYSTEM INSTRUCTION - ANTI CSV MESSY]
+                # Memaksa AI menggunakan Markdown Table yang rapi, bukan CSV mentah
                 SYS = persona_instr + """
                 \n[ATURAN TAMPILAN WAJIB (STRICT)]:
                 1. KODE PYTHON: Wajib ditulis dalam blok ```python.
                 2. FORMAT UANG: Gunakan format Indonesia (Rp 1.000.000), JANGAN scientific (1e6).
                 3. GRAFIK: Gunakan library 'plotly' (import plotly.express as px) agar interaktif.
-                4. TABEL: Gunakan st.dataframe(df) untuk data.
+                4. TABEL:
+                   - SAAT MENAMPILKAN DATA: Gunakan st.dataframe(df) atau st.table(df).
+                   - SAAT RINGKASAN TEKS: Gunakan format Markdown Table (| Kolom | Kolom |), JANGAN format CSV mentah (seperti "0","Data").
                 5. BAHASA: Profesional, Engineer-to-Client.
                 """
                 
@@ -469,10 +479,10 @@ if prompt:
                 chat = model.start_chat(history=chat_hist)
                 response = chat.send_message(full_prompt)
                 
-                # [UI DISPLAY] Tampilkan hasil dengan Hybrid Mode
+                # [UI DISPLAY] Tampilkan hasil dengan Hybrid Mode (Text + Hidden Code)
                 parts = re.split(r"(```python.*?```)", response.text, flags=re.DOTALL)
                 
-                # Offset counter untuk response baru agar tidak bentrok dengan history
+                # Offset counter untuk response baru agar key tidak bentrok dengan history
                 download_btn_counter_new = 9000 
                 
                 for part in parts:
@@ -493,14 +503,14 @@ if prompt:
                                 key=unique_key_new
                             )
                         
-                        # Eksekusi Visual
+                        # Eksekusi Visual (Grafik/Tabel)
                         execute_generated_code(code_content, file_ifc_path=file_ifc_path)
                     else:
                         st.markdown(part)
 
                 db.simpan_chat(nama_proyek, target_expert, "assistant", response.text)
                 
-                # F. EXPORT
+                # F. EXPORT BUTTONS
                 st.markdown("---")
                 c1, c2, c3 = st.columns(3)
                 try:
@@ -516,5 +526,3 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
-
-
