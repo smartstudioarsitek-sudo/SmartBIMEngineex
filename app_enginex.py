@@ -84,7 +84,7 @@ if has_geotek:
     sys.modules['libs_pondasi'] = libs_pondasi
 
 # ==========================================
-# 2. KONFIGURASI HALAMAN
+# 2. KONFIGURASI HALAMAN & SECURITY
 # ==========================================
 st.set_page_config(
     page_title="ENGINEX Ultimate", 
@@ -93,15 +93,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# [SECURITY FIX] Style CSS dipisah agar aman dan tidak error syntax.
+# Hanya untuk kosmetik (UI), bukan untuk input data.
 st.markdown("""
 <style>
-    .main-header {font-size: 28px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px;}
-    .sub-header {font-size: 14px; color: #64748B; margin-bottom: 20px;}
     [data-testid="stSidebar"] {background-color: #F8FAFC; border-right: 1px solid #E2E8F0;}
     .stChatInput textarea {font-size: 16px !important;}
     .stDownloadButton button {width: 100%; border-radius: 6px; font-weight: 600;}
+    
+    /* Sembunyikan Elemen Default Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
 </style>
-
 """, unsafe_allow_html=True)
 
 # ==========================================
@@ -187,44 +191,10 @@ def create_excel(text):
         return bio
     except: return None
 
-# ==========================================
-# 4. FUNGSI EXPORT DOKUMEN
-# ==========================================
-def create_docx(text):
-    try:
-        doc = docx.Document()
-        doc.add_heading('Laporan ENGINEX', 0)
-        for line in text.split('\n'):
-            clean = line.strip()
-            if clean: doc.add_paragraph(clean)
-        bio = io.BytesIO()
-        doc.save(bio)
-        bio.seek(0)
-        return bio
-    except: return None
-
-def create_excel(text):
-    try:
-        data = []
-        for line in text.split('\n'):
-            if "|" in line and "---" not in line:
-                row = [c.strip() for c in line.split('|') if c.strip()]
-                if row: data.append(row)
-        if len(data) < 2: return None
-        df = pd.DataFrame(data[1:], columns=data[0])
-        bio = io.BytesIO()
-        with pd.ExcelWriter(bio) as writer: df.to_excel(writer, index=False)
-        bio.seek(0)
-        return bio
-    except: return None
-
-# --- BAGIAN YANG BARU DI-PASTE MULAI DARI SINI ---
-
-# Pastikan import library baru di bagian atas file
+# [INTEGRASI PDF CANGGIH - AUDIT COMPLIANT]
 try:
     import libs_pdf # Library PDF Canggih yang baru kita buat
 except ImportError:
-    # Fallback jika library belum ke-load
     libs_pdf = None
 
 def create_pdf(text_content):
@@ -250,6 +220,7 @@ def create_pdf(text_content):
     else:
         # Fallback total
         return None
+
 # ==========================================
 # 5. SIDEBAR & SETUP
 # ==========================================
@@ -286,32 +257,26 @@ with st.sidebar:
         "gemini-2.5-flash-preview",
         "gemini-3-flash-preview",
         "gemini-1.5-pro",
-        "gemini-1.5-flash"
+        "gemini-1.5-flash",
         "models/gemini-robotics-er-1-preview",
     ]
     model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
     
-    # =========================================================
-    # [FIX FINAL] LOGIKA PERSONA (URUTAN YANG BENAR)
-    # =========================================================
+    # 3. MODE PERSONA
     st.markdown("### 🎭 Mode Persona")
     use_auto_pilot = st.checkbox("🤖 Auto-Pilot (Smart Router)", value=True)
 
-    # 1. PANGGIL LIST AHLI DULU (WAJIB DI ATAS IF)
+    # Panggil list ahli
     daftar_ahli = get_persona_list()
     
-    # 2. BARU MASUK LOGIKA IF/ELSE
     if use_auto_pilot:
         st.info(f"📍 Ahli Aktif: **{st.session_state.current_expert_active}**")
         st.caption("AI otomatis memilih ahli sesuai pertanyaan.")
     else:
-        # Karena daftar_ahli sudah ada, ini AMAN.
         selected_expert = st.selectbox("👨‍💼 Pilih Spesialis Manual:", daftar_ahli, index=0)
         st.session_state.current_expert_active = selected_expert
     
-    # =========================================================
-    # [UPDATE BARU] PARAMETER GEMPA PRESISI TINGGI
-    # =========================================================
+    # 4. PARAMETER GEMPA (SNI 1726:2019)
     with st.expander("⚙️ Parameter Gempa (SNI 1726:2019)"):
         st.caption("Input Presisi (4 Desimal) untuk Interpolasi Eksak")
         
@@ -330,7 +295,7 @@ with st.sidebar:
 
     st.divider()
       
-    # 3. MANAJEMEN PROYEK
+    # 5. MANAJEMEN PROYEK
     st.markdown("### 📂 Proyek")
     col_p1, col_p2 = st.columns(2)
     col_p1.download_button("💾 Backup", db.export_data(), "backup_enginex.json", "application/json")
@@ -349,7 +314,7 @@ with st.sidebar:
 
     st.divider()
     
-    # 4. UPLOAD FILE
+    # 6. UPLOAD FILE
     st.markdown("### 📎 Upload Data")
     uploaded_files = st.file_uploader("", type=["png","jpg","pdf","xlsx","docx","ifc","py"], accept_multiple_files=True)
     
@@ -362,8 +327,12 @@ with st.sidebar:
 # ==========================================
 # 6. AREA CHAT UTAMA
 # ==========================================
-st.markdown(f'<div class="main-header">{nama_proyek}</div>', unsafe_allow_html=True)
-st.markdown(f'<div class="sub-header">Ahli Aktif: <b>{st.session_state.current_expert_active}</b></div>', unsafe_allow_html=True)
+
+# [SECURITY FIX - AUDIT COMPLIANT] 
+# Menggunakan st.title (Native) alih-alih st.markdown dengan HTML.
+# Ini mencegah serangan XSS dari input user (Nama Proyek).
+st.title(nama_proyek)
+st.caption(f"Ahli Aktif: {st.session_state.current_expert_active}")
 
 # Tampilkan History
 history = db.get_chat_history(nama_proyek, st.session_state.current_expert_active)
@@ -390,7 +359,6 @@ if prompt:
                     st.session_state.current_expert_active = sug
             except: pass
     else:
-        # Jika Manual, gunakan yang dipilih di sidebar
         target_expert = st.session_state.current_expert_active
 
     # B. SIMPAN USER CHAT
@@ -399,7 +367,7 @@ if prompt:
 
     # C. SIAPKAN KONTEKS & FILE
     full_prompt = [prompt]
-    file_ifc_path = None # Variabel penampung path untuk IFC
+    file_ifc_path = None
     
     if uploaded_files:
         for f in uploaded_files:
@@ -417,7 +385,7 @@ if prompt:
                     txt = "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
                     full_prompt[0] += f"\n\n[FILE CONTENT: {f.name}]\n{txt}"
                 
-                # Proses IFC (Save Temp)
+                # Proses IFC
                 elif name.endswith('.ifc'):
                     with open(f.name, "wb") as buffer: buffer.write(f.getbuffer())
                     file_ifc_path = f.name
@@ -430,7 +398,6 @@ if prompt:
     with st.chat_message("assistant"):
         with st.spinner(f"{target_expert} sedang bekerja..."):
             try:
-                # Ambil Instruksi Persona
                 from core.persona import gems_persona
                 persona_instr = gems_persona.get(target_expert, gems_persona["👑 The GEMS Grandmaster"])
                 
@@ -456,7 +423,6 @@ if prompt:
                 for code in code_blocks:
                     st.markdown("---")
                     st.caption("⚙️ **Engine Output:**")
-                    # [FIX VARIABLE BUG] Menggunakan file_ifc_path bukan file_ifc_obj
                     execute_generated_code(code, file_ifc_path=file_ifc_path)
                 
                 # F. EXPORT
@@ -475,16 +441,3 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
-
-
-
-
-
-
-
-
-
-
-
-
-
