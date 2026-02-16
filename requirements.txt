@@ -21,8 +21,10 @@ ifcopenshell
 ezdxf
 fitz
 geopy
-Tesseract
-OpenCV
+pytesseract
+opencv-python-headless
+rich
+
 
 
 
