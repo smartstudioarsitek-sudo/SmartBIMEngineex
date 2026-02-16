@@ -367,7 +367,7 @@ def tool_cari_dimensi_optimal(mu_kNm, bentang_m):
         return (
             f"REKOMENDASI AI (TERMURAH & AMAN):\n"
             f"1. Dimensi: {best['b (mm)']} x {best['h (mm)']} mm\n"
-            f"2. Biaya: Rp {best['Biaya/m']:,.0f} per meter lari\n"
+            f"2. Biaya: Rp {best['Biaya/m']:,.0f} /m'\n"
             f"3. Tulangan Perlu: {best['As Perlu (mm2)']} mm2\n"
             f"4. Rasio Tulangan: {best['Rho (%)']}% (Efisien)"
         )
