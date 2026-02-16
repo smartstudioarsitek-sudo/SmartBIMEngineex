@@ -102,17 +102,8 @@ st.markdown("""
     .stDownloadButton button {width: 100%; border-radius: 6px; font-weight: 600;}
 </style>
 
-# Sembunyikan Menu Default Streamlit & Footer (Kosmetik)
-hide_streamlit_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 """, unsafe_allow_html=True)
-# --- Akhir Copy ---
+
 # ==========================================
 # 3. ENGINE EKSEKUSI KODE (SHARED MEMORY)
 # ==========================================
@@ -484,6 +475,7 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
 
 
 
