@@ -4,6 +4,8 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
 import json
 from PIL import Image
 import PyPDF2
@@ -54,8 +56,9 @@ except ImportError as e:
     st.stop()
 
 # ==========================================
-# [FIX 1] REGISTRASI MODUL KE SYSTEM
+# REGISTRASI MODUL KE SYSTEM
 # ==========================================
+# Tujuannya agar AI bisa memanggil 'import libs_sni' tanpa path panjang
 sys.modules['libs_sni'] = libs_sni
 sys.modules['libs_baja'] = libs_baja
 sys.modules['libs_bridge'] = libs_bridge
@@ -93,8 +96,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# [SECURITY FIX] Style CSS dipisah agar aman dan tidak error syntax.
-# Ini hanya untuk kosmetik (UI), bukan untuk input data.
+# [SECURITY FIX] Style CSS dipisah agar aman.
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {background-color: #F8FAFC; border-right: 1px solid #E2E8F0;}
@@ -105,6 +107,14 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    
+    /* Styling Expander agar lebih rapi */
+    .streamlit-expanderHeader {
+        font-size: 14px;
+        color: #64748B;
+        background-color: #F1F5F9;
+        border-radius: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,9 +132,9 @@ def execute_generated_code(code_str, file_ifc_path=None):
         # 1. Ambil variabel dari memori sebelumnya
         local_vars = st.session_state.shared_execution_vars.copy()
         
-        # 2. Suntikkan Library Wajib
+        # 2. Suntikkan Library Wajib (Termasuk Plotly)
         library_kits = {
-            "pd": pd, "np": np, "plt": plt, "st": st,
+            "pd": pd, "np": np, "plt": plt, "st": st, "px": px, "go": go,
             "libs_sni": libs_sni, "libs_baja": libs_baja, "libs_bridge": libs_bridge,
             "libs_gempa": libs_gempa, "libs_hidrologi": libs_hidrologi,
             "libs_irigasi": libs_irigasi, "libs_bendung": libs_bendung, "libs_jiat": libs_jiat,
@@ -156,18 +166,35 @@ def execute_generated_code(code_str, file_ifc_path=None):
                 
         return True
     except Exception as e:
-        # Kita suppress error visual di history agar tidak mengganggu jika file hilang
-        # st.error(f"⚠️ Gagal Eksekusi Kode: {e}") 
+        # Suppress error visual di history agar bersih
+        # st.error(f"Runtime Error: {e}") 
         return False
 
 # ==========================================
-# 4. FUNGSI EXPORT DOKUMEN
+# 4. FUNGSI EXPORT DOKUMEN (CLEAN REPORT)
 # ==========================================
+def clean_text_for_report(text):
+    """
+    Membersihkan teks dari blok kode Python sebelum dicetak ke PDF/Word.
+    Agar laporan terlihat profesional (No Leaking Code).
+    """
+    # Hapus blok kode ```python ... ```
+    clean = re.sub(r"```python.*?```", "", text, flags=re.DOTALL)
+    # Hapus blok kode ``` ... ``` umum
+    clean = re.sub(r"```.*?```", "", clean, flags=re.DOTALL)
+    # Rapikan baris kosong berlebih
+    clean = re.sub(r'\n\s*\n', '\n\n', clean)
+    return clean.strip()
+
 def create_docx(text):
     try:
         doc = docx.Document()
         doc.add_heading('Laporan ENGINEX', 0)
-        for line in text.split('\n'):
+        
+        # [FIX] Bersihkan kode sebelum masuk Word
+        clean_content = clean_text_for_report(text)
+        
+        for line in clean_content.split('\n'):
             clean = line.strip()
             if clean: doc.add_paragraph(clean)
         bio = io.BytesIO()
@@ -191,33 +218,34 @@ def create_excel(text):
         return bio
     except: return None
 
-# [INTEGRASI PDF CANGGIH - AUDIT COMPLIANT]
+# [INTEGRASI PDF CANGGIH]
 try:
-    import libs_pdf # Library PDF Canggih yang baru kita buat
+    import libs_pdf
 except ImportError:
     libs_pdf = None
 
 def create_pdf(text_content):
     """
-    Fungsi Wrapper untuk memanggil Generator Laporan TABG-Friendly.
-    Menggunakan data dari st.session_state untuk isi laporan.
+    Fungsi Wrapper untuk memanggil Generator Laporan.
     """
     if libs_pdf:
         try:
-            # Panggil fungsi 'create_tabg_report' dari libs_pdf.py
-            # Kita kirim seluruh session_state agar data gempa/beton terbaca
+            # Panggil fungsi 'create_tabg_report'
             pdf_bytes = libs_pdf.create_tabg_report(st.session_state, project_name="Proyek SmartBIM")
             return pdf_bytes
         except Exception as e:
-            # Fallback ke PDF sederhana jika error
+            # Fallback ke PDF sederhana
             from fpdf import FPDF
+            
+            # [FIX] Bersihkan kode sebelum masuk PDF Sederhana
+            clean_content = clean_text_for_report(text_content)
+            
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", size=11)
-            pdf.multi_cell(0, 6, text_content)
+            pdf.multi_cell(0, 6, clean_content)
             return pdf.output(dest='S').encode('latin-1')
     else:
-        # Fallback total
         return None
 
 # ==========================================
@@ -257,7 +285,6 @@ with st.sidebar:
         "gemini-3-flash-preview",
         "gemini-1.5-pro",
         "gemini-1.5-flash",
-        "models/gemini-robotics-er-1-preview",
     ]
     model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
     
@@ -265,7 +292,6 @@ with st.sidebar:
     st.markdown("### 🎭 Mode Persona")
     use_auto_pilot = st.checkbox("🤖 Auto-Pilot (Smart Router)", value=True)
 
-    # Panggil list ahli
     daftar_ahli = get_persona_list()
     
     if use_auto_pilot:
@@ -277,19 +303,15 @@ with st.sidebar:
     
     # 4. PARAMETER GEMPA (SNI 1726:2019)
     with st.expander("⚙️ Parameter Gempa (SNI 1726:2019)"):
-        st.caption("Input Presisi (4 Desimal) untuk Interpolasi Eksak")
-        
-        # Menggunakan format="%.4f" sesuai permintaan audit
+        st.caption("Input Presisi (4 Desimal)")
         ss_input = st.number_input("Ss (Batuan Dasar)", value=0.6000, format="%.4f", step=0.0001)
         s1_input = st.number_input("S1 (Periode 1 Detik)", value=0.2500, format="%.4f", step=0.0001)
         
-        # Simpan ke session state agar bisa dibaca oleh libs_gempa
         if 'shared_execution_vars' not in st.session_state:
             st.session_state.shared_execution_vars = {}
             
         st.session_state.shared_execution_vars['Ss_user'] = ss_input
         st.session_state.shared_execution_vars['S1_user'] = s1_input
-        
         st.info(f"Setting Aktif: Ss={ss_input:.4f}, S1={s1_input:.4f}")
 
     st.divider()
@@ -324,27 +346,52 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# 6. AREA CHAT UTAMA (FIX PERMANENT OUTPUT)
+# 6. AREA CHAT UTAMA (HYBRID PROFESSIONAL)
 # ==========================================
-
-# [SECURITY FIX] Menggunakan Native Streamlit Component untuk Judul
 st.title(nama_proyek)
 st.caption(f"Ahli Aktif: {st.session_state.current_expert_active}")
 
 # Tampilkan History
 history = db.get_chat_history(nama_proyek, st.session_state.current_expert_active)
 
+# Counter unik untuk tombol download agar tidak bentrok (Streamlit Key Issue)
+download_btn_counter = 0
+
 for msg in history:
     with st.chat_message(msg['role']):
-        # 1. Tampilkan Teks Chat
-        st.markdown(msg['content'])
+        content = msg['content']
         
-        # 2. [FITUR PERMANENT OUTPUT] Re-Eksekusi Kode
-        # Ini agar tabel/grafik muncul kembali saat refresh
-        if msg['role'] == 'assistant' and "```python" in msg['content']:
-             code_blocks = re.findall(r"```python(.*?)```", msg['content'], re.DOTALL)
-             for code in code_blocks:
-                 execute_generated_code(code)
+        # [UI FIX] PISAHKAN TEKS DAN KODE
+        # Teks ditampilkan biasa, Kode disembunyikan di Expander
+        parts = re.split(r"(```python.*?```)", content, flags=re.DOTALL)
+        
+        for part in parts:
+            if part.startswith("```python"):
+                download_btn_counter += 1
+                
+                # Bersihkan string kode
+                code_content = part.replace("```python", "").replace("```", "").strip()
+                
+                # 1. TAMPILKAN EXPANDER (PROFESIONAL)
+                with st.expander("🛠️ Lihat Detail Teknis (Engine Output)"):
+                    st.code(code_content, language='python')
+                    
+                    # 2. [FITUR BARU] TOMBOL DOWNLOAD SCRIPT
+                    # Key harus unik agar tidak crash
+                    unique_key = f"dl_btn_{download_btn_counter}"
+                    st.download_button(
+                        label="📥 Download Script (.py)",
+                        data=code_content,
+                        file_name=f"enginex_result_{download_btn_counter}.py",
+                        mime="text/x-python",
+                        key=unique_key
+                    )
+                
+                # 3. JALANKAN KODE (TAMPILKAN HASIL VISUAL)
+                execute_generated_code(code_content)
+            else:
+                # Ini adalah Teks Narasi -> Tampilkan
+                st.markdown(part)
 
 # Input User
 prompt = st.chat_input("Ketik perintah desain, hitungan, atau analisa...")
@@ -381,18 +428,15 @@ if prompt:
             if f.name not in st.session_state.processed_files:
                 name = f.name.lower()
                 
-                # Proses Gambar
                 if name.endswith(('.png','.jpg','.jpeg')): 
                     full_prompt.append(Image.open(f))
                     with st.chat_message("user"): st.image(f, width=200)
                 
-                # Proses PDF
                 elif name.endswith('.pdf'):
                     reader = PyPDF2.PdfReader(f)
                     txt = "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
                     full_prompt[0] += f"\n\n[FILE CONTENT: {f.name}]\n{txt}"
                 
-                # Proses IFC
                 elif name.endswith('.ifc'):
                     with open(f.name, "wb") as buffer: buffer.write(f.getbuffer())
                     file_ifc_path = f.name
@@ -408,12 +452,14 @@ if prompt:
                 from core.persona import gems_persona
                 persona_instr = gems_persona.get(target_expert, gems_persona["👑 The GEMS Grandmaster"])
                 
+                # [UPDATE SYSTEM INSTRUCTION] - MEMAKSA AI JADI PROFESIONAL
                 SYS = persona_instr + """
-                \n[INSTRUKSI CODING WAJIB]:
-                1. TULIS KODE PYTHON (```python) untuk hitungan/grafik.
-                2. Gunakan library engineering yang tersedia.
-                3. Tampilkan grafik: `st.pyplot(plt.gcf())`.
-                4. Tampilkan tabel: `st.dataframe(df)`.
+                \n[ATURAN TAMPILAN WAJIB (STRICT)]:
+                1. KODE PYTHON: Wajib ditulis dalam blok ```python.
+                2. FORMAT UANG: Gunakan format Indonesia (Rp 1.000.000), JANGAN scientific (1e6).
+                3. GRAFIK: Gunakan library 'plotly' (import plotly.express as px) agar interaktif.
+                4. TABEL: Gunakan st.dataframe(df) untuk data.
+                5. BAHASA: Profesional, Engineer-to-Client.
                 """
                 
                 model = genai.GenerativeModel(model_name, system_instruction=SYS)
@@ -422,29 +468,51 @@ if prompt:
                 chat = model.start_chat(history=chat_hist)
                 response = chat.send_message(full_prompt)
                 
-                st.markdown(response.text)
-                db.simpan_chat(nama_proyek, target_expert, "assistant", response.text)
+                # [UI DISPLAY] Tampilkan hasil dengan Hybrid Mode
+                parts = re.split(r"(```python.*?```)", response.text, flags=re.DOTALL)
                 
-                # E. EKSEKUSI KODE
-                code_blocks = re.findall(r"```python(.*?)```", response.text, re.DOTALL)
-                for code in code_blocks:
-                    st.markdown("---")
-                    st.caption("⚙️ **Engine Output:**")
-                    execute_generated_code(code, file_ifc_path=file_ifc_path)
+                # Offset counter untuk response baru agar tidak bentrok dengan history
+                download_btn_counter_new = 9000 
+                
+                for part in parts:
+                    if part.startswith("```python"):
+                        download_btn_counter_new += 1
+                        code_content = part.replace("```python", "").replace("```", "").strip()
+                        
+                        # Tampilkan Expander + Tombol Download
+                        with st.expander("🛠️ Lihat Detail Teknis (Engine Output)"):
+                            st.code(code_content, language='python')
+                            
+                            unique_key_new = f"dl_btn_new_{download_btn_counter_new}"
+                            st.download_button(
+                                label="📥 Download Script (.py)",
+                                data=code_content,
+                                file_name=f"enginex_result_{download_btn_counter_new}.py",
+                                mime="text/x-python",
+                                key=unique_key_new
+                            )
+                        
+                        # Eksekusi Visual
+                        execute_generated_code(code_content, file_ifc_path=file_ifc_path)
+                    else:
+                        st.markdown(part)
+
+                db.simpan_chat(nama_proyek, target_expert, "assistant", response.text)
                 
                 # F. EXPORT
                 st.markdown("---")
                 c1, c2, c3 = st.columns(3)
                 try:
                     pdf_bytes = create_pdf(response.text)
-                    if pdf_bytes: c1.download_button("📄 PDF", pdf_bytes, "Laporan.pdf")
+                    if pdf_bytes: c1.download_button("📄 PDF (Laporan Resmi)", pdf_bytes, "Laporan_EnginEX.pdf")
                 except: pass
                 
                 doc_bytes = create_docx(response.text)
-                if doc_bytes: c2.download_button("📝 Word", doc_bytes, "Laporan.docx")
+                if doc_bytes: c2.download_button("📝 Word (Editable)", doc_bytes, "Laporan.docx")
                 
                 xls_bytes = create_excel(response.text)
-                if xls_bytes: c3.download_button("📊 Excel", xls_bytes, "Data.xlsx")
+                if xls_bytes: c3.download_button("📊 Excel (Data)", xls_bytes, "Data.xlsx")
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
