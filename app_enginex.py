@@ -111,7 +111,7 @@ hide_streamlit_style = """
             </style>
             """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
+# --- Akhir Copy ---
 # ==========================================
 # 3. ENGINE EKSEKUSI KODE (SHARED MEMORY)
 # ==========================================
@@ -483,6 +483,7 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
 
 
 
