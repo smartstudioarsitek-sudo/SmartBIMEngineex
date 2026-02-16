@@ -21,6 +21,9 @@ ifcopenshell
 ezdxf
 fitz
 geopy
+Tesseract
+OpenCV
+
 
 
 
