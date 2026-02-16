@@ -20,6 +20,7 @@ fpdf
 ifcopenshell
 ezdxf
 fitz
+geopy
 
 
 
