@@ -186,16 +186,69 @@ def create_excel(text):
         return bio
     except: return None
 
-def create_pdf(text):
+# ==========================================
+# 4. FUNGSI EXPORT DOKUMEN
+# ==========================================
+def create_docx(text):
     try:
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=11)
-        clean_text = text.encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(0, 6, clean_text)
-        return pdf.output(dest='S').encode('latin-1')
+        doc = docx.Document()
+        doc.add_heading('Laporan ENGINEX', 0)
+        for line in text.split('\n'):
+            clean = line.strip()
+            if clean: doc.add_paragraph(clean)
+        bio = io.BytesIO()
+        doc.save(bio)
+        bio.seek(0)
+        return bio
     except: return None
 
+def create_excel(text):
+    try:
+        data = []
+        for line in text.split('\n'):
+            if "|" in line and "---" not in line:
+                row = [c.strip() for c in line.split('|') if c.strip()]
+                if row: data.append(row)
+        if len(data) < 2: return None
+        df = pd.DataFrame(data[1:], columns=data[0])
+        bio = io.BytesIO()
+        with pd.ExcelWriter(bio) as writer: df.to_excel(writer, index=False)
+        bio.seek(0)
+        return bio
+    except: return None
+
+# --- BAGIAN YANG BARU DI-PASTE MULAI DARI SINI ---
+
+# Pastikan import library baru di bagian atas file
+try:
+    import libs_pdf # Library PDF Canggih yang baru kita buat
+except ImportError:
+    # Fallback jika library belum ke-load
+    libs_pdf = None
+
+def create_pdf(text_content):
+    """
+    Fungsi Wrapper untuk memanggil Generator Laporan TABG-Friendly.
+    Menggunakan data dari st.session_state untuk isi laporan.
+    """
+    if libs_pdf:
+        try:
+            # Panggil fungsi 'create_tabg_report' dari libs_pdf.py
+            # Kita kirim seluruh session_state agar data gempa/beton terbaca
+            pdf_bytes = libs_pdf.create_tabg_report(st.session_state, project_name="Proyek SmartBIM")
+            return pdf_bytes
+        except Exception as e:
+            st.error(f"Gagal generate PDF Canggih: {e}. Menggunakan mode simple.")
+            # Fallback ke PDF sederhana jika error
+            from fpdf import FPDF
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=11)
+            pdf.multi_cell(0, 6, text_content)
+            return pdf.output(dest='S').encode('latin-1')
+    else:
+        # Fallback total
+        return None
 # ==========================================
 # 5. SIDEBAR & SETUP
 # ==========================================
@@ -421,6 +474,7 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
 
 
 
