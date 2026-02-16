@@ -101,7 +101,7 @@ st.markdown("""
     .stChatInput textarea {font-size: 16px !important;}
     .stDownloadButton button {width: 100%; border-radius: 6px; font-weight: 600;}
 </style>
-""", unsafe_allow_html=True)
+""", st.write()
 
 # ==========================================
 # 3. ENGINE EKSEKUSI KODE (SHARED MEMORY)
@@ -474,6 +474,7 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
 
 
 
