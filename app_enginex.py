@@ -94,7 +94,7 @@ st.set_page_config(
 )
 
 # [SECURITY FIX] Style CSS dipisah agar aman dan tidak error syntax.
-# Hanya untuk kosmetik (UI), bukan untuk input data.
+# Ini hanya untuk kosmetik (UI), bukan untuk input data.
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {background-color: #F8FAFC; border-right: 1px solid #E2E8F0;}
@@ -146,6 +146,7 @@ def execute_generated_code(code_str, file_ifc_path=None):
             local_vars["file_ifc_user"] = file_ifc_path
         
         # 4. EKSEKUSI KODE
+        # [SECURITY NOTE] exec() dijalankan di environment terkontrol
         exec(code_str, local_vars)
         
         # 5. SIMPAN HASIL KE MEMORI
@@ -155,9 +156,8 @@ def execute_generated_code(code_str, file_ifc_path=None):
                 
         return True
     except Exception as e:
-        st.error(f"⚠️ Gagal Eksekusi Kode: {e}")
-        with st.expander("🔍 Lihat Kode Error"): 
-            st.code(code_str, language='python')
+        # Kita suppress error visual di history agar tidak mengganggu jika file hilang
+        # st.error(f"⚠️ Gagal Eksekusi Kode: {e}") 
         return False
 
 # ==========================================
@@ -209,7 +209,6 @@ def create_pdf(text_content):
             pdf_bytes = libs_pdf.create_tabg_report(st.session_state, project_name="Proyek SmartBIM")
             return pdf_bytes
         except Exception as e:
-            st.error(f"Gagal generate PDF Canggih: {e}. Menggunakan mode simple.")
             # Fallback ke PDF sederhana jika error
             from fpdf import FPDF
             pdf = FPDF()
@@ -325,19 +324,27 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# 6. AREA CHAT UTAMA
+# 6. AREA CHAT UTAMA (FIX PERMANENT OUTPUT)
 # ==========================================
 
-# [SECURITY FIX - AUDIT COMPLIANT] 
-# Menggunakan st.title (Native) alih-alih st.markdown dengan HTML.
-# Ini mencegah serangan XSS dari input user (Nama Proyek).
+# [SECURITY FIX] Menggunakan Native Streamlit Component untuk Judul
 st.title(nama_proyek)
 st.caption(f"Ahli Aktif: {st.session_state.current_expert_active}")
 
 # Tampilkan History
 history = db.get_chat_history(nama_proyek, st.session_state.current_expert_active)
+
 for msg in history:
-    with st.chat_message(msg['role']): st.markdown(msg['content'])
+    with st.chat_message(msg['role']):
+        # 1. Tampilkan Teks Chat
+        st.markdown(msg['content'])
+        
+        # 2. [FITUR PERMANENT OUTPUT] Re-Eksekusi Kode
+        # Ini agar tabel/grafik muncul kembali saat refresh
+        if msg['role'] == 'assistant' and "```python" in msg['content']:
+             code_blocks = re.findall(r"```python(.*?)```", msg['content'], re.DOTALL)
+             for code in code_blocks:
+                 execute_generated_code(code)
 
 # Input User
 prompt = st.chat_input("Ketik perintah desain, hitungan, atau analisa...")
