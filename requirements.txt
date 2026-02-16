@@ -21,6 +21,7 @@ ifcopenshell
 ezdxf
 fitz
 geopy
+cv2
 
 
 
