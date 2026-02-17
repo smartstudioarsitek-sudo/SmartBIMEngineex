@@ -185,3 +185,27 @@ class SNI_Concrete_2019:
             return As_final
         except ZeroDivisionError:
             return 0.0
+            
+# [PATCH UPGRADE] libs_sni.py
+class SNILoadCombos:
+    """
+    Generator Kombinasi Pembebanan Berdasarkan SNI 1727:2020
+    """
+    @staticmethod
+    def get_ultimate_combos(DL, LL, E=0, W=0):
+        """
+        Mengembalikan Dictionary semua kombinasi beban terfaktor (Pu)
+        DL: Dead Load, LL: Live Load, E: Earthquake, W: Wind
+        """
+        combos = {
+            "Comb 1 (1.4D)": 1.4 * DL,
+            "Comb 2 (1.2D + 1.6L)": (1.2 * DL) + (1.6 * LL),
+            "Comb 3 (1.2D + 1.0L + 1.0E)": (1.2 * DL) + (1.0 * LL) + (1.0 * E),
+            "Comb 4 (0.9D + 1.0E)": (0.9 * DL) + (1.0 * E), # Cek Guling/Uplift
+        }
+        return combos
+
+    @staticmethod
+    def get_service_combos(DL, LL):
+        """Untuk Cek Lendutan (Serviceability)"""
+        return {"Service (D + L)": DL + LL}
