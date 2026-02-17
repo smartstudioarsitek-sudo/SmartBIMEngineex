@@ -459,52 +459,53 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
                     st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
                     st.error(f"❌ Terjadi Kesalahan pada Engine FEM: {e}")
-
-# C. MODE AUDIT STRUKTUR
+# --- C. MODE AUDIT STRUKTUR ---
 elif selected_menu == "🏗️ Audit Struktur":
     st.header("🏗️ Audit Forensik Struktur")
+    
+    # Cek Library
     if 'libs_beton' not in sys.modules:
         st.warning("⚠️ Modul `libs_beton` belum dimuat.")
     else:
         from modules.struktur.libs_beton import SNIBeton2019
-        with st.expander("⚙️ Parameter Struktur", expanded=True):
+        from modules.struktur.validator_sni import cek_dimensi_kolom, cek_rasio_tulangan # Pastikan import ini ada
+
+        # 1. INPUT PARAMETER
+        with st.expander("⚙️ Parameter Struktur & Beban", expanded=True):
             col1, col2, col3 = st.columns(3)
             with col1:
-                fc_input = st.number_input("Mutu Beton (fc')", value=25.0)
-                fy_input = st.number_input("Mutu Baja (fy)", value=420.0)
+                st.markdown("**Material**")
+                fc_input = st.number_input("Mutu Beton (fc') [MPa]", value=25.0, step=5.0)
+                fy_input = st.number_input("Mutu Baja (fy) [MPa]", value=420.0, step=10.0)
             with col2:
-                b_input = st.number_input("Lebar (mm)", value=400.0)
-                h_input = st.number_input("Tinggi (mm)", value=400.0)
+                st.markdown("**Dimensi Kolom**")
+                b_input = st.number_input("Lebar (b) [mm]", value=400.0, step=50.0)
+                h_input = st.number_input("Tinggi (h) [mm]", value=400.0, step=50.0)
             with col3:
-                D_tul = st.number_input("Diameter Tulangan", value=16.0)
-                n_tul = st.number_input("Jumlah Batang", value=8)
+                st.markdown("**Tulangan**")
+                D_tul = st.number_input("Diameter Tulangan (D) [mm]", value=16.0, step=1.0)
+                n_tul = st.number_input("Jumlah Batang Total", value=8, step=2)
+
             st.markdown("---")
             c_load1, c_load2 = st.columns(2)
             Pu_user = c_load1.number_input("Beban Aksial (Pu) [kN]", value=800.0)
             Mu_user = c_load2.number_input("Momen Lentur (Mu) [kNm]", value=150.0)
 
-        # [AUDIT FIX] PRE-AUDIT SNI 2847
-        if b_input < 200 or h_input < 200:
-            st.warning("⚠️ **PERINGATAN SNI:** Kolom struktur utama disarankan minimal 200x200mm.")
-
+        # Hitung Luas Tulangan (Ast)
         Ast_input = n_tul * 0.25 * 3.14159 * (D_tul ** 2)
-        try:
-            hasil = SNIBeton2019.analyze_column_capacity(b_input, h_input, fc_input, fy_input, Ast_input, Pu_user, Mu_user)
-            pm_data = SNIBeton2019.generate_interaction_diagram(b_input, h_input, fc_input, fy_input, Ast_input)
-            
-            # --- [MULAI CODE BARU DI SINI] ---
+
+        # 2. LOGIKA VALIDASI & EKSEKUSI (YANG TADI ERROR)
+        # Perhatikan: Tidak ada 'try:' yang menggantung di sini.
         
-        # 1. TOMBOL "CEK & HITUNG" (Satu Pintu)
         if st.button("🚀 Cek SNI & Jalankan Analisa"):
             
-            # --- TAHAP 1: SATPAM SNI (PRE-AUDIT) ---
+            # --- TAHAP 1: PRE-AUDIT SNI ---
             st.divider()
             st.markdown("#### 🕵️ Laporan Pre-Audit SNI")
             
             lolos_audit = True
             
             # Cek Dimensi
-            # Asumsi jumlah lantai 5 untuk validasi sederhana (atau bisa tambah input lantai di atas)
             err_dim = cek_dimensi_kolom(b_input, h_input, 5) 
             if err_dim:
                 for e in err_dim:
@@ -531,17 +532,18 @@ elif selected_menu == "🏗️ Audit Struktur":
             # --- TAHAP 2: KEPUTUSAN FINAL ---
             if not lolos_audit:
                 st.error("🚫 **STATUS: DITOLAK.** Harap perbaiki dimensi atau tulangan sebelum menghitung.")
-                st.stop() # BERHENTI DI SINI, JANGAN HITUNG!
+                # Stop di sini, jangan lanjut ke mesin hitung
             
             else:
                 st.info("🎉 **STATUS: LOLOS PRE-AUDIT.** Melanjutkan ke analisis kapasitas...")
                 
-                # --- TAHAP 3: HITUNGAN MESIN (ENGINEERING) ---
+                # --- TAHAP 3: HITUNGAN MESIN ---
                 try:
+                    # Baru di sini kita pasang try-except untuk menangkap error matematika
                     hasil = SNIBeton2019.analyze_column_capacity(b_input, h_input, fc_input, fy_input, Ast_input, Pu_user, Mu_user)
                     pm_data = SNIBeton2019.generate_interaction_diagram(b_input, h_input, fc_input, fy_input, Ast_input)
                     
-                    # --- TAHAP 4: VISUALISASI HASIL (YANG KAKAK BLOK TADI) ---
+                    # --- TAHAP 4: VISUALISASI ---
                     st.divider()
                     st.subheader("📊 Hasil Analisa Akhir")
                     
@@ -570,14 +572,10 @@ elif selected_menu == "🏗️ Audit Struktur":
                         text=["Beban"], textposition="top right"
                     ))
                     
-                    fig.update_layout(
-                        title="Diagram Interaksi P-M (SNI 2847:2019)",
-                        xaxis_title="Momen (kNm)",
-                        yaxis_title="Gaya Aksial (kN)",
-                        height=500
-                    )
+                    fig.update_layout(title="Diagram Interaksi P-M (SNI 2847:2019)", xaxis_title="Momen (kNm)", yaxis_title="Gaya Aksial (kN)", height=500)
                     st.plotly_chart(fig, use_container_width=True)
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
