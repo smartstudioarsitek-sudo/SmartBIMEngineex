@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 class SNI_Gempa_2019:
     """
@@ -191,3 +192,42 @@ class SNI_Gempa_2019:
                  return False, f"❌ DATA TIDAK KONSISTEN: Situs SE (Tanah Lunak) wajib Vs30 < 175 m/s. Data Anda: {v}."
 
         return True, "✅ Data Tanah Konsisten dengan Kelas Situs."
+
+def generate_response_spectrum(Ss, S1, SiteClass='SD'):
+    """
+    Menghitung Parameter Gempa & Titik Kurva Respon Spektrum (SNI 1726:2019)
+    Output: DataFrame (T, Sa) untuk di-plot di Streamlit.
+    """
+    # 1. Tentukan Fa & Fv (Tabel Klasifikasi Tanah - Simplified Logic)
+    # [CATATAN: Idealnya ini database lengkap, ini versi simplifikasi SD Tanah Sedang]
+    Fa = 1.2 # Asumsi SD
+    Fv = 1.5 # Asumsi SD
+    
+    # 2. Hitung Parameter Desain (SMS, SM1, SDS, SD1)
+    SMS = Fa * Ss
+    SM1 = Fv * S1
+    SDS = (2/3) * SMS
+    SD1 = (2/3) * SM1
+    
+    # 3. Hitung Perioda Batas (T0 & Ts)
+    T0 = 0.2 * (SD1 / SDS)
+    Ts = SD1 / SDS
+    
+    # 4. Generate Titik Kurva (T vs Sa)
+    T_axis = np.linspace(0, 4.0, 100) # 0 sampai 4 detik
+    Sa_axis = []
+    
+    for T in T_axis:
+        if T < T0:
+            val = SDS * (0.4 + 0.6 * (T / T0))
+        elif T >= T0 and T <= Ts:
+            val = SDS
+        elif T > Ts:
+            val = SD1 / T
+        Sa_axis.append(val)
+        
+    df_spectrum = pd.DataFrame({'Period (T)': T_axis, 'Accel (Sa)': Sa_axis})
+    
+    # Return Dataframe dan Parameter Kunci untuk Laporan
+    params = {'SDS': SDS, 'SD1': SD1, 'T0': T0, 'Ts': Ts}
+    return df_spectrum, params
