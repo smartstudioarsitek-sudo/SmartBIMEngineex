@@ -36,7 +36,8 @@ try:
         from modules.struktur import libs_beton 
         from modules.struktur import libs_fem 
     except ImportError as e:
-        print(f"⚠️ Warning: Modul Beton/FEM gagal dimuat: {e}")
+        # print(f"⚠️ Warning: Modul Beton/FEM gagal dimuat: {e}") 
+        # (Silent error agar UI tetap bersih)
         pass
     
     # Water Resources
@@ -66,7 +67,6 @@ except ImportError as e:
 # ==========================================
 # REGISTRASI MODUL KE SYSTEM
 # ==========================================
-# Mendaftarkan modul agar bisa dipanggil oleh AI melalui exec()
 sys.modules['libs_sni'] = libs_sni
 sys.modules['libs_baja'] = libs_baja
 sys.modules['libs_bridge'] = libs_bridge
@@ -115,6 +115,10 @@ st.markdown("""
     .stChatInput textarea {font-size: 16px !important;}
     .stDownloadButton button {width: 100%; border-radius: 6px; font-weight: 600;}
     
+    /* Header Styling */
+    .main-header {font-size: 28px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px;}
+    .sub-header {font-size: 14px; color: #64748B; margin-bottom: 20px;}
+
     /* Sembunyikan Elemen Default Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -176,7 +180,9 @@ def execute_generated_code(code_str, file_ifc_path=None):
                 st.session_state.shared_execution_vars[k] = v
         return True
     except Exception as e:
-        # Error runtime code AI tidak perlu mematikan aplikasi utama
+        # Tampilkan error di expander agar tidak mengganggu UI utama
+        with st.expander("⚠️ Debugging Code Error"):
+            st.error(f"{e}")
         return False
 
 # ==========================================
@@ -250,7 +256,7 @@ db = st.session_state.backend
 with st.sidebar:
     st.title("🏗️ ENGINEX ULTIMATE")
     
-    # [NAVIGASI] Menu Utama
+    # [NAVIGASI] Menu Utama (Fitur yang Anda cari)
     st.markdown("### 🧭 Navigasi Menu")
     selected_menu = st.radio(
         "Pilih Modul:", 
@@ -259,7 +265,7 @@ with st.sidebar:
     )
     st.divider()
 
-    # [KONFIGURASI UMUM]
+    # [KONFIGURASI UMUM] - Muncul di Mode AI Assistant
     if selected_menu == "🤖 AI Assistant":
         
         # 1. API KEY (DENGAN MEMORI PERSISTEN)
@@ -293,14 +299,7 @@ with st.sidebar:
 
         # 2. MODEL SELECTION
         AVAILABLE_MODELS = [
-            "gemini-flash-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash-image",
-            "gemini-2.5-flash-preview",
-            "gemini-3-flash-preview",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash"
-            "models/gemini-robotics-er-1-preview",
+            "gemini-flash-latest", "gemini-1.5-pro", "gemini-1.5-flash",
         ]
         model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
         
@@ -315,8 +314,27 @@ with st.sidebar:
             selected_expert = st.selectbox("👨‍💼 Pilih Spesialis:", daftar_ahli)
             st.session_state.current_expert_active = selected_expert
         
-        # 4. MANAJEMEN PROYEK & FILE
-        st.markdown("### 📂 Proyek & File")
+        # 4. MANAJEMEN PROYEK (SAVE / OPEN FILE) - [INITIATED]
+        # Ini adalah fitur Open/Save yang Anda minta
+        st.markdown("### 📂 Proyek")
+        
+        # Backup / Save
+        st.download_button(
+            label="💾 Save Project (Backup)", 
+            data=db.export_data(), 
+            file_name="backup_enginex.json", 
+            mime="application/json"
+        )
+        
+        # Restore / Open
+        uploaded_backup = st.file_uploader("📂 Open Project (Restore)", type=["json"], label_visibility="collapsed")
+        if uploaded_backup:
+            ok, msg = db.import_data(uploaded_backup)
+            if ok: 
+                st.success("✅ Data Berhasil Dipulihkan!")
+                st.rerun()
+
+        # Daftar Proyek
         projects = db.daftar_proyek()
         mode = st.radio("Mode:", ["Buka Proyek", "Buat Baru"], horizontal=True, label_visibility="collapsed")
         
@@ -325,6 +343,8 @@ with st.sidebar:
         else:
             nama_proyek = st.selectbox("Pilih Proyek:", projects) if projects else "Default Project"
             
+        # 5. UPLOAD FILE DATA
+        st.markdown("### 📎 Upload Data")
         uploaded_files = st.file_uploader("", type=["png","jpg","pdf","xlsx","docx","ifc","py"], accept_multiple_files=True)
         
         if st.button("🧹 Reset Chat"):
@@ -334,7 +354,7 @@ with st.sidebar:
             st.rerun()
 
     else:
-        # Tampilan Sidebar saat di Mode Tools
+        # Tampilan Sidebar saat di Mode Tools (FEM / Audit)
         st.info(f"Modul Aktif: {selected_menu}")
         nama_proyek = "Engineering_Tools"
 
@@ -346,8 +366,8 @@ with st.sidebar:
 # A. MODE 1: CHAT AI ASSISTANT
 # ------------------------------------------
 if selected_menu == "🤖 AI Assistant":
-    st.title(nama_proyek)
-    st.caption(f"Ahli Aktif: {st.session_state.current_expert_active}")
+    st.markdown(f'<div class="main-header">{nama_proyek}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sub-header">Ahli Aktif: <b>{st.session_state.current_expert_active}</b></div>', unsafe_allow_html=True)
 
     # Tampilkan History
     history = db.get_chat_history(nama_proyek, st.session_state.current_expert_active)
@@ -380,7 +400,8 @@ if selected_menu == "🤖 AI Assistant":
     if prompt:
         target_expert = st.session_state.current_expert_active
         if use_auto_pilot:
-             target_expert = st.session_state.current_expert_active # (Simplified Router logic)
+             # Auto-Router Logic Sederhana
+             target_expert = st.session_state.current_expert_active 
 
         db.simpan_chat(nama_proyek, target_expert, "user", prompt)
         with st.chat_message("user"): st.markdown(prompt)
@@ -438,6 +459,9 @@ if selected_menu == "🤖 AI Assistant":
                     if pdf_bytes: c1.download_button("📄 PDF", pdf_bytes, "Laporan.pdf")
                     doc_bytes = create_docx(response.text)
                     if doc_bytes: c2.download_button("📝 Word", doc_bytes, "Laporan.docx")
+                    xls_bytes = create_excel(response.text)
+                    if xls_bytes: c3.download_button("📊 Excel", xls_bytes, "Data.xlsx")
+                    
                 except Exception as e:
                     st.error(f"Error: {e}")
 
@@ -581,4 +605,3 @@ elif selected_menu == "🏗️ Audit Struktur":
 
         except Exception as e:
             st.error(f"Gagal menghitung struktur: {e}")
-
