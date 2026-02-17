@@ -5,8 +5,7 @@ from core.persona import get_persona_list
 
 def render_sidebar(db_backend):
     """
-    Menangani semua tampilan Sidebar: API Key, Menu, Model Selector, Project.
-    Mengembalikan dictionary 'config' yang berisi semua pilihan user.
+    Menangani Sidebar: API Key, Menu, dan Project Management.
     """
     config = {}
     
@@ -14,19 +13,32 @@ def render_sidebar(db_backend):
         st.title("🛡️ ENGINEX GOV.VER")
         st.caption("Enterprise Modular Edition")
         
-        # 1. SECURITY & API KEY
-        if 'api_key' in st.secrets:
-            config['api_key'] = st.secrets['api_key'] # Atau GOOGLE_API_KEY
-            st.success("🔒 Secure Mode (Secrets)")
+        # --- 1. KEAMANAN API KEY (PERBAIKAN LOGIKA) ---
+        # Cek berbagai kemungkinan nama key di secrets
+        api_secret = None
+        if "GOOGLE_API_KEY" in st.secrets:
+            api_secret = st.secrets["GOOGLE_API_KEY"]
+        elif "api_key" in st.secrets:
+            api_secret = st.secrets["api_key"]
+            
+        if api_secret:
+            config['api_key'] = api_secret
+            st.success("🔒 API Key Terdeteksi (Secure Mode)")
         else:
-            config['api_key'] = st.text_input("🔑 API Key:", type="password")
-            if not config['api_key']:
-                st.warning("Input API Key untuk lanjut.")
-                st.stop()
+            # Fallback ke Environment Variable
+            env_key = os.environ.get("GOOGLE_API_KEY")
+            if env_key:
+                config['api_key'] = env_key
+                st.success("🔒 API Key dari Environment")
+            else:
+                st.warning("⚠️ Mode Publik (Manual Input)")
+                config['api_key'] = st.text_input("🔑 Masukkan API Key:", type="password")
+                if not config['api_key']:
+                    st.stop() # Hentikan app jika tidak ada key
         
         st.divider()
         
-        # 2. NAVIGASI UTAMA
+        # --- 2. NAVIGASI MENU ---
         config['menu'] = st.radio(
             "Pilih Modul:", 
             ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur"]
@@ -34,43 +46,51 @@ def render_sidebar(db_backend):
         
         st.divider()
         
-        # 3. SETTING KHUSUS AI (Ini yang kemarin sempat hilang)
+        # --- 3. KONFIGURASI SESUAI MENU ---
+        
+        # A. Konfigurasi AI (Hanya muncul di menu AI)
         if config['menu'] == "🤖 AI Assistant":
-            st.markdown("### 🧠 Konfigurasi AI")
-            config['model_type'] = st.selectbox(
-                "Versi Model:", 
-                ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"],
-                index=0,
-                help="Flash untuk cepat, Pro untuk analisis mendalam."
-            )
-            
-            # Persona
-            st.markdown("### 🎭 Persona")
-            use_pilot = st.checkbox("🤖 Auto-Pilot Mode", value=True)
-            config['auto_pilot'] = use_pilot
-            if not use_pilot:
-                config['persona'] = st.selectbox("Pilih Ahli:", get_persona_list())
-            else:
-                config['persona'] = "👑 The GEMS Grandmaster"
+            with st.expander("🧠 Konfigurasi Model", expanded=True):
+                config['model_type'] = st.selectbox(
+                    "Versi Model:", 
+                    ["gemini-1.5-flash", "gemini-1.5-pro"],
+                    index=0
+                )
+                
+                use_pilot = st.checkbox("🤖 Auto-Pilot Mode", value=True)
+                config['auto_pilot'] = use_pilot
+                if not use_pilot:
+                    config['persona'] = st.selectbox("Pilih Ahli:", get_persona_list())
+                else:
+                    config['persona'] = "👑 The GEMS Grandmaster"
 
-            # Project Management (ISO 19650)
+            # B. Project Management (Fitur Open/Save/New)
             st.markdown("### 📂 Proyek (CDE)")
             projects = db_backend.daftar_proyek()
-            mode_proj = st.radio("Opsi:", ["Buka", "Baru"], horizontal=True, label_visibility="collapsed")
             
-            if mode_proj == "Baru":
-                new_p = st.text_input("Nama Proyek Baru:")
-                if st.button("Buat Folder CDE"):
-                    config['new_project_trigger'] = new_p
-                config['active_project'] = new_p
+            mode_proj = st.radio("Mode:", ["Buka Proyek", "Buat Baru"], horizontal=True, label_visibility="collapsed")
+            
+            if mode_proj == "Buat Baru":
+                new_p = st.text_input("Nama Proyek Baru:", placeholder="Cth: GEDUNG-A")
+                if st.button("💾 Buat & Simpan"):
+                    if new_p:
+                        config['new_project_trigger'] = new_p
+                        config['active_project'] = new_p
+                    else:
+                        st.error("Nama tidak boleh kosong")
             else:
-                config['active_project'] = st.selectbox("Pilih:", projects) if projects else "Default"
-                
-            # File Upload
+                # Ini fungsi "OPEN PROJECT"
+                if projects:
+                    config['active_project'] = st.selectbox("Pilih Proyek:", projects)
+                else:
+                    st.info("Belum ada proyek.")
+                    config['active_project'] = "Default Project"
+                    
+            # C. File Upload
             st.markdown("### 📎 Data Pendukung")
             config['files'] = st.file_uploader("Upload", accept_multiple_files=True, label_visibility="collapsed")
             
-            if st.button("🧹 Reset Chat"):
+            if st.button("🧹 Reset Chat History"):
                 config['reset_trigger'] = True
 
     return config
