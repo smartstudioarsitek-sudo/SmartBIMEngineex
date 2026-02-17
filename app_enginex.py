@@ -30,11 +30,13 @@ try:
     # B. Engineering Modules
     # Struktur
     from modules.struktur import libs_sni, libs_baja, libs_bridge, libs_gempa
-    # [MODIFIED] Tambahkan libs_beton dan libs_fem di sini
+    
+    # [SAFE IMPORT] Modul Beton & FEM (Agar tidak crash jika dependency kurang)
     try:
         from modules.struktur import libs_beton 
-        from modules.struktur import libs_fem # [NEW] Modul FEM
-    except ImportError:
+        from modules.struktur import libs_fem 
+    except ImportError as e:
+        print(f"⚠️ Warning: Modul Beton/FEM gagal dimuat: {e}")
         pass
     
     # Water Resources
@@ -58,17 +60,19 @@ try:
 
 except ImportError as e:
     st.error(f"⚠️ **CRITICAL SYSTEM ERROR**")
-    st.write(f"Gagal memuat modul engineering. Pesan Error: `{e}`")
+    st.write(f"Gagal memuat modul engineering dasar. Pesan Error: `{e}`")
     st.stop()
 
 # ==========================================
 # REGISTRASI MODUL KE SYSTEM
 # ==========================================
+# Mendaftarkan modul agar bisa dipanggil oleh AI melalui exec()
 sys.modules['libs_sni'] = libs_sni
 sys.modules['libs_baja'] = libs_baja
 sys.modules['libs_bridge'] = libs_bridge
 sys.modules['libs_gempa'] = libs_gempa
-# [NEW] Registrasi FEM & Beton agar AI bisa akses
+
+# Registrasi Kondisional (FEM & Beton)
 if 'libs_fem' in locals(): sys.modules['libs_fem'] = libs_fem
 if 'libs_beton' in locals(): sys.modules['libs_beton'] = libs_beton
 
@@ -104,14 +108,18 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Styling Custom CSS
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {background-color: #F8FAFC; border-right: 1px solid #E2E8F0;}
     .stChatInput textarea {font-size: 16px !important;}
     .stDownloadButton button {width: 100%; border-radius: 6px; font-weight: 600;}
+    
+    /* Sembunyikan Elemen Default Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    
     .streamlit-expanderHeader {
         font-size: 14px; color: #64748B; background-color: #F1F5F9; border-radius: 8px;
     }
@@ -125,9 +133,14 @@ if 'shared_execution_vars' not in st.session_state:
     st.session_state.shared_execution_vars = {}
 
 def execute_generated_code(code_str, file_ifc_path=None):
+    """
+    Menjalankan kode Python yang dihasilkan AI dengan konteks library lengkap.
+    """
     try:
+        # 1. Ambil variabel dari memori sebelumnya
         local_vars = st.session_state.shared_execution_vars.copy()
         
+        # 2. Siapkan Library Kit
         library_kits = {
             "pd": pd, "np": np, "plt": plt, "st": st, "px": px, "go": go,
             "libs_sni": libs_sni, "libs_baja": libs_baja, "libs_bridge": libs_bridge,
@@ -140,7 +153,7 @@ def execute_generated_code(code_str, file_ifc_path=None):
             "libs_bim_importer": libs_bim_importer
         }
         
-        # [NEW] Masukkan libs_fem dan libs_beton ke execution context AI
+        # Masukkan libs_fem dan libs_beton jika berhasil di-load
         if 'libs_fem' in globals(): library_kits['libs_fem'] = libs_fem
         if 'libs_beton' in globals(): library_kits['libs_beton'] = libs_beton
 
@@ -150,16 +163,20 @@ def execute_generated_code(code_str, file_ifc_path=None):
             
         local_vars.update(library_kits)
         
+        # 3. Masukkan File IFC jika ada
         if file_ifc_path: 
             local_vars["file_ifc_user"] = file_ifc_path
         
+        # 4. EKSEKUSI
         exec(code_str, local_vars)
         
+        # 5. Simpan Hasil ke Memori
         for k, v in local_vars.items():
             if k not in library_kits and not k.startswith('__') and not isinstance(v, types.ModuleType):
                 st.session_state.shared_execution_vars[k] = v
         return True
     except Exception as e:
+        # Error runtime code AI tidak perlu mematikan aplikasi utama
         return False
 
 # ==========================================
@@ -233,7 +250,7 @@ db = st.session_state.backend
 with st.sidebar:
     st.title("🏗️ ENGINEX ULTIMATE")
     
-    # [NEW] MENU NAVIGASI UTAMA (Untuk pindah ke FEM)
+    # [NAVIGASI] Menu Utama
     st.markdown("### 🧭 Navigasi Menu")
     selected_menu = st.radio(
         "Pilih Modul:", 
@@ -242,18 +259,37 @@ with st.sidebar:
     )
     st.divider()
 
-    # KONFIGURASI UMUM (Tetap ada di semua mode)
+    # [KONFIGURASI UMUM]
     if selected_menu == "🤖 AI Assistant":
-        # 1. API KEY
-        api_key_input = st.text_input("🔑 Google API Key:", type="password")
-        raw_key = api_key_input if api_key_input else st.secrets.get("GOOGLE_API_KEY")
+        
+        # 1. API KEY (DENGAN MEMORI PERSISTEN)
+        # ---------------------------------------------------------
+        if 'simpan_api_key' not in st.session_state:
+            st.session_state.simpan_api_key = ""
+
+        api_key_input = st.text_input(
+            "🔑 Google API Key:", 
+            type="password",
+            value=st.session_state.simpan_api_key,
+            help="API Key disimpan sementara agar tidak hilang saat pindah tab."
+        )
+        
+        # Simpan jika user mengetik
+        if api_key_input:
+            st.session_state.simpan_api_key = api_key_input
+            
+        # Gunakan nilai dari session atau secrets
+        raw_key = st.session_state.simpan_api_key if st.session_state.simpan_api_key else st.secrets.get("GOOGLE_API_KEY")
+
         if not raw_key: 
-            st.warning("⚠️ Masukkan API Key.")
+            st.warning("⚠️ Masukkan API Key untuk memulai.")
             st.stop()
+        
         try:
             genai.configure(api_key=raw_key.strip(), transport="rest")
         except Exception as e:
             st.error(f"API Error: {e}")
+        # ---------------------------------------------------------
 
         # 2. MODEL SELECTION
         AVAILABLE_MODELS = [
@@ -265,16 +301,18 @@ with st.sidebar:
         st.markdown("### 🎭 Mode Persona")
         use_auto_pilot = st.checkbox("🤖 Auto-Pilot", value=True)
         daftar_ahli = get_persona_list()
+        
         if use_auto_pilot:
             st.caption(f"📍 Ahli: **{st.session_state.current_expert_active}**")
         else:
             selected_expert = st.selectbox("👨‍💼 Pilih Spesialis:", daftar_ahli)
             st.session_state.current_expert_active = selected_expert
         
-        # 4. MANAJEMEN PROYEK & FILE (Hanya di mode chat)
+        # 4. MANAJEMEN PROYEK & FILE
         st.markdown("### 📂 Proyek & File")
         projects = db.daftar_proyek()
         mode = st.radio("Mode:", ["Buka Proyek", "Buat Baru"], horizontal=True, label_visibility="collapsed")
+        
         if mode == "Buat Baru":
             nama_proyek = st.text_input("Nama Proyek:", "Proyek-01")
         else:
@@ -289,21 +327,22 @@ with st.sidebar:
             st.rerun()
 
     else:
-        # Jika masuk mode Tools (FEM/Audit), tampilkan info simpel
+        # Tampilan Sidebar saat di Mode Tools
         st.info(f"Modul Aktif: {selected_menu}")
-        nama_proyek = "Engineering_Tools" # Dummy project name untuk tools
+        nama_proyek = "Engineering_Tools"
 
 # ==========================================
 # 6. LOGIKA TAMPILAN UTAMA (SWITCHING)
 # ==========================================
 
 # ------------------------------------------
-# A. MODE 1: CHAT AI ASSISTANT (CODE LAMA)
+# A. MODE 1: CHAT AI ASSISTANT
 # ------------------------------------------
 if selected_menu == "🤖 AI Assistant":
     st.title(nama_proyek)
     st.caption(f"Ahli Aktif: {st.session_state.current_expert_active}")
 
+    # Tampilkan History
     history = db.get_chat_history(nama_proyek, st.session_state.current_expert_active)
     download_btn_counter = 0
 
@@ -315,6 +354,7 @@ if selected_menu == "🤖 AI Assistant":
                 if part.startswith("```python"):
                     download_btn_counter += 1
                     code_content = part.replace("```python", "").replace("```", "").strip()
+                    
                     with st.expander("🛠️ Lihat Detail Teknis"):
                         st.code(code_content, language='python')
                         st.download_button(
@@ -322,27 +362,30 @@ if selected_menu == "🤖 AI Assistant":
                             file_name=f"script_{download_btn_counter}.py", 
                             key=f"dl_btn_{download_btn_counter}"
                         )
+                    # Eksekusi Visual
                     execute_generated_code(code_content)
                 else:
                     st.markdown(part)
 
+    # Input User
     prompt = st.chat_input("Ketik perintah desain, hitungan, atau analisa...")
 
     if prompt:
         target_expert = st.session_state.current_expert_active
         if use_auto_pilot:
-            # Simple router logic (simplified for brevity)
-             target_expert = st.session_state.current_expert_active
+             target_expert = st.session_state.current_expert_active # (Simplified Router logic)
 
         db.simpan_chat(nama_proyek, target_expert, "user", prompt)
         with st.chat_message("user"): st.markdown(prompt)
 
+        # Siapkan Konteks File
         full_prompt = [prompt]
         file_ifc_path = None
         if uploaded_files:
             for f in uploaded_files:
                 if f.name not in st.session_state.processed_files:
-                    if f.name.endswith(('.png','.jpg')): full_prompt.append(Image.open(f))
+                    if f.name.endswith(('.png','.jpg','.jpeg')): 
+                        full_prompt.append(Image.open(f))
                     elif f.name.endswith('.pdf'):
                         reader = PyPDF2.PdfReader(f)
                         txt = "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
@@ -353,18 +396,23 @@ if selected_menu == "🤖 AI Assistant":
                         full_prompt[0] += f"\n\n[SYSTEM]: User upload IFC: {f.name}."
                     st.session_state.processed_files.add(f.name)
 
+        # Generate Response
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
                     persona_instr = gems_persona.get(target_expert, gems_persona["👑 The GEMS Grandmaster"])
                     SYS = persona_instr + "\n[STRICT]: Use Markdown tables. Use Plotly. Python code in ```python blocks."
+                    
                     model = genai.GenerativeModel(model_name, system_instruction=SYS)
                     chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
+                    
                     chat = model.start_chat(history=chat_hist)
                     response = chat.send_message(full_prompt)
                     
+                    # Parse Response
                     parts = re.split(r"(```python.*?```)", response.text, flags=re.DOTALL)
                     dl_ctr_new = 9000
+                    
                     for part in parts:
                         if part.startswith("```python"):
                             dl_ctr_new += 1
@@ -387,11 +435,11 @@ if selected_menu == "🤖 AI Assistant":
                     st.error(f"Error: {e}")
 
 # ------------------------------------------
-# B. MODE 2: ANALISIS GEMPA (FEM) - [YANG ANDA MINTA]
+# B. MODE 2: ANALISIS GEMPA (FEM)
 # ------------------------------------------
 elif selected_menu == "🌪️ Analisis Gempa (FEM)":
     st.header("🌪️ Analisis Gempa Dinamis (FEM Engine)")
-    st.markdown("Fitur ini menggunakan **Finite Element Method** untuk menghitung karakteristik dinamis bangunan (OpenSees/Python-based).")
+    st.markdown("Fitur ini menggunakan **Finite Element Method (OpenSees)** untuk menghitung karakteristik dinamis bangunan.")
 
     # Layout Input
     with st.container():
@@ -408,9 +456,12 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
 
     st.markdown("---")
     
+    # Button Eksekusi dengan Pengecekan Dependency
     if st.button("🚀 RUN ANALISIS FEM (Modal Analysis)", type="primary"):
+        # Cek apakah modul FEM terload
         if 'libs_fem' not in sys.modules:
-            st.error("Modul `libs_fem` tidak ditemukan atau gagal dimuat.")
+            st.error("❌ Modul FEM tidak ditemukan.")
+            st.warning("Pastikan file `libs_fem.py` ada dan library `openseespy` terinstall.")
         else:
             with st.spinner("🔄 Membangun Matriks Kekakuan & Menghitung Eigenvalue..."):
                 try:
@@ -423,24 +474,27 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
                     # 3. Run Analysis
                     df_modal = engine.run_modal_analysis(num_modes=3)
                     
-                    st.success("✅ Analisis Selesai!")
-                    
-                    # 4. Tampilkan Hasil
-                    st.subheader("📊 Hasil Modal Analysis (Mode Shapes)")
-                    st.dataframe(df_modal, use_container_width=True)
-                    
-                    # 5. Visualisasi Chart (Plotly)
-                    fig = px.bar(df_modal, x='Mode', y='Period (T) [detik]', 
-                                 title="Perioda Alami Struktur (T)", color='Period (T) [detik]')
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # 6. Interpretasi
-                    t1 = df_modal.iloc[0]['Period (T) [detik]']
-                    st.info(f"💡 **Insight:** Perioda alami fundamental struktur adalah **{t1:.3f} detik**.")
-                    
+                    if not df_modal.empty:
+                        st.success("✅ Analisis Selesai!")
+                        
+                        # 4. Tampilkan Hasil
+                        st.subheader("📊 Hasil Modal Analysis (Mode Shapes)")
+                        st.dataframe(df_modal, use_container_width=True)
+                        
+                        # 5. Visualisasi Chart
+                        fig = px.bar(df_modal, x='Mode', y='Period (T) [detik]', 
+                                     title="Perioda Alami Struktur (T)", color='Period (T) [detik]')
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # 6. Interpretasi
+                        t1 = df_modal.iloc[0]['Period (T) [detik]']
+                        st.info(f"💡 **Insight:** Perioda alami fundamental struktur adalah **{t1:.3f} detik**.")
+                    else:
+                        st.error("Gagal mendapatkan hasil analisis. Cek konfigurasi OpenSees.")
+                        
                 except Exception as e:
                     st.error(f"❌ Terjadi Kesalahan pada Engine FEM: {e}")
-                    st.caption("Detail Error: Pastikan library 'openseespy' atau dependencies terkait sudah terinstall.")
+                    st.caption("Tips: Pastikan `packages.txt` di server berisi `libgfortran5` dan `liblapack3`.")
 
 # ------------------------------------------
 # C. MODE 3: AUDIT STRUKTUR (BETON)
@@ -451,9 +505,9 @@ elif selected_menu == "🏗️ Audit Struktur":
 
     # Cek ketersediaan modul
     if 'libs_beton' not in sys.modules:
-        st.warning("⚠️ Modul `libs_beton` belum dimuat.")
+        st.warning("⚠️ Modul `libs_beton` belum dimuat. Pastikan file tersedia.")
     else:
-        # Import class spesifik dari modul yang sudah diload
+        # Import class spesifik
         from modules.struktur.libs_beton import SNIBeton2019
 
         # --- 1. INPUT DATA ---
