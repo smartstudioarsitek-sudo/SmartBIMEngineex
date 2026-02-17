@@ -623,3 +623,104 @@ def create_slf_report(data_struktur, status_audit):
 #     file_name="Laporan_Teknis_SLF_Ruko_Rio.pdf",
 #     mime="application/pdf"
 # )
+
+# =========================================================================
+#  MODUL INTEGRASI: VISUALISASI FORENSIK STRUKTUR (SNI 2847:2019)
+#  Paste kode ini di dalam blok 'if selected_menu == "Audit Struktur":'
+# =========================================================================
+
+import plotly.graph_objects as go
+from modules.struktur.libs_beton import SNIBeton2019  # Pastikan import ini ada di atas
+
+st.markdown("## 🏗️ Audit Forensik Struktur (Beton Bertulang)")
+st.info("Modul ini melakukan pengecekan kapasitas kolom berdasarkan SNI 2847:2019 menggunakan Diagram Interaksi P-M.")
+
+# --- 1. INPUT DATA KOLOM (SIDEBAR / EXPANDER) ---
+with st.expander("⚙️ Parameter Struktur & Beban (Input Data)", expanded=True):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("**Material**")
+        fc_input = st.number_input("Mutu Beton (fc') [MPa]", value=25.0, step=5.0)
+        fy_input = st.number_input("Mutu Baja (fy) [MPa]", value=420.0, step=10.0)
+    with col2:
+        st.markdown("**Dimensi Kolom**")
+        b_input = st.number_input("Lebar (b) [mm]", value=400.0, step=50.0)
+        h_input = st.number_input("Tinggi (h) [mm]", value=400.0, step=50.0)
+    with col3:
+        st.markdown("**Tulangan**")
+        D_tul = st.number_input("Diameter Tulangan (D) [mm]", value=16.0, step=1.0)
+        n_tul = st.number_input("Jumlah Batang Total", value=8, step=2)
+
+    st.markdown("---")
+    st.markdown("**Beban Terfaktor (Dari Analisa SAP2000/ETABS)**")
+    c_load1, c_load2 = st.columns(2)
+    Pu_user = c_load1.number_input("Beban Aksial (Pu) [kN]", value=800.0)
+    Mu_user = c_load2.number_input("Momen Lentur (Mu) [kNm]", value=150.0)
+
+# --- 2. ENGINE CALCULATION (BACKEND) ---
+# Hitung Luas Tulangan
+Ast_input = n_tul * 0.25 * 3.14159 * (D_tul ** 2)
+
+# Panggil Library Beton (libs_beton.py)
+hasil_analisa = SNIBeton2019.analyze_column_capacity(
+    b_input, h_input, fc_input, fy_input, Ast_input, Pu_user, Mu_user
+)
+
+# Panggil Generator Grafik P-M
+pm_data = SNIBeton2019.generate_interaction_diagram(
+    b_input, h_input, fc_input, fy_input, Ast_input
+)
+
+# --- 3. VISUALISASI HASIL (DASHBOARD) ---
+st.divider()
+st.subheader("📊 Hasil Analisa Kapasitas")
+
+# A. Metrik Kunci
+m1, m2, m3 = st.columns(3)
+m1.metric("Status Keamanan", hasil_analisa['Status'], delta_color="normal" if hasil_analisa['Status']=="AMAN (SAFE)" else "inverse")
+m2.metric("Rasio DCR (Demand/Capacity)", f"{hasil_analisa['DCR_Ratio']} x", help="Harus < 1.0 agar Aman")
+m3.metric("Kapasitas Aksial Max", f"{hasil_analisa['Kapasitas_Max (kN)']} kN")
+
+# B. Plot Diagram Interaksi P-M (THE KILLER FEATURE)
+df_plot = pm_data['Plot_Data']
+
+fig = go.Figure()
+
+# 1. Gambar Zona Aman (Kurva Kapasitas)
+fig.add_trace(go.Scatter(
+    x=df_plot['M_Capacity'], 
+    y=df_plot['P_Capacity'], 
+    fill='toself', 
+    fillcolor='rgba(0, 255, 0, 0.2)', # Hijau Transparan
+    line=dict(color='green', width=2),
+    name='Zona Kapasitas Aman (Phi Pn-Mn)'
+))
+
+# 2. Plot Titik Beban (Pu, Mu)
+status_color = 'blue' if hasil_analisa['Status'] == "AMAN (SAFE)" else 'red'
+fig.add_trace(go.Scatter(
+    x=[Mu_user], 
+    y=[Pu_user], 
+    mode='markers+text',
+    marker=dict(color=status_color, size=15, symbol='x'),
+    name='Beban Terjadi (Pu, Mu)',
+    text=[f"Beban<br>DCR: {hasil_analisa['DCR_Ratio']}"],
+    textposition="top right"
+))
+
+# 3. Layout Cantik
+fig.update_layout(
+    title=f"Diagram Interaksi P-M (Kolom {int(b_input)}x{int(h_input)})",
+    xaxis_title="Momen Lentur (kNm)",
+    yaxis_title="Beban Aksial (kN)",
+    template="plotly_white",
+    height=600,
+    showlegend=True
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# C. Detail Laporan (Expander)
+with st.expander("📄 Lihat Detail Perhitungan (Text Output)"):
+    st.write(hasil_analisa)
+    st.caption(f"Referensi: {hasil_analisa['Ref_SNI']}")
