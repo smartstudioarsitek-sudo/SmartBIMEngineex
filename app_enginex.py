@@ -526,3 +526,100 @@ if prompt:
 
             except Exception as e:
                 st.error(f"Error: {e}")
+
+# ==========================================
+# FITUR TAMBAHAN: CETAK LAPORAN SLF (PDF)
+# ==========================================
+from fpdf import FPDF
+
+def create_slf_report(data_struktur, status_audit):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # 1. KOP SURAT (HEADER)
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, "LAPORAN KAJIAN TEKNIS STRUKTUR (SLF)", 0, 1, 'C')
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(0, 5, "Berdasarkan Standar SNI 2847:2019 & SNI 1727:2020", 0, 1, 'C')
+    pdf.line(10, 25, 200, 25)
+    pdf.ln(15)
+
+    # 2. DATA UMUM
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, "A. RINGKASAN AUDIT", 0, 1)
+    pdf.set_font("Arial", '', 11)
+    pdf.cell(50, 8, "Objek Bangunan", 0, 0); pdf.cell(0, 8, ": Ruko Rio 2 Lantai", 0, 1)
+    pdf.cell(50, 8, "Lokasi", 0, 0); pdf.cell(0, 8, ": Bali", 0, 1)
+    pdf.cell(50, 8, "Status Keamanan", 0, 0); 
+    
+    # Warna Status
+    if status_audit == "AMAN (SAFE)":
+        pdf.set_text_color(0, 128, 0) # Hijau
+    else:
+        pdf.set_text_color(255, 0, 0) # Merah
+        
+    pdf.cell(0, 8, f": {status_audit}", 0, 1)
+    pdf.set_text_color(0, 0, 0) # Reset Hitam
+
+    pdf.ln(5)
+
+    # 3. TABEL PERHITUNGAN TEKNIS
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, "B. ANALISA KAPASITAS & BEBAN (DCR CHECK)", 0, 1)
+    
+    # Header Tabel
+    pdf.set_fill_color(200, 220, 255)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(40, 8, "Komponen", 1, 0, 'C', 1)
+    pdf.cell(35, 8, "Beban (Pu)", 1, 0, 'C', 1)
+    pdf.cell(35, 8, "Kuat (Phi Pn)", 1, 0, 'C', 1)
+    pdf.cell(30, 8, "Rasio DCR", 1, 0, 'C', 1)
+    pdf.cell(40, 8, "Status", 1, 1, 'C', 1)
+    
+    # Isi Data (Looping dari Dataframe hasil hitungan AI)
+    pdf.set_font("Arial", '', 10)
+    # [CONTOH DATA - NANTI DIGANTI VARIABEL REAL DARI SCRIPT UTAMA]
+    # Format: (Nama, Pu, Pn, DCR, Status)
+    for item in data_struktur:
+        pdf.cell(40, 8, str(item['Komponen']), 1)
+        pdf.cell(35, 8, f"{item['Pu']:.2f} Ton", 1, 0, 'C')
+        pdf.cell(35, 8, f"{item['Pn']:.2f} Ton", 1, 0, 'C')
+        pdf.cell(30, 8, f"{item['DCR']:.3f}", 1, 0, 'C')
+        
+        # Highlight Status
+        if item['Status'] == 'SAFE':
+            pdf.set_text_color(0, 128, 0)
+        else:
+            pdf.set_text_color(255, 0, 0)
+        pdf.cell(40, 8, item['Status'], 1, 1, 'C')
+        pdf.set_text_color(0, 0, 0)
+
+    pdf.ln(10)
+    
+    # 4. REKOMENDASI & TANDA TANGAN
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, "C. REKOMENDASI TAPT", 0, 1)
+    pdf.set_font("Arial", '', 11)
+    pdf.multi_cell(0, 6, "Berdasarkan hasil perhitungan di atas, struktur bangunan dinyatakan MEMENUHI SYARAT KEAMANAN (Reliability) sesuai SNI 2847:2019. Bangunan layak untuk mendapatkan Sertifikat Laik Fungsi (SLF).")
+    
+    pdf.ln(20)
+    pdf.cell(100, 5, "", 0, 0)
+    pdf.cell(0, 5, "Dibuat Oleh,", 0, 1, 'C')
+    pdf.cell(100, 5, "", 0, 0)
+    pdf.cell(0, 5, "Tenaga Ahli Pengkaji Teknis", 0, 1, 'C')
+    pdf.ln(25)
+    pdf.cell(100, 5, "", 0, 0)
+    pdf.cell(0, 5, "( ..................................... )", 0, 1, 'C')
+    pdf.cell(100, 5, "", 0, 0)
+    pdf.cell(0, 5, "SKA Ahli Struktur Utama", 0, 1, 'C')
+
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- TOMBOL DOWNLOAD DI STREAMLIT ---
+# Pastikan 'df_hasil_struktur' adalah nama variabel tabel hasil hitungan AI Anda
+# st.download_button(
+#     label="📄 DOWNLOAD LAPORAN RESMI SLF (PDF)",
+#     data=create_slf_report(df_hasil_struktur.to_dict('records'), "AMAN (SAFE)"),
+#     file_name="Laporan_Teknis_SLF_Ruko_Rio.pdf",
+#     mime="application/pdf"
+# )
