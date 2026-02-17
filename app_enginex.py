@@ -345,6 +345,13 @@ with st.sidebar:
             
         # 5. UPLOAD FILE DATA
         st.markdown("### 📎 Upload Data")
+         # Kita kasih label "Upload File", tapi kita sembunyikan visualnya (collapsed) supaya UI tetap rapi
+            uploaded_files = st.file_uploader(
+            "Upload File Pendukung", 
+            type=["png","jpg","pdf","xlsx","docx","ifc","py"], 
+            accept_multiple_files=True, 
+            label_visibility="collapsed"
+        )
         uploaded_files = st.file_uploader("", type=["png","jpg","pdf","xlsx","docx","ifc","py"], accept_multiple_files=True)
         
         if st.button("🧹 Reset Chat"):
@@ -605,3 +612,4 @@ elif selected_menu == "🏗️ Audit Struktur":
 
         except Exception as e:
             st.error(f"Gagal menghitung struktur: {e}")
+
