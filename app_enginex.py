@@ -43,6 +43,7 @@ try:
     from core.persona import gems_persona, get_persona_list
 
     # B. Engineering Modules
+    from modules.struktur.validator_sni import cek_dimensi_kolom, cek_rasio_tulangan, validasi_gempa_sni
     from modules.struktur import libs_sni, libs_baja, libs_bridge, libs_gempa
     
     # [SAFE IMPORT] Modul Beton & FEM (Agar tidak crash jika dependency kurang)
@@ -491,16 +492,92 @@ elif selected_menu == "🏗️ Audit Struktur":
             hasil = SNIBeton2019.analyze_column_capacity(b_input, h_input, fc_input, fy_input, Ast_input, Pu_user, Mu_user)
             pm_data = SNIBeton2019.generate_interaction_diagram(b_input, h_input, fc_input, fy_input, Ast_input)
             
-            st.divider()
-            st.subheader("📊 Hasil Analisa")
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Status", hasil.get('Status','-'))
-            m2.metric("DCR", f"{hasil.get('DCR_Ratio',0)} x")
+            # --- [MULAI CODE BARU DI SINI] ---
+        
+        # 1. TOMBOL "CEK & HITUNG" (Satu Pintu)
+        if st.button("🚀 Cek SNI & Jalankan Analisa"):
             
-            df_plot = pm_data['Plot_Data']
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df_plot['M_Capacity'], y=df_plot['P_Capacity'], fill='toself', name='Kapasitas Aman'))
-            fig.add_trace(go.Scatter(x=[Mu_user], y=[Pu_user], mode='markers', marker=dict(size=10, color='red'), name='Beban'))
-            st.plotly_chart(fig, use_container_width=True)
-        except Exception as e:
-            st.error(f"Gagal hitung: {e}")
+            # --- TAHAP 1: SATPAM SNI (PRE-AUDIT) ---
+            st.divider()
+            st.markdown("#### 🕵️ Laporan Pre-Audit SNI")
+            
+            lolos_audit = True
+            
+            # Cek Dimensi
+            # Asumsi jumlah lantai 5 untuk validasi sederhana (atau bisa tambah input lantai di atas)
+            err_dim = cek_dimensi_kolom(b_input, h_input, 5) 
+            if err_dim:
+                for e in err_dim:
+                    if "GAGAL" in e: 
+                        st.error(e)
+                        lolos_audit = False
+                    else: 
+                        st.warning(e)
+            else:
+                st.success("✅ Dimensi Kolom: Memenuhi Syarat Geometri.")
+
+            # Cek Tulangan
+            err_tul, rho_val = cek_rasio_tulangan(b_input, h_input, n_tul, D_tul)
+            if err_tul:
+                for e in err_tul:
+                    if "GAGAL" in e: 
+                        st.error(e)
+                        lolos_audit = False
+                    else: 
+                        st.warning(e)
+            else:
+                st.success(f"✅ Tulangan: Ideal (Rasio {rho_val:.2f}%).")
+
+            # --- TAHAP 2: KEPUTUSAN FINAL ---
+            if not lolos_audit:
+                st.error("🚫 **STATUS: DITOLAK.** Harap perbaiki dimensi atau tulangan sebelum menghitung.")
+                st.stop() # BERHENTI DI SINI, JANGAN HITUNG!
+            
+            else:
+                st.info("🎉 **STATUS: LOLOS PRE-AUDIT.** Melanjutkan ke analisis kapasitas...")
+                
+                # --- TAHAP 3: HITUNGAN MESIN (ENGINEERING) ---
+                try:
+                    hasil = SNIBeton2019.analyze_column_capacity(b_input, h_input, fc_input, fy_input, Ast_input, Pu_user, Mu_user)
+                    pm_data = SNIBeton2019.generate_interaction_diagram(b_input, h_input, fc_input, fy_input, Ast_input)
+                    
+                    # --- TAHAP 4: VISUALISASI HASIL (YANG KAKAK BLOK TADI) ---
+                    st.divider()
+                    st.subheader("📊 Hasil Analisa Akhir")
+                    
+                    m1, m2, m3 = st.columns(3)
+                    status_aman = hasil.get('Status','-')
+                    m1.metric("Status Keamanan", status_aman, delta="OK" if "AMAN" in status_aman else "-BAHAYA", delta_color="normal" if "AMAN" in status_aman else "inverse")
+                    m2.metric("Rasio DCR", f"{hasil.get('DCR_Ratio',0)} x")
+                    m3.metric("Kapasitas Max", f"{hasil.get('Kapasitas_Max (kN)', 0)} kN")
+                    
+                    df_plot = pm_data['Plot_Data']
+                    fig = go.Figure()
+                    
+                    # Area Kapasitas
+                    fig.add_trace(go.Scatter(
+                        x=df_plot['M_Capacity'], y=df_plot['P_Capacity'], 
+                        fill='toself', fillcolor='rgba(46, 204, 113, 0.2)', 
+                        line=dict(color='#2ecc71'), name='Zona Aman'
+                    ))
+                    
+                    # Titik Beban
+                    fig.add_trace(go.Scatter(
+                        x=[Mu_user], y=[Pu_user], 
+                        mode='markers+text', 
+                        marker=dict(size=12, color='red', symbol='x'), 
+                        name='Beban Terjadi',
+                        text=["Beban"], textposition="top right"
+                    ))
+                    
+                    fig.update_layout(
+                        title="Diagram Interaksi P-M (SNI 2847:2019)",
+                        xaxis_title="Momen (kNm)",
+                        yaxis_title="Gaya Aksial (kN)",
+                        height=500
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                except Exception as e:
+                    st.error(f"Gagal hitung: {e}")
+
