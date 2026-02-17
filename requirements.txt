@@ -24,6 +24,8 @@ geopy
 pytesseract
 opencv-python-headless
 rich
+OpenSeesPy
+
 
 
 
