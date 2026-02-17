@@ -46,3 +46,32 @@ class SNI_Steel_2020:
         lamda = b / t
         status = "Compact" if lamda <= limit_r else "Non-Compact/Slender"
         return status, lamda
+# [PATCH UPGRADE] libs_baja.py
+
+def check_steel_column(Pu, Ag, fy, profil_name):
+    """
+    Forensik Kapasitas Kolom Baja (Simplified AISC/SNI)
+    Pu: Beban Terfaktor (Ton)
+    Ag: Luas Penampang (cm2)
+    fy: Mutu Baja (Mpa)
+    """
+    # Konversi unit
+    Pn_nominal = 0.9 * fy * (Ag * 100) # Newton (0.9 fy Ag - Simplified Yielding)
+    Pn_ton = Pn_nominal / 10000 # Ke Ton
+    
+    # Faktor Reduksi SNI (Tekan)
+    phi = 0.90 
+    phi_Pn = phi * Pn_ton
+    
+    # Hitung DCR
+    dcr = Pu / phi_Pn
+    
+    status = "AMAN (SAFE)" if dcr < 1.0 else "BAHAYA (UNSAFE)"
+    
+    return {
+        "Profil": profil_name,
+        "Demand (Pu)": round(Pu, 2),
+        "Capacity (phi Pn)": round(phi_Pn, 2),
+        "DCR Ratio": round(dcr, 3),
+        "Status": status
+    }
