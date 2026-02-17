@@ -1,32 +1,19 @@
-# utils/mapping.py
+# File: modules/utils/mapping.py
 
-IFC_TO_INDONESIA = {
-    # Struktur Utama
+IFC_MAPPING = {
     "IfcWall": "Dinding",
     "IfcWallStandardCase": "Dinding Standar",
     "IfcSlab": "Pelat Lantai",
-    "IfcRoof": "Atap",
-    "IfcBeam": "Balok Struktur",
-    "IfcColumn": "Kolom Struktur",
-    "IfcFooting": "Pondasi",
-    "IfcPile": "Tiang Pancang",
-    
-    # Arsitektur & Bukaan
+    "IfcBeam": "Balok",
+    "IfcColumn": "Kolom",
     "IfcWindow": "Jendela",
     "IfcDoor": "Pintu",
-    "IfcStair": "Tangga",
-    "IfcRailing": "Railing/Pagar",
-    "IfcCovering": "Penutup/Finishing",
-    
-    # MEP (Mekanikal Elektrikal)
-    "IfcFlowSegment": "Pipa/Ducting",
-    "IfcFlowTerminal": "Terminal Air/Udara",
-    "IfcDistributionElement": "Elemen Distribusi",
-    
-    # Furniture
-    "IfcFurnishingElement": "Perabot",
+    "IfcCovering": "Finishing/Lantai",
+    "IfcFooting": "Pondasi",
+    "IfcPile": "Tiang Pancang",
+    "IfcMember": "Komponen Struktur",
+    "IfcStair": "Tangga"
 }
 
-def get_indonesian_name(ifc_class_name):
-    """Menerjemahkan nama class IFC ke Bahasa Indonesia."""
-    return IFC_TO_INDONESIA.get(ifc_class_name, ifc_class_name)
+def get_indonesian_name(ifc_class):
+    return IFC_MAPPING.get(ifc_class, ifc_class)
