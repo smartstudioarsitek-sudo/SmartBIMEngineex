@@ -2,6 +2,7 @@
 import streamlit as st
 import os
 import json
+import pandas as pd
 from core.persona import get_persona_list
 
 def render_sidebar(db_backend):
@@ -46,7 +47,7 @@ def render_sidebar(db_backend):
             project_data = {
                 "project_name": st.session_state.get('active_project', 'Default'),
                 "form_beton": st.session_state.get('form_beton', {}),
-                "timestamp": str(pd.Timestamp.now()) if 'pd' in globals() else ""
+                "timestamp": str(pd.Timestamp.now())
             }
             json_str = json.dumps(project_data, indent=2)
             
