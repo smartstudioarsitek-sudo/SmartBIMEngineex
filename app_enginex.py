@@ -24,6 +24,7 @@ from fpdf import FPDF
 # ==========================================
 try:
     # A. Core Modules
+    # Pastikan file core/backend_enginex.py dan core/persona.py ada
     from core.backend_enginex import EnginexBackend
     from core.persona import gems_persona, get_persona_list
 
@@ -36,8 +37,7 @@ try:
         from modules.struktur import libs_beton 
         from modules.struktur import libs_fem 
     except ImportError as e:
-        # print(f"⚠️ Warning: Modul Beton/FEM gagal dimuat: {e}") 
-        # (Silent error agar UI tetap bersih)
+        # Silent error agar UI tetap bersih, fitur terkait nanti dinonaktifkan
         pass
     
     # Water Resources
@@ -67,6 +67,7 @@ except ImportError as e:
 # ==========================================
 # REGISTRASI MODUL KE SYSTEM
 # ==========================================
+# Mendaftarkan modul agar bisa dipanggil oleh AI melalui exec()
 sys.modules['libs_sni'] = libs_sni
 sys.modules['libs_baja'] = libs_baja
 sys.modules['libs_bridge'] = libs_bridge
@@ -139,14 +140,25 @@ if 'shared_execution_vars' not in st.session_state:
 def execute_generated_code(code_str, file_ifc_path=None):
     """
     Menjalankan kode Python yang dihasilkan AI dengan konteks library lengkap.
+    Dilengkapi try-except untuk menangkap error tanpa mematikan aplikasi.
     """
     try:
         # 1. Ambil variabel dari memori sebelumnya
         local_vars = st.session_state.shared_execution_vars.copy()
         
+        # Helper function untuk parsing rupiah (mengatasi SyntaxError eval)
+        def parse_rupiah(txt):
+            if isinstance(txt, (int, float)): return txt
+            if isinstance(txt, str):
+                clean = txt.replace("Rp", "").replace(" ", "").replace(".", "").replace(",", ".")
+                try: return float(clean)
+                except: return 0
+            return 0
+
         # 2. Siapkan Library Kit
         library_kits = {
             "pd": pd, "np": np, "plt": plt, "st": st, "px": px, "go": go,
+            "parse_rupiah": parse_rupiah, # Inject helper function
             "libs_sni": libs_sni, "libs_baja": libs_baja, "libs_bridge": libs_bridge,
             "libs_gempa": libs_gempa, "libs_hidrologi": libs_hidrologi,
             "libs_irigasi": libs_irigasi, "libs_bendung": libs_bendung, "libs_jiat": libs_jiat,
@@ -181,8 +193,9 @@ def execute_generated_code(code_str, file_ifc_path=None):
         return True
     except Exception as e:
         # Tampilkan error di expander agar tidak mengganggu UI utama
-        with st.expander("⚠️ Debugging Code Error"):
-            st.error(f"{e}")
+        with st.expander("⚠️ Detail Teknis (Ada kendala pada script ini)", expanded=False):
+            st.warning(f"Sistem mendeteksi ketidaksesuaian pada data script lama: {e}")
+            st.caption("Tips: Masalah ini berasal dari data history chat lama. Anda bisa melanjutkan chat baru untuk hasil yang lebih presisi.")
         return False
 
 # ==========================================
@@ -256,7 +269,7 @@ db = st.session_state.backend
 with st.sidebar:
     st.title("🏗️ ENGINEX ULTIMATE")
     
-    # [NAVIGASI] Menu Utama (Fitur yang Anda cari)
+    # [NAVIGASI] Menu Utama
     st.markdown("### 🧭 Navigasi Menu")
     selected_menu = st.radio(
         "Pilih Modul:", 
@@ -314,8 +327,7 @@ with st.sidebar:
             selected_expert = st.selectbox("👨‍💼 Pilih Spesialis:", daftar_ahli)
             st.session_state.current_expert_active = selected_expert
         
-        # 4. MANAJEMEN PROYEK (SAVE / OPEN FILE) - [INITIATED]
-        # Ini adalah fitur Open/Save yang Anda minta
+        # 4. MANAJEMEN PROYEK (SAVE / OPEN FILE)
         st.markdown("### 📂 Proyek")
         
         # Backup / Save
@@ -345,14 +357,14 @@ with st.sidebar:
             
         # 5. UPLOAD FILE DATA
         st.markdown("### 📎 Upload Data")
-         # Kita kasih label "Upload File", tapi kita sembunyikan visualnya (collapsed) supaya UI tetap rapi
-            uploaded_files = st.file_uploader(
-            "Upload File Pendukung", 
-            type=["png","jpg","pdf","xlsx","docx","ifc","py"], 
-            accept_multiple_files=True, 
+        # [FIX] Memberikan label yang disembunyikan agar tidak muncul warning di terminal
+        uploaded_files = st.file_uploader(
+            "Upload File Pendukung",
+            type=["png","jpg","pdf","xlsx","docx","ifc","py"],
+            accept_multiple_files=True,
             label_visibility="collapsed"
         )
-                
+        
         if st.button("🧹 Reset Chat"):
             db.clear_chat(nama_proyek, st.session_state.current_expert_active)
             st.session_state.processed_files.clear()
@@ -395,7 +407,7 @@ if selected_menu == "🤖 AI Assistant":
                             file_name=f"script_{download_btn_counter}.py", 
                             key=f"dl_btn_{download_btn_counter}"
                         )
-                    # Eksekusi Visual
+                    # Eksekusi Visual dengan Safety Catch
                     execute_generated_code(code_content)
                 else:
                     st.markdown(part)
@@ -611,5 +623,3 @@ elif selected_menu == "🏗️ Audit Struktur":
 
         except Exception as e:
             st.error(f"Gagal menghitung struktur: {e}")
-
-
