@@ -293,7 +293,14 @@ with st.sidebar:
 
         # 2. MODEL SELECTION
         AVAILABLE_MODELS = [
-            "gemini-flash-latest", "gemini-1.5-pro", "gemini-1.5-flash",
+            "gemini-flash-latest",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash-image",
+            "gemini-2.5-flash-preview",
+            "gemini-3-flash-preview",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash"
+            "models/gemini-robotics-er-1-preview",
         ]
         model_name = st.selectbox("🧠 Model AI:", AVAILABLE_MODELS, index=0)
         
@@ -574,3 +581,4 @@ elif selected_menu == "🏗️ Audit Struktur":
 
         except Exception as e:
             st.error(f"Gagal menghitung struktur: {e}")
+
