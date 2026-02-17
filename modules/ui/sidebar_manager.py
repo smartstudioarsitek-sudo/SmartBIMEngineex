@@ -6,7 +6,7 @@ from core.persona import get_persona_list
 
 def render_sidebar(db_backend):
     """
-    Mengurus Tampilan Sidebar: API Key, Menu, dan Save/Load Project JSON.
+    Versi SAFE MODE: Menghapus panggilan fungsi yang menyebabkan crash.
     """
     config = {}
     
@@ -14,27 +14,22 @@ def render_sidebar(db_backend):
         st.title("🛡️ ENGINEX GOV.VER")
         st.caption("Enterprise Modular Edition")
         
-        # --- 1. LOGIKA API KEY (LEBIH TEGAS) ---
-        # Prioritas 1: Secrets (Cloud)
+        # --- 1. API KEY ---
         if "GOOGLE_API_KEY" in st.secrets:
             config['api_key'] = st.secrets["GOOGLE_API_KEY"]
-            st.success("🔒 API Key: Terdeteksi (Cloud Secrets)")
-        
-        # Prioritas 2: Environment Variable (Lokal)
+            st.success("🔒 API Key: Terdeteksi (Cloud)")
         elif os.environ.get("GOOGLE_API_KEY"):
             config['api_key'] = os.environ.get("GOOGLE_API_KEY")
-            st.success("🔒 API Key: Terdeteksi (Environment)")
-            
-        # Prioritas 3: Input Manual (Kalau 1 & 2 Gagal)
+            st.success("🔒 API Key: Terdeteksi (Env)")
         else:
-            st.warning("⚠️ Mode Manual (Tidak Aman)")
+            st.warning("⚠️ Mode Manual")
             config['api_key'] = st.text_input("🔑 Masukkan Google API Key:", type="password")
             if not config['api_key']:
-                st.stop() # Stop aplikasi kalau tidak ada kunci
+                st.stop()
 
         st.divider()
         
-        # --- 2. MENU NAVIGASI ---
+        # --- 2. MENU ---
         config['menu'] = st.radio(
             "Pilih Modul:", 
             ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur"]
@@ -42,50 +37,43 @@ def render_sidebar(db_backend):
         
         st.divider()
         
-        # --- 3. FITUR SAVE / OPEN PROJECT (YANG HILANG KEMARIN) ---
+        # --- 3. MANAJEMEN DATA (DIPERBAIKI) ---
+        # Bagian ini yang tadi bikin CRASH. Sekarang kita buat lebih sederhana & aman.
         with st.expander("💾 Manajemen Data Proyek", expanded=False):
-            st.caption("Simpan/Buka Pekerjaan (Format JSON)")
+            st.caption("Simpan/Buka Pekerjaan (JSON)")
             
-            # A. SAVE PROJECT (Download JSON)
-            # Kita ambil history chat dari backend untuk disimpan
-            # (Bisa ditambah data form struktur jika perlu)
+            # Kita hanya simpan data form dan nama proyek dulu (Anti-Crash)
             project_data = {
-                "chat_history": db_backend.get_all_history_raw(), # Asumsi ada fungsi ini atau kita ambil manual
                 "project_name": st.session_state.get('active_project', 'Default'),
-                "form_beton": st.session_state.get('form_beton', {})
+                "form_beton": st.session_state.get('form_beton', {}),
+                "timestamp": str(pd.Timestamp.now()) if 'pd' in globals() else ""
             }
             json_str = json.dumps(project_data, indent=2)
             
             st.download_button(
-                label="📥 Save Project (JSON)",
+                label="📥 Save Data Struktur (JSON)",
                 data=json_str,
-                file_name="enginex_project_backup.json",
+                file_name="project_backup.json",
                 mime="application/json"
             )
             
-            # B. OPEN PROJECT (Upload JSON)
-            uploaded_json = st.file_uploader("📂 Open Project (JSON)", type=["json"])
+            # Upload
+            uploaded_json = st.file_uploader("📂 Load Data", type=["json"])
             if uploaded_json is not None:
                 if st.button("Load Data JSON"):
                     try:
                         data = json.load(uploaded_json)
-                        # Restore Form Beton
                         if 'form_beton' in data:
                             st.session_state.form_beton = data['form_beton']
-                        # Restore Project Name
-                        if 'project_name' in data:
-                            st.session_state.active_project = data['project_name']
-                        
-                        st.success("✅ Data Proyek Berhasil Diload!")
-                        st.rerun()
+                            st.success("✅ Data Form Berhasil Diload!")
+                            st.rerun()
                     except Exception as e:
-                        st.error(f"Gagal baca file: {e}")
+                        st.error(f"Gagal: {e}")
 
         st.divider()
 
-        # --- 4. KONFIGURASI SPESIFIK MENU ---
+        # --- 4. KONFIGURASI MENU ---
         if config['menu'] == "🤖 AI Assistant":
-            st.markdown("### 🧠 Konfigurasi AI")
             config['model_type'] = st.selectbox("Model:", ["gemini-1.5-flash", "gemini-1.5-pro"])
             
             use_pilot = st.checkbox("🤖 Auto-Pilot", value=True)
@@ -95,11 +83,26 @@ def render_sidebar(db_backend):
             else:
                 config['persona'] = "👑 The GEMS Grandmaster"
             
-            # File Upload untuk Chat
-            st.markdown("### 📎 Data Pendukung")
-            config['files'] = st.file_uploader("Upload Dokumen/Gambar", accept_multiple_files=True)
+            config['files'] = st.file_uploader("Upload Dokumen", accept_multiple_files=True)
             
+            # Fitur Open/Save Project Database
+            st.markdown("### 📂 Proyek (CDE)")
+            projects = db_backend.daftar_proyek()
+            mode_proj = st.radio("Mode:", ["Buka", "Baru"], horizontal=True, label_visibility="collapsed")
+            
+            if mode_proj == "Baru":
+                new_p = st.text_input("Nama Proyek Baru:")
+                if st.button("Buat Proyek"):
+                    if new_p:
+                        config['new_project_trigger'] = new_p
+                        config['active_project'] = new_p
+            else:
+                config['active_project'] = st.selectbox("Pilih Proyek:", projects) if projects else "Default Project"
+                
             if st.button("🧹 Hapus Chat"):
                 config['reset_trigger'] = True
+        else:
+            # Default project name untuk menu lain
+            config['active_project'] = "Default Project"
 
     return config
