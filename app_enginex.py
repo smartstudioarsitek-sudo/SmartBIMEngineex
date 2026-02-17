@@ -352,8 +352,7 @@ with st.sidebar:
             accept_multiple_files=True, 
             label_visibility="collapsed"
         )
-        uploaded_files = st.file_uploader("", type=["png","jpg","pdf","xlsx","docx","ifc","py"], accept_multiple_files=True)
-        
+                
         if st.button("🧹 Reset Chat"):
             db.clear_chat(nama_proyek, st.session_state.current_expert_active)
             st.session_state.processed_files.clear()
@@ -612,4 +611,5 @@ elif selected_menu == "🏗️ Audit Struktur":
 
         except Exception as e:
             st.error(f"Gagal menghitung struktur: {e}")
+
 
