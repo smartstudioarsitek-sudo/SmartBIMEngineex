@@ -434,19 +434,20 @@ if selected_menu == "🤖 AI Assistant":
                target_category = "STRUKTUR" # Default
 
         # Mapping Persona -> Kategori Modul
-            if "Hydro" in active_persona or "Water" in active_persona:
-               target_category = "WATER"
-            elif "Architect" in active_persona:
-               target_category = "ARSITEK"
-            elif "Cost" in active_persona or "Estimator" in active_persona:
-               target_category = "COST"
-            elif "Geotech" in active_persona:
-               target_category = "GEOTEK"
-            elif "Grandmaster" in active_persona or "Struktur" in active_persona:
-               target_category = "STRUKTUR"
+        if "Hydro" in active_persona or "Water" in active_persona:
+           target_category = "WATER"
+        elif "Architect" in active_persona:
+            target_category = "ARSITEK"
+        elif "Cost" in active_persona or "Estimator" in active_persona:
+            target_category = "COST"
+        elif "Geotech" in active_persona:
+           target_category = "GEOTEK"
+        elif "Grandmaster" in active_persona or "Struktur" in active_persona:
+           target_category = "STRUKTUR"
 
-# 2. Render Panel Generator yang Sesuai
-libs_auto_chain.render_auto_chain_panel(target_category, active_persona)
+        # 2. Render Panel Generator yang Sesuai
+        libs_auto_chain.render_auto_chain_panel(target_category, active_persona)
+
 # --- B. MODE FEM (ANALISIS GEMPA) ---
 elif selected_menu == "🌪️ Analisis Gempa (FEM)":
     st.header("🌪️ Analisis Gempa Dinamis (FEM Engine)")
@@ -658,6 +659,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
