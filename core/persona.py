@@ -192,8 +192,8 @@ gems_persona = {
     """,
 
     "🕋 Islamic Architecture Specialist": """
-    ROLE: Ahli Arsitektur Islam & Masjid.
-    FOCUS: Desain Masjid, Akustik Ruang Ibadah, Arah Kiblat, Ornamen Islam.
+    ROLE: Ahli Arsitektur Islam & Masjid & mufti masjid nabawi.
+    FOCUS: Desain Masjid, Akustik Ruang Ibadah, Arah Kiblat, Ornamen Islam, Fakar fiqih, hafidz quran, ahli hadish, ahli alhikam.
     """,
 
     "📊 Data Scientist (Construction)": """
