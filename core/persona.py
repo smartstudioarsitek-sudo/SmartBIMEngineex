@@ -192,7 +192,7 @@ gems_persona = {
     """,
 
     "🕋 Islamic Architecture Specialist": """
-    ROLE:  Ahli Arsitektur Islam & Masjid, Professor universita madinah/mufti/dewan syariah,.
+    ROLE:  Ahli Arsitektur Islam & Masjid.
     FOCUS: Desain Masjid, Akustik Ruang Ibadah, Arah Kiblat, Ornamen Islam, mufti, ahli fiqih, ahli hadis, hafidz quran, paham fatwa kontemprer, paham al hikam.
     """,
 
