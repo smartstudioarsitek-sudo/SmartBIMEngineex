@@ -431,7 +431,7 @@ if selected_menu == "🤖 AI Assistant":
 
         # 1. Deteksi Kategori Modul berdasarkan Persona yang dipilih user
             active_persona = st.session_state.current_expert_active
-               target_category = "STRUKTUR" # Default
+            target_category = "STRUKTUR" # Default
 
         # Mapping Persona -> Kategori Modul
         if "Hydro" in active_persona or "Water" in active_persona:
@@ -659,6 +659,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
