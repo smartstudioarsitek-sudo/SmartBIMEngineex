@@ -57,6 +57,7 @@ try:
     from modules.cost import libs_ahsp, libs_rab_engine, libs_optimizer, libs_research
     from modules.arch import libs_arch, libs_zoning, libs_green
     from modules.utils import libs_pdf, libs_export, libs_bim_importer
+    from modules.utils import libs_auto_chain # <--- Tambah ini
     
     # Optional Modules (Geoteknik)
     try: 
@@ -424,7 +425,28 @@ if selected_menu == "🤖 AI Assistant":
                     
                 except Exception as e:
                     st.error(f"Error: {e}")
+        # ==========================================
+        # MODUL AUTO-CHAIN GENERATOR (INTEGRATED)
+        # ==========================================
 
+        # 1. Deteksi Kategori Modul berdasarkan Persona yang dipilih user
+            active_persona = st.session_state.current_expert_active
+               target_category = "STRUKTUR" # Default
+
+        # Mapping Persona -> Kategori Modul
+            if "Hydro" in active_persona or "Water" in active_persona:
+               target_category = "WATER"
+            elif "Architect" in active_persona:
+               target_category = "ARSITEK"
+            elif "Cost" in active_persona or "Estimator" in active_persona:
+               target_category = "COST"
+            elif "Geotech" in active_persona:
+               target_category = "GEOTEK"
+            elif "Grandmaster" in active_persona or "Struktur" in active_persona:
+               target_category = "STRUKTUR"
+
+# 2. Render Panel Generator yang Sesuai
+libs_auto_chain.render_auto_chain_panel(target_category, active_persona)
 # --- B. MODE FEM (ANALISIS GEMPA) ---
 elif selected_menu == "🌪️ Analisis Gempa (FEM)":
     st.header("🌪️ Analisis Gempa Dinamis (FEM Engine)")
@@ -636,6 +658,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
