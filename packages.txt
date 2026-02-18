@@ -3,3 +3,5 @@ liblapack3
 libblas3
 tcl8.6
 tk8.6
+gdal-bin
+libgdal-dev
