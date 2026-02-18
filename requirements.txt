@@ -25,6 +25,11 @@ pytesseract
 opencv-python-headless
 rich
 OpenSeesPy
+geopandas
+shapely
+fiona
+gpxpy
+
 
 
 
