@@ -3,4 +3,5 @@ liblapack3
 libblas3
 tcl8.6
 tk8.6
-
+tesseract-ocr
+libgl1
