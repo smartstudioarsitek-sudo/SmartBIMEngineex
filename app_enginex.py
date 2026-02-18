@@ -17,6 +17,7 @@ import re
 import os
 import sys
 import types
+import time  # Ditambahkan untuk fitur reload (Open Project)
 from fpdf import FPDF 
 
 # ==========================================
@@ -56,8 +57,11 @@ try:
     from modules.water import libs_hidrologi, libs_irigasi, libs_jiat, libs_bendung
     from modules.cost import libs_ahsp, libs_rab_engine, libs_optimizer, libs_research
     from modules.arch import libs_arch, libs_zoning, libs_green
+    
+    # C. Utility Modules (TERMASUK YANG BARU)
     from modules.utils import libs_pdf, libs_export, libs_bim_importer
-    from modules.utils import libs_auto_chain # <--- Tambah ini
+    from modules.utils import libs_loader      # <--- [BARU] Universal File Reader (DXF/GIS)
+    from modules.utils import libs_auto_chain  # <--- [BARU] Generator Laporan Panjang
     
     # Optional Modules (Geoteknik)
     try: 
@@ -74,6 +78,7 @@ except ImportError as e:
 # ==========================================
 # REGISTRASI MODUL KE SYSTEM
 # ==========================================
+# Mendaftarkan modul agar bisa dipanggil oleh fungsi eksekusi dinamis
 sys.modules['libs_sni'] = libs_sni
 sys.modules['libs_baja'] = libs_baja
 sys.modules['libs_bridge'] = libs_bridge
@@ -96,6 +101,8 @@ sys.modules['libs_green'] = libs_green
 sys.modules['libs_pdf'] = libs_pdf
 sys.modules['libs_export'] = libs_export
 sys.modules['libs_bim_importer'] = libs_bim_importer
+sys.modules['libs_loader'] = libs_loader         # Register Loader Baru
+sys.modules['libs_auto_chain'] = libs_auto_chain # Register Chain Baru
 
 if has_geotek:
     sys.modules['libs_geoteknik'] = libs_geoteknik
@@ -126,15 +133,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. FITUR BARU: ISO 19650 & PRE-AUDIT
+# 3. HELPER FUNCTIONS & NEW FEATURES
 # ==========================================
+
 def init_project_cde(project_name):
     """
     Membuat struktur folder proyek sesuai standar ISO 19650 (AUDIT REQUIREMENT)
     """
     # Bersihkan nama folder dari karakter aneh
     clean_name = re.sub(r'[^a-zA-Z0-9_\-]', '', project_name.replace(' ', '_'))
-    base_path = f"projects/{clean_name}"
     folders = [
         "01-WIP",       # Work In Progress
         "02-SHARED",    # Koordinasi
@@ -142,17 +149,15 @@ def init_project_cde(project_name):
         "04-ARCHIVED"   # Arsip
     ]
     
-    logs = []
     # Di Streamlit Cloud kita tidak bisa akses file system sebebas di lokal, 
     # tapi kita simpan struktur ini di Session State sebagai simulasi CDE
     if 'cde_structure' not in st.session_state:
         st.session_state.cde_structure = {}
     
     st.session_state.cde_structure[project_name] = folders
-    logs.append(f"✅ CDE Environment Created for {project_name}")
-    logs.append(f"📂 Folders: {', '.join(folders)}")
     
-    return logs
+    # Return logs untuk ditampilkan
+    return [f"✅ CDE Environment Created for {project_name}", f"📂 Folders: {', '.join(folders)}"]
 
 def pre_audit_check_sni(data_input):
     """
@@ -173,6 +178,58 @@ def pre_audit_check_sni(data_input):
 
     return errors, warnings
 
+def render_project_file_manager():
+    """
+    [FITUR BARU] Menyimpan (Save) dan Membuka (Open) konfigurasi proyek via JSON.
+    """
+    st.markdown("### 💾 File Project")
+    
+    col_file1, col_file2 = st.columns(2)
+    
+    # --- 1. FITUR SAVE (DOWNLOAD JSON) ---
+    with col_file1:
+        # Kumpulkan semua data penting dari Session State
+        project_data = {
+            "meta": {
+                "app": "SmartBIM Enginex",
+                "version": "Gov.Ready 2.0"
+            },
+            # Filter hanya data user, bukan objek backend
+            "data": {k: v for k, v in st.session_state.items() 
+                     if k not in ['backend', 'processed_files', 'shared_execution_vars', 'cde_structure']}
+        }
+        
+        json_str = json.dumps(project_data, indent=4)
+        
+        st.download_button(
+            label="📥 Save JSON",
+            data=json_str,
+            file_name="project_data.json",
+            mime="application/json",
+            use_container_width=True
+        )
+
+    # --- 2. FITUR OPEN (UPLOAD JSON) ---
+    with col_file2:
+        uploaded_json = st.file_uploader("Upload JSON", type=["json"], label_visibility="collapsed")
+        
+        if uploaded_json is not None:
+            try:
+                loaded_data = json.load(uploaded_json)
+                
+                # Update Session State
+                if "data" in loaded_data:
+                    for key, value in loaded_data["data"].items():
+                        st.session_state[key] = value
+                    
+                    st.success("Data Loaded!")
+                    time.sleep(0.5) # Beri waktu user melihat pesan sukses
+                    st.rerun() # Refresh halaman agar input terisi
+                else:
+                    st.error("Format JSON tidak valid.")
+            except Exception as e:
+                st.error(f"Error loading: {e}")
+
 # ==========================================
 # 4. ENGINE EKSEKUSI KODE (SAFE MODE)
 # ==========================================
@@ -192,7 +249,7 @@ def execute_generated_code(code_str, file_ifc_path=None):
                 except: return 0
             return 0
 
-        # Inject library & helper
+        # Inject library & helper (Memastikan kode AI bisa akses semua modul)
         library_kits = {
             "pd": pd, "np": np, "plt": plt, "st": st, "px": px, "go": go,
             "parse_rupiah": parse_rupiah,
@@ -203,7 +260,8 @@ def execute_generated_code(code_str, file_ifc_path=None):
             "libs_optimizer": libs_optimizer, "libs_research": libs_research,
             "libs_arch": libs_arch, "libs_zoning": libs_zoning, "libs_green": libs_green,
             "libs_pdf": libs_pdf, "libs_export": libs_export,
-            "libs_bim_importer": libs_bim_importer
+            "libs_bim_importer": libs_bim_importer,
+            "libs_loader": libs_loader
         }
         
         if 'libs_fem' in globals(): library_kits['libs_fem'] = libs_fem
@@ -232,6 +290,8 @@ def execute_generated_code(code_str, file_ifc_path=None):
 # ==========================================
 # 5. FUNGSI EXPORT (PDF SIMBG READY)
 # ==========================================
+# Fungsi lokal ini dipertahankan untuk backward compatibility,
+# tapi disarankan menggunakan libs_pdf.create_pdf untuk hasil lebih bagus.
 def clean_text_for_report(text):
     clean = re.sub(r"```python.*?```", "", text, flags=re.DOTALL)
     clean = re.sub(r"```.*?```", "", clean, flags=re.DOTALL)
@@ -239,7 +299,7 @@ def clean_text_for_report(text):
 
 def create_pdf(text_content):
     # Menggunakan fpdf untuk dokumen dasar (SIMBG Requirement: Clean PDF)
-    from fpdf import FPDF
+    # Ini versi simple. Untuk versi lengkap Header/Footer, gunakan libs_pdf
     class PDF(FPDF):
         def header(self):
             self.set_font('Arial', 'B', 10)
@@ -251,7 +311,10 @@ def create_pdf(text_content):
     pdf.set_font("Arial", size=11)
     
     # Support basic latin
-    clean_content = clean_content.encode('latin-1', 'replace').decode('latin-1')
+    try:
+        clean_content = clean_content.encode('latin-1', 'replace').decode('latin-1')
+    except:
+        pass
     pdf.multi_cell(0, 6, clean_content)
     return pdf.output(dest='S').encode('latin-1')
 
@@ -289,8 +352,13 @@ with st.sidebar:
             st.stop()
 
     st.divider()
+    
+    # 2. [BARU] FILE PROJECT MANAGER (Save/Load)
+    render_project_file_manager()
 
-    # 2. NAVIGASI MENU
+    st.divider()
+
+    # 3. NAVIGASI MENU
     selected_menu = st.radio(
         "Pilih Modul:", 
         ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur"],
@@ -300,7 +368,7 @@ with st.sidebar:
     st.divider()
 
     if selected_menu == "🤖 AI Assistant":
-        # 3. MANAJEMEN PROYEK (CDE STANDARD)
+        # 4. MANAJEMEN PROYEK (CDE STANDARD)
         st.markdown("### 📂 Proyek (ISO 19650)")
         
         projects = db.daftar_proyek()
@@ -319,17 +387,19 @@ with st.sidebar:
         else:
             nama_proyek = st.selectbox("Pilih Proyek:", projects) if projects else "Default Project"
             
-        # 4. PERSONA
+        # 5. PERSONA
         st.markdown("### 🎭 Persona")
         use_auto_pilot = st.checkbox("🤖 Auto-Pilot", value=True)
         if not use_auto_pilot:
             st.session_state.current_expert_active = st.selectbox("Pilih Ahli:", get_persona_list())
             
-        # 5. UPLOAD (Dengan Label Fix)
+        # 6. UPLOAD (Updated for Universal Loader)
         st.markdown("### 📎 Upload Data")
         uploaded_files = st.file_uploader(
-            "Upload File Pendukung",
-            type=["png","jpg","pdf","xlsx","docx","ifc","py"],
+            "Upload File (CAD, GIS, PDF, Excel)",
+            # Menambahkan support ekstensi baru (dxf, dwg, shp via zip, kml, dll)
+            type=["png","jpg","jpeg","pdf","xlsx","docx","ifc","py", 
+                  "dxf", "dwg", "geojson", "kml", "kmz", "gpx", "zip"], 
             accept_multiple_files=True,
             label_visibility="collapsed"
         )
@@ -376,16 +446,38 @@ if selected_menu == "🤖 AI Assistant":
         with st.chat_message("user"): st.markdown(prompt)
 
         full_prompt = [prompt]
-        file_ifc_path = None
+        
+        # LOGIKA BARU: UNIVERSAL FILE PROCESSOR
         if uploaded_files:
             for f in uploaded_files:
                 if f.name not in st.session_state.processed_files:
+                    
+                    # 1. HANDLING GAMBAR BIASA
                     if f.name.endswith(('.png','.jpg','.jpeg')): 
                         full_prompt.append(Image.open(f))
+                        
+                    # 2. HANDLING DOKUMEN TEXT
                     elif f.name.endswith('.pdf'):
                         reader = PyPDF2.PdfReader(f)
                         txt = "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
-                        full_prompt[0] += f"\n\n[FILE: {f.name}]\n{txt}"
+                        full_prompt[0] += f"\n\n[FILE PDF: {f.name}]\n{txt}"
+                        
+                    # 3. [BARU] HANDLING SPECIAL FILES (CAD/GIS) via LIBS_LOADER
+                    elif f.name.endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip')):
+                        with st.spinner(f"Menganalisis struktur file {f.name}..."):
+                            # Panggil modul libs_loader
+                            text_data, img_data, _ = libs_loader.process_special_file(f)
+                            
+                            # Masukkan Teks Ringkasan ke Otak AI
+                            full_prompt[0] += f"\n\n[DATA FILE: {f.name}]\n{text_data}"
+                            
+                            # Masukkan Visualisasi ke Mata AI (Jika ada)
+                            if img_data:
+                                full_prompt.append(Image.open(img_data))
+                                # Preview ke User
+                                with st.chat_message("user"):
+                                    st.image(img_data, caption=f"Visualisasi Data: {f.name}", use_container_width=True)
+                                    
                     st.session_state.processed_files.add(f.name)
 
         with st.chat_message("assistant"):
@@ -400,7 +492,7 @@ if selected_menu == "🤖 AI Assistant":
                     3. Format Laporan mengikuti standar Dokumen Lelang (Bab I, II, III...).
                     4. Tampilkan Tabel menggunakan st.table() atau st.dataframe().
                     """
-                    model = genai.GenerativeModel("gemini-robotics-er-1.5-preview", system_instruction=SYS)
+                    model = genai.GenerativeModel("gemini-flash-latest", system_instruction=SYS)
                     chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
                     
                     chat = model.start_chat(history=chat_hist)
@@ -420,33 +512,39 @@ if selected_menu == "🤖 AI Assistant":
                     
                     # Export Button (Gov Standard)
                     st.markdown("---")
-                    pdf_bytes = create_pdf(response.text)
+                    # Menggunakan libs_pdf yang sudah diupgrade untuk hasil lebih bagus
+                    try:
+                        pdf_bytes = libs_pdf.create_pdf(response.text, title="CHAT LOG REPORT")
+                    except:
+                        pdf_bytes = create_pdf(response.text) # Fallback ke fungsi lokal jika libs_pdf bermasalah
+                        
                     if pdf_bytes: st.download_button("📄 Download Laporan (SIMBG Ready)", pdf_bytes, "Laporan_Teknis.pdf")
                     
                 except Exception as e:
                     st.error(f"Error: {e}")
-        # ==========================================
-        # MODUL AUTO-CHAIN GENERATOR (INTEGRATED)
-        # ==========================================
-
-        # 1. Deteksi Kategori Modul berdasarkan Persona yang dipilih user
-            active_persona = st.session_state.current_expert_active
-            target_category = "STRUKTUR" # Default
-
-        # Mapping Persona -> Kategori Modul
-        if "Hydro" in active_persona or "Water" in active_persona:
-           target_category = "WATER"
-        elif "Architect" in active_persona:
-            target_category = "ARSITEK"
-        elif "Cost" in active_persona or "Estimator" in active_persona:
-            target_category = "COST"
-        elif "Geotech" in active_persona:
-           target_category = "GEOTEK"
-        elif "Grandmaster" in active_persona or "Struktur" in active_persona:
-           target_category = "STRUKTUR"
-
-        # 2. Render Panel Generator yang Sesuai
-        libs_auto_chain.render_auto_chain_panel(target_category, active_persona)
+                    
+    # ==========================================
+    # MODUL AUTO-CHAIN GENERATOR (INTEGRATED)
+    # ==========================================
+    # 1. Deteksi Kategori Modul berdasarkan Persona yang dipilih user
+    active_persona = st.session_state.current_expert_active
+    target_category = "STRUKTUR" # Default
+    
+    # Mapping Persona -> Kategori Modul
+    if "Hydro" in active_persona or "Water" in active_persona:
+        target_category = "WATER"
+    elif "Architect" in active_persona:
+        target_category = "ARSITEK"
+    elif "Cost" in active_persona or "Estimator" in active_persona:
+        target_category = "COST"
+    elif "Geotech" in active_persona:
+        target_category = "GEOTEK"
+    elif "Grandmaster" in active_persona or "Struktur" in active_persona:
+        target_category = "STRUKTUR"
+        
+    # 2. Render Panel Generator yang Sesuai
+    # Ini akan memunculkan tombol generator di bawah chat
+    libs_auto_chain.render_auto_chain_panel(target_category, active_persona)
 
 # --- B. MODE FEM (ANALISIS GEMPA) ---
 elif selected_menu == "🌪️ Analisis Gempa (FEM)":
@@ -455,25 +553,26 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
     # Import Module Peta Gempa
     from modules.struktur.peta_gempa_indo import get_data_kota, hitung_respon_spektrum
 
-    # --- 1. DATA LOKASI & TANAH (FITUR BARU) ---
+    # --- 1. DATA LOKASI & TANAH ---
     with st.expander("🌍 Lokasi & Data Gempa (SNI 1726:2019)", expanded=True):
         c_loc1, c_loc2 = st.columns(2)
         
         with c_loc1:
             db_kota = get_data_kota()
-            pilihan_kota = st.selectbox("📍 Pilih Lokasi Proyek", list(db_kota.keys()), index=8) # Default Lampung
+            # [KEY ADDED] Menambahkan key="fem_kota" agar bisa disave
+            pilihan_kota = st.selectbox("📍 Pilih Lokasi Proyek", list(db_kota.keys()), index=8, key="fem_kota") 
             
             # Ambil data Ss dan S1
             data_gempa = db_kota[pilihan_kota]
-            
-            # Kalau user pilih manual, boleh edit. Kalau kota, disable edit biar aman.
             is_manual = (pilihan_kota == "Pilih Manual")
             
-            Ss_input = st.number_input("Parameter Ss (0.2 detik)", value=data_gempa['Ss'], disabled=not is_manual, format="%.2f")
-            S1_input = st.number_input("Parameter S1 (1.0 detik)", value=data_gempa['S1'], disabled=not is_manual, format="%.2f")
+            # [KEY ADDED]
+            Ss_input = st.number_input("Parameter Ss (0.2 detik)", value=data_gempa['Ss'], disabled=not is_manual, format="%.2f", key="fem_ss")
+            S1_input = st.number_input("Parameter S1 (1.0 detik)", value=data_gempa['S1'], disabled=not is_manual, format="%.2f", key="fem_s1")
 
         with c_loc2:
-            kelas_situs = st.selectbox("🪨 Kelas Situs Tanah", ["SA (Batuan Keras)", "SB (Batuan)", "SC (Tanah Keras)", "SD (Tanah Sedang)", "SE (Tanah Lunak)"])
+            # [KEY ADDED]
+            kelas_situs = st.selectbox("🪨 Kelas Situs Tanah", ["SA (Batuan Keras)", "SB (Batuan)", "SC (Tanah Keras)", "SD (Tanah Sedang)", "SE (Tanah Lunak)"], key="fem_kelas_tanah")
             kode_situs = kelas_situs.split()[0] # Ambil SA, SB, dst
             
             # Hitung Otomatis Parameter Desain
@@ -489,12 +588,14 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
     
     c1, c2 = st.columns(2)
     with c1:
-        jml_lantai = st.number_input("Jumlah Lantai", 1, 50, 5)
-        tinggi_lantai = st.number_input("Tinggi per Lantai (m)", 2.0, 6.0, 3.5)
+        # [KEY ADDED]
+        jml_lantai = st.number_input("Jumlah Lantai", 1, 50, 5, key="fem_jml_lantai")
+        tinggi_lantai = st.number_input("Tinggi per Lantai (m)", 2.0, 6.0, 3.5, key="fem_tinggi_lantai")
     with c2:
-        bentang_x = st.number_input("Bentang Arah X (m)", 3.0, 12.0, 6.0)
-        bentang_y = st.number_input("Bentang Arah Y (m)", 3.0, 12.0, 6.0)
-        fc_mutu = st.number_input("Mutu Beton (MPa)", 20, 60, 30)
+        # [KEY ADDED]
+        bentang_x = st.number_input("Bentang Arah X (m)", 3.0, 12.0, 6.0, key="fem_bentang_x")
+        bentang_y = st.number_input("Bentang Arah Y (m)", 3.0, 12.0, 6.0, key="fem_bentang_y")
+        fc_mutu = st.number_input("Mutu Beton (MPa)", 20, 60, 30, key="fem_fc")
     
     # --- 3. EKSEKUSI ---
     if st.button("🚀 Pre-Audit & Run Analysis", type="primary"):
@@ -507,34 +608,25 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
             with st.spinner(f"🔄 Menghitung Respon Spektrum {pilihan_kota}..."):
                 try:
                     engine = libs_fem.OpenSeesEngine()
-                    # Kita kirim data SDS juga ke engine (kalau engine-nya sudah support response spectrum)
-                    # Untuk sekarang, engine modal analysis basic dulu
-                    
                     engine.build_simple_portal(bentang_x, bentang_y, tinggi_lantai, jml_lantai, fc_mutu)
                     df_modal = engine.run_modal_analysis(num_modes=3)
                     
                     st.success("✅ Analisis Selesai & Lolos Validasi!")
                     
-                    # Tampilkan Grafik Respon Spektrum (Visualisasi Baru)
+                    # Tampilkan Grafik
                     st.subheader("📈 Kurva Respon Spektrum Desain")
-                    
-                    # Bikin plot kurva respons spektrum (T vs Sa)
                     T_vals = np.linspace(0, 4, 100)
                     Sa_vals = []
                     for t in T_vals:
-                        if t < hasil_gempa['T0']: 
-                            val = hasil_gempa['SDS'] * (0.4 + 0.6*t/hasil_gempa['T0'])
-                        elif t < hasil_gempa['Ts']: 
-                            val = hasil_gempa['SDS']
-                        else: 
-                            val = hasil_gempa['SD1'] / t
+                        if t < hasil_gempa['T0']: val = hasil_gempa['SDS'] * (0.4 + 0.6*t/hasil_gempa['T0'])
+                        elif t < hasil_gempa['Ts']: val = hasil_gempa['SDS']
+                        else: val = hasil_gempa['SD1'] / t
                         Sa_vals.append(val)
                         
                     fig_rsa = px.line(x=T_vals, y=Sa_vals, title=f"Respon Spektrum Desain ({pilihan_kota} - {kode_situs})")
                     fig_rsa.update_layout(xaxis_title="Periode T (detik)", yaxis_title="Percepatan Spektral Sa (g)")
                     st.plotly_chart(fig_rsa, use_container_width=True)
 
-                    # Tampilkan Modal Analysis
                     st.subheader("📊 Mode Shapes & Perioda")
                     st.dataframe(df_modal, use_container_width=True)
                     
@@ -545,43 +637,43 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
 elif selected_menu == "🏗️ Audit Struktur":
     st.header("🏗️ Audit Forensik Struktur")
     
-    # Cek Library
     if 'libs_beton' not in sys.modules:
         st.warning("⚠️ Modul `libs_beton` belum dimuat.")
     else:
         from modules.struktur.libs_beton import SNIBeton2019
-        from modules.struktur.validator_sni import cek_dimensi_kolom, cek_rasio_tulangan # Pastikan import ini ada
+        from modules.struktur.validator_sni import cek_dimensi_kolom, cek_rasio_tulangan 
 
         # 1. INPUT PARAMETER
         with st.expander("⚙️ Parameter Struktur & Beban", expanded=True):
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.markdown("**Material**")
-                fc_input = st.number_input("Mutu Beton (fc') [MPa]", value=25.0, step=5.0)
-                fy_input = st.number_input("Mutu Baja (fy) [MPa]", value=420.0, step=10.0)
+                # [KEY ADDED]
+                fc_input = st.number_input("Mutu Beton (fc') [MPa]", value=25.0, step=5.0, key="audit_fc")
+                fy_input = st.number_input("Mutu Baja (fy) [MPa]", value=420.0, step=10.0, key="audit_fy")
             with col2:
                 st.markdown("**Dimensi Kolom**")
-                b_input = st.number_input("Lebar (b) [mm]", value=400.0, step=50.0)
-                h_input = st.number_input("Tinggi (h) [mm]", value=400.0, step=50.0)
+                # [KEY ADDED]
+                b_input = st.number_input("Lebar (b) [mm]", value=400.0, step=50.0, key="audit_b")
+                h_input = st.number_input("Tinggi (h) [mm]", value=400.0, step=50.0, key="audit_h")
             with col3:
                 st.markdown("**Tulangan**")
-                D_tul = st.number_input("Diameter Tulangan (D) [mm]", value=16.0, step=1.0)
-                n_tul = st.number_input("Jumlah Batang Total", value=8, step=2)
+                # [KEY ADDED]
+                D_tul = st.number_input("Diameter Tulangan (D) [mm]", value=16.0, step=1.0, key="audit_D")
+                n_tul = st.number_input("Jumlah Batang Total", value=8, step=2, key="audit_n")
 
             st.markdown("---")
             c_load1, c_load2 = st.columns(2)
-            Pu_user = c_load1.number_input("Beban Aksial (Pu) [kN]", value=800.0)
-            Mu_user = c_load2.number_input("Momen Lentur (Mu) [kNm]", value=150.0)
+            # [KEY ADDED]
+            Pu_user = c_load1.number_input("Beban Aksial (Pu) [kN]", value=800.0, key="audit_Pu")
+            Mu_user = c_load2.number_input("Momen Lentur (Mu) [kNm]", value=150.0, key="audit_Mu")
 
         # Hitung Luas Tulangan (Ast)
         Ast_input = n_tul * 0.25 * 3.14159 * (D_tul ** 2)
 
-        # 2. LOGIKA VALIDASI & EKSEKUSI (YANG TADI ERROR)
-        # Perhatikan: Tidak ada 'try:' yang menggantung di sini.
-        
+        # 2. LOGIKA VALIDASI & EKSEKUSI
         if st.button("🚀 Cek SNI & Jalankan Analisa"):
             
-            # --- TAHAP 1: PRE-AUDIT SNI ---
             st.divider()
             st.markdown("#### 🕵️ Laporan Pre-Audit SNI")
             
@@ -594,8 +686,7 @@ elif selected_menu == "🏗️ Audit Struktur":
                     if "GAGAL" in e: 
                         st.error(e)
                         lolos_audit = False
-                    else: 
-                        st.warning(e)
+                    else: st.warning(e)
             else:
                 st.success("✅ Dimensi Kolom: Memenuhi Syarat Geometri.")
 
@@ -606,26 +697,21 @@ elif selected_menu == "🏗️ Audit Struktur":
                     if "GAGAL" in e: 
                         st.error(e)
                         lolos_audit = False
-                    else: 
-                        st.warning(e)
+                    else: st.warning(e)
             else:
                 st.success(f"✅ Tulangan: Ideal (Rasio {rho_val:.2f}%).")
 
-            # --- TAHAP 2: KEPUTUSAN FINAL ---
+            # KEPUTUSAN FINAL
             if not lolos_audit:
                 st.error("🚫 **STATUS: DITOLAK.** Harap perbaiki dimensi atau tulangan sebelum menghitung.")
-                # Stop di sini, jangan lanjut ke mesin hitung
             
             else:
                 st.info("🎉 **STATUS: LOLOS PRE-AUDIT.** Melanjutkan ke analisis kapasitas...")
-                
-                # --- TAHAP 3: HITUNGAN MESIN ---
                 try:
-                    # Baru di sini kita pasang try-except untuk menangkap error matematika
                     hasil = SNIBeton2019.analyze_column_capacity(b_input, h_input, fc_input, fy_input, Ast_input, Pu_user, Mu_user)
                     pm_data = SNIBeton2019.generate_interaction_diagram(b_input, h_input, fc_input, fy_input, Ast_input)
                     
-                    # --- TAHAP 4: VISUALISASI ---
+                    # VISUALISASI
                     st.divider()
                     st.subheader("📊 Hasil Analisa Akhir")
                     
@@ -659,12 +745,3 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
-
-
-
-
-
-
-
-
-
