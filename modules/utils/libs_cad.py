@@ -1,81 +1,125 @@
-# modules/utils/pdf_extractor.py
-import pdfplumber
+import ezdxf
+from ezdxf.addons.drawing import RenderContext, Frontend
+from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+import matplotlib.pyplot as plt
+import io
+import logging
 import re
-import streamlit as st
-import json
-import google.generativeai as genai
 
-def extract_text_from_pdf(uploaded_file):
+# Matikan log ezdxf yang berisik
+logging.getLogger("ezdxf").setLevel(logging.ERROR)
+
+def extract_text_recursive(entity, container_list, visited_blocks=None):
     """
-    Lebih cerdas mengekstrak tabel dan layout menggunakan pdfplumber.
-    Cocok untuk laporan teknik yang banyak mengandung tabel.
+    Menggali teks di dalam Block/Group secara rekursif.
     """
-    text = ""
+    if visited_blocks is None: visited_blocks = set()
+
     try:
-        # pdfplumber butuh file path atau file-like object
-        with pdfplumber.open(uploaded_file) as pdf:
-            for page in pdf.pages:
-                # 1. STRATEGI TABEL: Ambil data tabel terlebih dahulu
-                # Laporan struktur 80% datanya ada di tabel
-                tables = page.extract_tables()
-                for table in tables:
-                    for row in table:
-                        # Bersihkan None values dan gabung dengan delimiter pipa |
-                        # Ini membantu AI membedakan kolom
-                        clean_row = [str(cell) if cell is not None else "" for cell in row]
-                        text += " | ".join(clean_row) + "\n"
-                
-                text += "\n--- TEKS HALAMAN ---\n"
-                
-                # 2. STRATEGI TEKS: Ambil sisa teks biasa
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-                    
-        return text
-    except Exception as e:
-        return f"Error membaca PDF: {e}"
+        dxftype = entity.dxftype()
+        
+        # 1. TEXT & MTEXT
+        if dxftype in ['TEXT', 'MTEXT']:
+            raw_text = entity.dxf.text
+            # Bersihkan format AutoCAD yang aneh (misal \A1; \P)
+            clean_text = re.sub(r'\\P|\\A1;|\\C\d+;|{|}|\\f.*?;', ' ', raw_text)
+            clean_text = clean_text.replace("%%c", "Ø").replace("%%d", "°").strip()
+            if clean_text: container_list.append(f"Teks: {clean_text}")
+            
+        # 2. DIMENSION
+        elif dxftype == 'DIMENSION':
+            text = entity.dxf.text
+            if not text or text == "<>": # <> artinya pakai nilai asli
+                try: text = f"{entity.get_measurement():.2f}"
+                except: text = "?"
+            container_list.append(f"Dimensi: {text}")
+            
+        # 3. INSERT (BLOCK)
+        elif dxftype == 'INSERT':
+            block_name = entity.dxf.name
+            if block_name not in visited_blocks:
+                visited_blocks.add(block_name)
+                if entity.doc:
+                    block_layout = entity.block()
+                    for sub_entity in block_layout:
+                        extract_text_recursive(sub_entity, container_list, visited_blocks)
+    except:
+        pass
 
-def ai_parse_structural_data(text_content, api_key):
+def parse_raw_dxf_text(content_str):
     """
-    Menggunakan Gemini untuk mencari parameter struktur (fc, fy, dimensi) 
-    dari teks laporan yang berantakan.
+    FALLBACK: Jika ezdxf gagal total, kita cari teks secara manual (Regex).
+    DXF menyimpan teks dengan kode group '1'.
     """
-    if not api_key:
-        return None
+    found_texts = []
+    # Pola: kode grup 1 diikuti teks (DXF text value)
+    # Ini mencari baris angka 1, lalu baris berikutnya adalah teksnya
+    lines = content_str.split('\n')
+    for i, line in enumerate(lines):
+        if line.strip() == '1' and i + 1 < len(lines):
+            text_candidate = lines[i+1].strip()
+            # Filter sampah CAD
+            if len(text_candidate) > 2 and not text_candidate.startswith(('AcDb', 'Autodesk', '{')):
+                found_texts.append(f"RawData: {text_candidate}")
+    return found_texts
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+def process_dxf_for_ai(dxf_file_bytes):
+    img_buffer = None
+    extracted_texts = []
+    status_msg = ""
     
-    prompt = f"""
-    Bertindaklah sebagai Data Entry Engineer.
-    Tugas: Ekstrak parameter struktur beton dari teks laporan berikut menjadi format JSON.
-    
-    Cari nilai-nilai ini (jika tidak ada, isi null):
-    - fc (Mutu Beton dalam MPa. Jika K-xxx, konversi ke MPa: K/10 * 0.83)
-    - fy (Mutu Baja Tulangan dalam MPa)
-    - b_kolom (Lebar kolom dalam mm)
-    - h_kolom (Tinggi kolom dalam mm)
-    - diameter_tulangan (Diameter besi utama dalam mm)
-    - jumlah_tulangan (Jumlah batang besi)
-    - pu (Beban Aksial dalam kN)
-    - mu (Momen dalam kNm)
-
-    Teks Laporan:
-    {text_content[:4000]}  # Batasi karakter agar hemat token
-    
-    Output WAJIB JSON murni tanpa markdown:
-    {{
-        "fc": 25.0,
-        "fy": 400.0,
-        ...
-    }}
-    """
-    
+    # 1. COBA DECODE (Handling Encoding Windows vs UTF8)
+    # DXF lama biasanya pakai 'cp1252' (Windows Latin), bukan utf-8.
     try:
-        response = model.generate_content(prompt)
-        clean_json = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(clean_json)
+        dxf_content_str = dxf_file_bytes.decode('cp1252')
+    except:
+        try:
+            dxf_content_str = dxf_file_bytes.decode('utf-8', errors='ignore')
+        except:
+            return None, "Gagal decode file. Format binary tidak didukung."
+
+    # 2. COBA BACA PAKAI EZDXF (Cara Normal)
+    try:
+        # Gunakan stream text, bukan bytes, agar lebih aman
+        doc = ezdxf.read(io.StringIO(dxf_content_str))
+        msp = doc.modelspace()
+        
+        # A. Coba Render Gambar
+        try:
+            fig = plt.figure(facecolor='#2d2d2d')
+            ax = fig.add_axes([0, 0, 1, 1])
+            ctx = RenderContext(doc)
+            out = MatplotlibBackend(ax)
+            Frontend(ctx, out).draw_layout(msp, finalize=True)
+            
+            img_buffer = io.BytesIO()
+            fig.savefig(img_buffer, format='png', dpi=150, facecolor='#2d2d2d')
+            img_buffer.seek(0)
+            plt.close(fig)
+        except Exception as e:
+            status_msg += f"[Visual Gagal: {str(e)}] "
+            img_buffer = None
+
+        # B. Ekstrak Teks Terstruktur
+        visited = set()
+        for entity in msp:
+            extract_text_recursive(entity, extracted_texts, visited)
+            
     except Exception as e:
-        # st.error(f"Gagal parsing AI: {e}") # Silent error agar UI tidak berantakan
-        return None
+        # 3. JIKA GAGAL: JALUR DARURAT (Regex Parsing)
+        status_msg += f"[Mode Darurat Aktif: {str(e)}] "
+        extracted_texts = parse_raw_dxf_text(dxf_content_str)
+
+    # 4. FINALISASI DATA
+    # Hapus duplikat dan urutkan
+    unique_texts = sorted(list(set(extracted_texts)))
+    
+    # Ambil sampel agar token AI tidak meledak
+    final_context = "\n".join(unique_texts[:500])
+    
+    if not final_context:
+        final_context = "File DXF terbaca tapi tidak ditemukan teks/dimensi. (Kemungkinan gambar hanya garis murni)."
+    
+    return img_buffer, f"Status: {status_msg}\n\nDATA TEKNIS:\n{final_context}"
+
+
