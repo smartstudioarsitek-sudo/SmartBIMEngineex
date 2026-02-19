@@ -29,6 +29,8 @@ geopandas
 shapely
 fiona
 gpxpy
+pdfplumber
+
 
 
 
