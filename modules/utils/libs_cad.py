@@ -55,3 +55,36 @@ def process_dxf_for_ai(dxf_file_bytes):
 #     {text_data}
 #     """
 #     model.generate_content([prompt, Image.open(image_data)])
+# ... imports sama ...
+
+def extract_text_recursive(entity, container_list):
+    """Fungsi pembantu untuk masuk ke dalam BLOCK"""
+    if entity.dxftype() in ['TEXT', 'MTEXT']:
+        container_list.append(f"Teks: {entity.dxf.text}")
+    elif entity.dxftype() == 'DIMENSION':
+         measurement = entity.dxf.text if entity.dxf.text else f"{entity.get_measurement():.2f}"
+         container_list.append(f"Dimensi: {measurement}")
+    elif entity.dxftype() == 'INSERT':
+        # INI KUNCINYA: Jika ketemu Block, masuk ke dalamnya!
+        block_layout = entity.block()
+        for sub_entity in block_layout:
+            extract_text_recursive(sub_entity, container_list)
+
+def process_dxf_for_ai(dxf_file_bytes):
+    doc = ezdxf.readfile(io.BytesIO(dxf_file_bytes))
+    msp = doc.modelspace()
+    
+    # ... (Bagian render gambar sudah oke) ...
+    
+    extracted_texts = []
+    
+    # Iterasi semua entity, termasuk yang di dalam BLOCK
+    for entity in msp:
+        extract_text_recursive(entity, extracted_texts)
+
+    # Filter sampah (misal teks copyright Autodesk)
+    clean_texts = [t for t in extracted_texts if "Autodesk" not in t and "Produced by" not in t]
+    
+    text_data_context = "\n".join(clean_texts[:300]) # Naikkan limit sedikit
+    
+    return img_buffer, text_data_context
