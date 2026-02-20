@@ -446,66 +446,60 @@ if selected_menu == "🤖 AI Assistant":
         with st.chat_message("user"): st.markdown(prompt)
 
         full_prompt = [prompt]
-        
+
         # LOGIKA BARU: UNIVERSAL FILE PROCESSOR
         if uploaded_files:
             for f in uploaded_files:
                 if f.name not in st.session_state.processed_files:
                     
                     # 1. HANDLING GAMBAR BIASA
-                    if f.name.endswith(('.png','.jpg','.jpeg')): 
+                    if f.name.lower().endswith(('.png','.jpg','.jpeg')): 
                         full_prompt.append(Image.open(f))
-
-                    # 2. HANDLING DOKUMEN TEXT & GAMBAR HI-RES
-                    elif f.name.endswith('.pdf'):
+                        
+                    # 2. HANDLING DOKUMEN TEXT (PDF DIBUAT HIGH-RES)
+                    elif f.name.lower().endswith('.pdf'):
                         import fitz  # PyMuPDF
                         with st.spinner("🔍 Menajamkan resolusi gambar PDF untuk AI..."):
                             pdf_doc = fitz.open(stream=f.getvalue(), filetype="pdf")
                             txt = ""
-                            
                             for page_num in range(len(pdf_doc)):
                                 page = pdf_doc.load_page(page_num)
                                 txt += page.get_text()
-                                
-                                # Render halaman menjadi gambar Hi-Res (Zoom 3x / ~300 DPI)
+                                # Render resolusi tinggi
                                 mat = fitz.Matrix(3, 3) 
                                 pix = page.get_pixmap(matrix=mat)
                                 img_data = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                                
-                                # Suapi mata AI dengan gambar PDF yang sudah jernih
                                 full_prompt.append(img_data) 
-                                
                             full_prompt[0] += f"\n\n[FILE PDF: {f.name}]\n{txt}"
-
-                    # 3. [BARU] HANDLING SPECIAL FILES (CAD/GIS) via LIBS_LOADER
-                    elif f.name.endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip')):
+                        
+                    # 3. HANDLING SPECIAL FILES (CAD/GIS)
+                    elif f.name.lower().endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip')):
                         with st.spinner(f"Menganalisis struktur file {f.name}..."):
-                            text_data, img_data, _ = libs_loader.process_special_file(f)
-                            full_prompt[0] += f"\n\n[DATA FILE: {f.name}]\n{text_data}"
-                            if img_data:
-                                full_prompt.append(Image.open(img_data))
-                                with st.chat_message("user"):
-                                    st.image(img_data, caption=f"Visualisasi Data: {f.name}", use_container_width=True)
+                            try:
+                                text_data, img_data, _ = libs_loader.process_special_file(f)
+                                # Pastikan variabel text_data terdefinisi sebelum dimasukkan ke f-string
+                                full_prompt[0] += f"\n\n[DATA FILE: {f.name}]\n{text_data}"
+                                if img_data:
+                                    full_prompt.append(Image.open(img_data))
+                                    with st.chat_message("user"):
+                                        st.image(img_data, caption=f"Visualisasi Data: {f.name}", use_container_width=True)
+                            except Exception as e:
+                                st.error(f"Gagal memproses file {f.name}: {e}")
 
-                    # 4. [BARU] HANDLING FILE BIM (IFC)  <--- TAMBAHKAN BLOK INI
-                    elif f.name.endswith('.ifc'):
+                    # 4. HANDLING FILE BIM (IFC)
+                    elif f.name.lower().endswith('.ifc'):
                         with st.spinner(f"🏗️ Membedah hierarki dan elemen dari {f.name}..."):
                             import tempfile
                             try:
-                                # IfcOpenShell butuh file fisik, jadi kita simpan ke tempfile dulu
                                 with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
                                     tmp.write(f.getvalue())
                                     tmp_path = tmp.name
                                 
-                                # Panggil Engine BIM yang sudah Kakak buat
                                 engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
                                 if engine_ifc.valid:
                                     elements = engine_ifc.model.by_type("IfcProduct")
-                                    
-                                    # Rangkum data untuk dibaca AI
                                     ifc_summary = f"Total Elemen Fisik: {len(elements)}\nSampel Elemen:\n"
                                     
-                                    # Batasi 100 elemen pertama agar token AI tidak meledak
                                     for el in elements[:100]:
                                         vol = engine_ifc.get_element_quantity(el)
                                         vol_text = f", Volume: {vol:.3f} m3" if vol > 0 else ""
@@ -514,7 +508,6 @@ if selected_menu == "🤖 AI Assistant":
                                     if len(elements) > 100:
                                         ifc_summary += f"\n... dan {len(elements) - 100} elemen lainnya disembunyikan untuk menghemat memori."
                                         
-                                    # Suapi data ini ke prompt AI
                                     full_prompt[0] += f"\n\n[FILE MODEL BIM IFC: {f.name}]\n{ifc_summary}"
                                     
                                     with st.chat_message("user"):
@@ -523,19 +516,10 @@ if selected_menu == "🤖 AI Assistant":
                                     st.error("File IFC tidak valid atau rusak.")
                             except Exception as e:
                                 st.error(f"Gagal memproses IFC: {e}")
-                                               
-                            # Masukkan Teks Ringkasan ke Otak AI
-                            full_prompt[0] += f"\n\n[DATA FILE: {f.name}]\n{text_data}"
-                            
-                            # Masukkan Visualisasi ke Mata AI (Jika ada)
-                            if img_data:
-                                full_prompt.append(Image.open(img_data))
-                                # Preview ke User
-                                with st.chat_message("user"):
-                                    st.image(img_data, caption=f"Visualisasi Data: {f.name}", use_container_width=True)
-                                    
+                                
+                    # Tandai file sudah diproses agar tidak diulang-ulang
                     st.session_state.processed_files.add(f.name)
-
+        
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
@@ -801,6 +785,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
