@@ -455,13 +455,28 @@ if selected_menu == "🤖 AI Assistant":
                     # 1. HANDLING GAMBAR BIASA
                     if f.name.endswith(('.png','.jpg','.jpeg')): 
                         full_prompt.append(Image.open(f))
-                        
-                    # 2. HANDLING DOKUMEN TEXT
+
+                    # 2. HANDLING DOKUMEN TEXT & GAMBAR HI-RES
                     elif f.name.endswith('.pdf'):
-                        reader = PyPDF2.PdfReader(f)
-                        txt = "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
-                        full_prompt[0] += f"\n\n[FILE PDF: {f.name}]\n{txt}"
-                        
+                        import fitz  # PyMuPDF
+                        with st.spinner("🔍 Menajamkan resolusi gambar PDF untuk AI..."):
+                            pdf_doc = fitz.open(stream=f.getvalue(), filetype="pdf")
+                            txt = ""
+                            
+                            for page_num in range(len(pdf_doc)):
+                                page = pdf_doc.load_page(page_num)
+                                txt += page.get_text()
+                                
+                                # Render halaman menjadi gambar Hi-Res (Zoom 3x / ~300 DPI)
+                                mat = fitz.Matrix(3, 3) 
+                                pix = page.get_pixmap(matrix=mat)
+                                img_data = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                                
+                                # Suapi mata AI dengan gambar PDF yang sudah jernih
+                                full_prompt.append(img_data) 
+                                
+                            full_prompt[0] += f"\n\n[FILE PDF: {f.name}]\n{txt}"
+                                          
                     # 3. [BARU] HANDLING SPECIAL FILES (CAD/GIS) via LIBS_LOADER
                     elif f.name.endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip')):
                         with st.spinner(f"Menganalisis struktur file {f.name}..."):
@@ -745,6 +760,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
