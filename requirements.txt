@@ -19,7 +19,7 @@ scipy
 fpdf
 ifcopenshell
 ezdxf
-fitz
+PyMuPDF
 geopy
 pytesseract
 opencv-python-headless
@@ -30,6 +30,7 @@ shapely
 fiona
 gpxpy
 pdfplumber
+
 
 
 
