@@ -189,25 +189,34 @@ def render_project_file_manager():
     # --- 1. FITUR SAVE (DOWNLOAD JSON) ---
     with col_file1:
         # Kumpulkan semua data penting dari Session State
+        safe_data = {}
+        for k, v in st.session_state.items():
+            # Filter objek backend internal
+            if k not in ['backend', 'processed_files', 'shared_execution_vars', 'cde_structure']:
+                # ANTI-CRASH: Hanya simpan tipe data dasar yang dikenali JSON
+                # Abaikan wujud file fisik (UploadedFile) dari memori
+                if isinstance(v, (str, int, float, bool, list, dict, type(None))):
+                    safe_data[k] = v
+
         project_data = {
             "meta": {
                 "app": "SmartBIM Enginex",
                 "version": "Gov.Ready 2.0"
             },
-            # Filter hanya data user, bukan objek backend
-            "data": {k: v for k, v in st.session_state.items() 
-                     if k not in ['backend', 'processed_files', 'shared_execution_vars', 'cde_structure']}
+            "data": safe_data
         }
         
-        json_str = json.dumps(project_data, indent=4)
-        
-        st.download_button(
-            label="📥 Save JSON",
-            data=json_str,
-            file_name="project_data.json",
-            mime="application/json",
-            use_container_width=True
-        )
+        try:
+            json_str = json.dumps(project_data, indent=4)
+            st.download_button(
+                label="📥 Save JSON",
+                data=json_str,
+                file_name="project_data.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Save UI error (Abaikan jika sedang testing): {e}")
 
     # --- 2. FITUR OPEN (UPLOAD JSON) ---
     with col_file2:
@@ -223,8 +232,8 @@ def render_project_file_manager():
                         st.session_state[key] = value
                     
                     st.success("Data Loaded!")
-                    time.sleep(0.5) # Beri waktu user melihat pesan sukses
-                    st.rerun() # Refresh halaman agar input terisi
+                    time.sleep(0.5)
+                    st.rerun()
                 else:
                     st.error("Format JSON tidak valid.")
             except Exception as e:
@@ -824,6 +833,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
