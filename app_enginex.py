@@ -598,160 +598,126 @@ if selected_menu == "🤖 AI Assistant":
 # --- B. MODE FEM (ANALISIS GEMPA) ---
 elif selected_menu == "🌪️ Analisis Gempa (FEM)":
     st.header("🌪️ Analisis Gempa Dinamis (FEM Engine)")
-    
-    # Import Module Peta Gempa
     from modules.struktur.peta_gempa_indo import get_data_kota, hitung_respon_spektrum
 
     # --- 1. DATA LOKASI & TANAH ---
     with st.expander("🌍 Lokasi & Data Gempa (SNI 1726:2019)", expanded=True):
         c_loc1, c_loc2 = st.columns(2)
-        
         with c_loc1:
             db_kota = get_data_kota()
-            # [KEY ADDED] Menambahkan key="fem_kota" agar bisa disave
             pilihan_kota = st.selectbox("📍 Pilih Lokasi Proyek", list(db_kota.keys()), index=8, key="fem_kota") 
-            
-            # Ambil data Ss dan S1
             data_gempa = db_kota[pilihan_kota]
             is_manual = (pilihan_kota == "Pilih Manual")
-            
-            # [KEY ADDED]
             Ss_input = st.number_input("Parameter Ss (0.2 detik)", value=data_gempa['Ss'], disabled=not is_manual, format="%.2f", key="fem_ss")
             S1_input = st.number_input("Parameter S1 (1.0 detik)", value=data_gempa['S1'], disabled=not is_manual, format="%.2f", key="fem_s1")
 
         with c_loc2:
-            # [KEY ADDED]
             kelas_situs = st.selectbox("🪨 Kelas Situs Tanah", ["SA (Batuan Keras)", "SB (Batuan)", "SC (Tanah Keras)", "SD (Tanah Sedang)", "SE (Tanah Lunak)"], key="fem_kelas_tanah")
-            kode_situs = kelas_situs.split()[0] # Ambil SA, SB, dst
-            
-            # Hitung Otomatis Parameter Desain
+            kode_situs = kelas_situs.split()[0]
             hasil_gempa = hitung_respon_spektrum(Ss_input, S1_input, kode_situs)
-            
-            st.info(f"📊 **Parameter Desain (Otomatis):**\n\n"
-                    f"**SDS = {hasil_gempa['SDS']:.3f} g** (Percepatan Desain Pendek)\n\n"
-                    f"**SD1 = {hasil_gempa['SD1']:.3f} g** (Percepatan Desain 1-detik)")
+            st.info(f"📊 **Parameter Desain:**\n\n**SDS = {hasil_gempa['SDS']:.3f} g**\n\n**SD1 = {hasil_gempa['SD1']:.3f} g**")
 
-    # --- 2. DATA STRUKTUR ---
     st.divider()
-    # --- FITUR BARU: INTEGRASI BIM KE FEM ---
-    st.markdown("---")
-    st.subheader("🔗 Ekstraksi BIM (IFC -> OpenSees)")
-    ifc_fem_file = st.file_uploader("Upload File .ifc untuk dianalisis periode getarnya:", type=['ifc'], key="ifc_fem")
-    
-    if ifc_fem_file:
-        if st.button("🚀 Ekstrak Geometri & Hitung Getaran", type="primary", use_container_width=True):
-            import tempfile
-            
-            # 1. Parsing IFC
-            with st.spinner("1️⃣ Membaca File IFC..."):
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
-                    tmp.write(ifc_fem_file.getvalue())
-                    tmp_path = tmp.name
-                engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
-            
-            if engine_ifc.valid:
-                # 2. Ekstrak Garis As
-                with st.spinner("2️⃣ Mengekstrak Garis As (Centerline) Struktur..."):
-                    elements = engine_ifc.model.by_type("IfcProduct")
-                    analytical_data = []
-                    for el in elements:
-                        nodes = engine_ifc.get_analytical_nodes(el)
-                        if nodes: analytical_data.append(nodes)
-                        
-                st.success(f"✅ {len(analytical_data)} garis elemen struktur berhasil ditarik dari IFC!")
-                
-                # 3. Hitung Matriks dengan OpenSees
-                with st.spinner("3️⃣ Membangun Matriks Kekakuan & Menghitung Eigenvalue..."):
-                    engine_fem = libs_fem.OpenSeesEngine()
-                    success = engine_fem.build_model_from_ifc(analytical_data, fc_mutu=30)
-                    
-                    if success:
-                        df_modal = engine_fem.run_modal_analysis(num_modes=3)
-                        st.success("✅ Analisis Struktur Dinamis Selesai!")
-                        # --- TAMBAHAN KODE GRAFIK PLOTLY ---
-                        st.subheader("📈 Kurva Respons Spektrum & Posisi Mode Getar")
-                        
-                        # Membangun Kurva Respons Spektrum (Mengambil data 'hasil_gempa' dari input atas)
-                        T_vals = np.linspace(0, 4, 100)
-                        Sa_vals = []
-                        for t in T_vals:
-                            if t < hasil_gempa['T0']: val = hasil_gempa['SDS'] * (0.4 + 0.6*t/hasil_gempa['T0'])
-                            elif t < hasil_gempa['Ts']: val = hasil_gempa['SDS']
-                            elif t > 0: val = hasil_gempa['SD1'] / t
-                            else: val = 0
-                            Sa_vals.append(val)
-                            
-                        # Plot Kurva Utama
-                        fig_rsa = px.line(x=T_vals, y=Sa_vals, title=f"Respons Spektrum ({pilihan_kota} - {kode_situs})")
-                        fig_rsa.update_traces(line_color='#2563eb', line_width=3, fill='tozeroy', fillcolor='rgba(37, 99, 235, 0.1)')
-                        
-                        # Menancapkan Tiang Periode Getar (T) dari hasil Analisis IFC
-                        colors = ['#ef4444', '#f59e0b', '#10b981'] # Merah, Orange, Hijau
-                        for index, row in df_modal.iterrows():
-                            T_mode = row['Period (T) [detik]']
-                            fig_rsa.add_vline(
-                                x=T_mode, line_dash="dash", line_color=colors[index % 3], line_width=2,
-                                annotation_text=f"Mode {int(row['Mode'])} (T={T_mode}s)", 
-                                annotation_position="top right"
-                            )
-                                              
-                        fig_rsa.update_layout(xaxis_title="Periode T (detik)", yaxis_title="Percepatan Spektral Sa (g)")
-                        st.plotly_chart(fig_rsa, use_container_width=True)
-                        # -----------------------------------
 
-                        st.subheader("📊 Tabel Waktu Getar Alami (Eigenvalue)")
-                        st.dataframe(df_modal, use_container_width=True)
-            else:
-                st.error("File IFC Rusak atau Tidak Valid.")
-    st.markdown("---")
-    st.subheader("🏗️ Geometri Struktur Portal")
+    # --- FITUR BARU: INTEGRASI BIM KE FEM ---
+    st.subheader("🔗 Ekstraksi BIM (IFC -> OpenSees)")
+    ifc_fem_file = st.file_uploader("Upload File .ifc:", type=['ifc'], key="ifc_fem")
     
-    c1, c2 = st.columns(2)
+    if ifc_fem_file and st.button("🚀 Ekstrak Geometri & Hitung Getaran", type="primary", use_container_width=True):
+        import tempfile
+        with st.spinner("1️⃣ Membaca File IFC..."):
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+                tmp.write(ifc_fem_file.getvalue())
+                tmp_path = tmp.name
+            engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
+        
+        if engine_ifc.valid:
+            with st.spinner("2️⃣ Mengekstrak Garis As..."):
+                elements = engine_ifc.model.by_type("IfcProduct")
+                analytical_data = [engine_ifc.get_analytical_nodes(el) for el in elements if engine_ifc.get_analytical_nodes(el)]
+            st.success(f"✅ {len(analytical_data)} garis diekstrak!")
+            
+            with st.spinner("3️⃣ Menghitung Eigenvalue & Partisipasi Massa..."):
+                engine_fem = libs_fem.OpenSeesEngine()
+                if engine_fem.build_model_from_ifc(analytical_data, fc_mutu=30):
+                    df_modal = engine_fem.run_modal_analysis(num_modes=10) # Ditingkatkan jadi 10 mode
+                    
+                    # Tampilkan Grafik Respons Spektrum
+                    st.subheader("📈 Kurva Respons Spektrum & Posisi Mode Getar")
+                    T_vals = np.linspace(0, 4, 100)
+                    Sa_vals = [hasil_gempa['SDS'] * (0.4 + 0.6*t/hasil_gempa['T0']) if t < hasil_gempa['T0'] else hasil_gempa['SDS'] if t < hasil_gempa['Ts'] else hasil_gempa['SD1']/t if t > 0 else 0 for t in T_vals]
+                    
+                    fig_rsa = px.line(x=T_vals, y=Sa_vals, title=f"Respons Spektrum ({pilihan_kota} - {kode_situs})")
+                    fig_rsa.update_traces(line_color='#2563eb', line_width=3, fill='tozeroy', fillcolor='rgba(37, 99, 235, 0.1)')
+                    fig_rsa.update_layout(xaxis_title="Periode T (detik)", yaxis_title="Percepatan Spektral Sa (g)")
+                    
+                    colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6']
+                    for index, row in df_modal.head(5).iterrows(): # Tampilkan 5 mode pertama di grafik
+                        fig_rsa.add_vline(x=row['Period (T) [s]'], line_dash="dash", line_color=colors[index % 5], line_width=2, annotation_text=f"M{int(row['Mode'])}")
+                    st.plotly_chart(fig_rsa, use_container_width=True)
+                    
+                    # Tampilkan Tabel Partisipasi Massa
+                    st.markdown("**Tabel Waktu Getar Alami & Partisipasi Massa (Target $\ge 90\%$)**")
+                    def style_modal(val):
+                        if isinstance(val, str):
+                            if '✅' in val: return 'color: #155724; background-color: #d4edda; font-weight: bold;'
+                            elif '⚠️' in val: return 'color: #856404; background-color: #fff3cd;'
+                        return ''
+                    st.dataframe(df_modal.style.map(style_modal), use_container_width=True)
+        else: st.error("File IFC Rusak.")
+
+    st.markdown("---")
+    st.subheader("🏗️ Simulasi Geometri Portal & Penskalaan Gempa")
+    
+    # Input Geometri
+    c1, c2, c3 = st.columns(3)
     with c1:
-        # [KEY ADDED]
         jml_lantai = st.number_input("Jumlah Lantai", 1, 50, 5, key="fem_jml_lantai")
         tinggi_lantai = st.number_input("Tinggi per Lantai (m)", 2.0, 6.0, 3.5, key="fem_tinggi_lantai")
     with c2:
-        # [KEY ADDED]
         bentang_x = st.number_input("Bentang Arah X (m)", 3.0, 12.0, 6.0, key="fem_bentang_x")
         bentang_y = st.number_input("Bentang Arah Y (m)", 3.0, 12.0, 6.0, key="fem_bentang_y")
+    with c3:
         fc_mutu = st.number_input("Mutu Beton (MPa)", 20, 60, 30, key="fem_fc")
+        num_modes_in = st.number_input("Jumlah Mode Diekstrak", 3, 30, 10, key="fem_modes")
     
-    # --- 3. EKSEKUSI ---
-    if st.button("🚀 Pre-Audit & Run Analysis", type="primary"):
-        # Pre-Audit Sederhana
-        if tinggi_lantai > 5.0 and fc_mutu < 25:
-            st.error("⛔ **DITOLAK PRE-AUDIT:** Untuk tinggi tingkat > 5m, disarankan mutu beton minimal fc' 25 MPa.")
-        elif 'libs_fem' not in sys.modules:
-            st.error("❌ Modul FEM tidak ditemukan/gagal load.")
-        else:
-            with st.spinner(f"🔄 Menghitung Respon Spektrum {pilihan_kota}..."):
-                try:
-                    engine = libs_fem.OpenSeesEngine()
-                    engine.build_simple_portal(bentang_x, bentang_y, tinggi_lantai, jml_lantai, fc_mutu)
-                    df_modal = engine.run_modal_analysis(num_modes=3)
-                    
-                    st.success("✅ Analisis Selesai & Lolos Validasi!")
-                    
-                    # Tampilkan Grafik
-                    st.subheader("📈 Kurva Respon Spektrum Desain")
-                    T_vals = np.linspace(0, 4, 100)
-                    Sa_vals = []
-                    for t in T_vals:
-                        if t < hasil_gempa['T0']: val = hasil_gempa['SDS'] * (0.4 + 0.6*t/hasil_gempa['T0'])
-                        elif t < hasil_gempa['Ts']: val = hasil_gempa['SDS']
-                        else: val = hasil_gempa['SD1'] / t
-                        Sa_vals.append(val)
-                        
-                    fig_rsa = px.line(x=T_vals, y=Sa_vals, title=f"Respon Spektrum Desain ({pilihan_kota} - {kode_situs})")
-                    fig_rsa.update_layout(xaxis_title="Periode T (detik)", yaxis_title="Percepatan Spektral Sa (g)")
-                    st.plotly_chart(fig_rsa, use_container_width=True)
+    st.markdown("**Simulasi Nilai Geser Dasar (Base Shear) - Diperlukan untuk Audit TPA**")
+    c_v1, c_v2, c_v3 = st.columns(3)
+    v_statik_in = c_v1.number_input("V Statik (V) [kN]", value=2000.0, step=100.0)
+    v_din_x_in = c_v2.number_input("V Dinamik Arah X (Vt) [kN]", value=1850.0, step=100.0) # Sengaja dibuat < 2000 agar scaling aktif
+    v_din_y_in = c_v3.number_input("V Dinamik Arah Y (Vt) [kN]", value=2100.0, step=100.0)
 
-                    st.subheader("📊 Mode Shapes & Perioda")
-                    st.dataframe(df_modal, use_container_width=True)
-                    
-                except Exception as e:
-                    st.error(f"❌ Terjadi Kesalahan pada Engine FEM: {e}")
+    if st.button("🚀 Pre-Audit & Run Dinamis", type="primary"):
+        if tinggi_lantai > 5.0 and fc_mutu < 25: st.error("⛔ DITOLAK: Tinggi > 5m butuh mutu beton min 25 MPa.")
+        elif 'libs_fem' not in sys.modules: st.error("❌ Modul FEM gagal load.")
+        else:
+            try:
+                engine = libs_fem.OpenSeesEngine()
+                engine.build_simple_portal(bentang_x, bentang_y, tinggi_lantai, jml_lantai, fc_mutu)
+                
+                # 1. Analisis Modal
+                df_modal = engine.run_modal_analysis(num_modes=num_modes_in)
+                st.success("✅ Analisis Selesai! Berikut adalah laporan audit parameter dinamik.")
+                
+                st.markdown("#### 1️⃣ Evaluasi Partisipasi Massa Ragam (SNI 1726:2019 Pasal 7.9.1.1)")
+                def style_modal(val):
+                    if isinstance(val, str):
+                        if '✅' in val: return 'color: #155724; background-color: #d4edda; font-weight: bold;'
+                        elif '⚠️' in val: return 'color: #856404; background-color: #fff3cd;'
+                    return ''
+                st.dataframe(df_modal.style.map(style_modal), use_container_width=True)
+                
+                st.markdown("#### 2️⃣ Penskalaan Gaya Geser Dasar / Base Shear (SNI 1726:2019 Pasal 7.9.4.1)")
+                df_scale = engine.check_base_shear_scaling(V_statik=v_statik_in, V_dinamik_x=v_din_x_in, V_dinamik_y=v_din_y_in)
+                
+                def style_scaling(val):
+                    if isinstance(val, str):
+                        if '✅' in val: return 'background-color: #d4edda; color: #155724; font-weight: bold;'
+                        elif '❌' in val: return 'background-color: #f8d7da; color: #721c24; font-weight: bold;'
+                    return ''
+                st.dataframe(df_scale.style.map(style_scaling), use_container_width=True)
+                
+            except Exception as e: st.error(f"Error FEM: {e}")
 
 # --- C. MODE AUDIT STRUKTUR ---
 elif selected_menu == "🏗️ Audit Struktur":
@@ -865,6 +831,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
