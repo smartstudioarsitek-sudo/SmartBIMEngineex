@@ -14,7 +14,81 @@ except ImportError:
 class OpenSeesEngine:
     def __init__(self):
         self.results = {}
+    def build_model_from_ifc(self, ifc_analytical_data, fc_mutu):
+        """
+        Membangun model OpenSees 3D langsung dari ekstraksi Garis As (Centerline) IFC.
+        ifc_analytical_data: List of dictionary dari get_analytical_nodes()
+        """
+        if not HAS_OPENSEES:
+            return False
 
+        try:
+            ops.wipe()
+            ops.model('basic', '-ndm', 3, '-ndf', 6) # 3D Frame (6 DOF per node)
+            
+            # --- 1. Material Properties ---
+            # Modulus Elastisitas Beton (SNI 2847:2019)
+            E_beton = 4700 * (fc_mutu**0.5) * 1000 # Konversi MPa ke kPa
+            v_poisson = 0.2
+            G_beton = E_beton / (2 * (1 + v_poisson)) # Modulus Geser
+            
+            # --- 2. Node Mapping System ---
+            node_map = {}
+            node_tag = 1
+            elem_tag = 1
+            
+            # --- 3. Geometric Transformation (Sumbu Lokal 3D) ---
+            # Wajib ada di OpenSees 3D agar AI tahu mana sumbu kuat/lemah profil
+            transf_kolom = 1
+            transf_balok = 2
+            ops.geomTransf('Linear', transf_kolom, 1, 0, 0) # Vektor referensi Kolom (Z vertikal)
+            ops.geomTransf('Linear', transf_balok, 0, 0, 1) # Vektor referensi Balok (X/Y horizontal)
+            
+            # --- 4. Eksekusi Pembentukan Geometri ---
+            for item in ifc_analytical_data:
+                start_coord = item['Node_Start']
+                end_coord = item['Node_End']
+                
+                # A. Daftarkan Node Start (Cek duplikasi)
+                if start_coord not in node_map:
+                    node_map[start_coord] = node_tag
+                    ops.node(node_tag, *start_coord)
+                    
+                    # OTOMATISASI TUMPUAN (Support): 
+                    # Jika elevasi Z mendekati 0, kunci sebagai Jepit (Fixed)
+                    if abs(start_coord[2]) < 0.001:
+                        ops.fix(node_tag, 1, 1, 1, 1, 1, 1) 
+                    node_tag += 1
+                    
+                # B. Daftarkan Node End (Cek duplikasi)
+                if end_coord not in node_map:
+                    node_map[end_coord] = node_tag
+                    ops.node(node_tag, *end_coord)
+                    node_tag += 1
+                
+                # C. Sambungkan Node menjadi Elemen Batang
+                nI = node_map[start_coord]
+                nJ = node_map[end_coord]
+                
+                # Deteksi arah elemen untuk Geometric Transformation
+                # Jika selisih elevasi Z tinggi, itu Kolom. Jika datar, itu Balok.
+                dz = abs(end_coord[2] - start_coord[2])
+                current_transf = transf_kolom if dz > 0.1 else transf_balok
+                
+                # Properti Penampang Sementara (Bisa di-upgrade untuk diekstrak dari IFC juga)
+                A = 0.16      # Luas (misal 400x400 mm)
+                Iy = 0.00213  # Inersia sumbu Y
+                Iz = 0.00213  # Inersia sumbu Z
+                J = 0.004     # Konstanta Torsi
+                
+                # Buat elemen Elastic Beam Column
+                ops.element('elasticBeamColumn', elem_tag, nI, nJ, A, E_beton, G_beton, J, Iy, Iz, current_transf)
+                elem_tag += 1
+
+            return True
+        except Exception as e:
+            st.error(f"❌ Gagal membangun model OpenSees dari IFC: {e}")
+            return False
     def build_simple_portal(self, bentang_x, bentang_y, tinggi_lantai, jumlah_lantai, fc):
         """
         Membangun model portal 3D sederhana.
