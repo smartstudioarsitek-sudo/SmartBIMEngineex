@@ -541,7 +541,7 @@ if selected_menu == "🤖 AI Assistant":
                     3. Format Laporan mengikuti standar Dokumen Lelang (Bab I, II, III...).
                     4. Tampilkan Tabel menggunakan st.table() atau st.dataframe().
                     """
-                    model = genai.GenerativeModel("gemini-robotics-er-1.5-preview",system_instruction=SYS)
+                    model = genai.GenerativeModel("gemini-flash-latest",system_instruction=SYS)
                     chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
                     
                     chat = model.start_chat(history=chat_hist)
@@ -950,6 +950,7 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     
                     with st.expander("Tabel Koordinat Kurva Hidrograf"):
                         st.dataframe(df_hss.set_index("Waktu (Jam)").T)
+
 
 
 
