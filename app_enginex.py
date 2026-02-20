@@ -476,13 +476,54 @@ if selected_menu == "🤖 AI Assistant":
                                 full_prompt.append(img_data) 
                                 
                             full_prompt[0] += f"\n\n[FILE PDF: {f.name}]\n{txt}"
-                                          
+
                     # 3. [BARU] HANDLING SPECIAL FILES (CAD/GIS) via LIBS_LOADER
                     elif f.name.endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip')):
                         with st.spinner(f"Menganalisis struktur file {f.name}..."):
-                            # Panggil modul libs_loader
                             text_data, img_data, _ = libs_loader.process_special_file(f)
-                            
+                            full_prompt[0] += f"\n\n[DATA FILE: {f.name}]\n{text_data}"
+                            if img_data:
+                                full_prompt.append(Image.open(img_data))
+                                with st.chat_message("user"):
+                                    st.image(img_data, caption=f"Visualisasi Data: {f.name}", use_container_width=True)
+
+                    # 4. [BARU] HANDLING FILE BIM (IFC)  <--- TAMBAHKAN BLOK INI
+                    elif f.name.endswith('.ifc'):
+                        with st.spinner(f"🏗️ Membedah hierarki dan elemen dari {f.name}..."):
+                            import tempfile
+                            try:
+                                # IfcOpenShell butuh file fisik, jadi kita simpan ke tempfile dulu
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+                                    tmp.write(f.getvalue())
+                                    tmp_path = tmp.name
+                                
+                                # Panggil Engine BIM yang sudah Kakak buat
+                                engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
+                                if engine_ifc.valid:
+                                    elements = engine_ifc.model.by_type("IfcProduct")
+                                    
+                                    # Rangkum data untuk dibaca AI
+                                    ifc_summary = f"Total Elemen Fisik: {len(elements)}\nSampel Elemen:\n"
+                                    
+                                    # Batasi 100 elemen pertama agar token AI tidak meledak
+                                    for el in elements[:100]:
+                                        vol = engine_ifc.get_element_quantity(el)
+                                        vol_text = f", Volume: {vol:.3f} m3" if vol > 0 else ""
+                                        ifc_summary += f"- [{el.is_a()}] ID: {el.GlobalId}, Nama: {el.Name}{vol_text}\n"
+                                        
+                                    if len(elements) > 100:
+                                        ifc_summary += f"\n... dan {len(elements) - 100} elemen lainnya disembunyikan untuk menghemat memori."
+                                        
+                                    # Suapi data ini ke prompt AI
+                                    full_prompt[0] += f"\n\n[FILE MODEL BIM IFC: {f.name}]\n{ifc_summary}"
+                                    
+                                    with st.chat_message("user"):
+                                        st.success(f"✅ Data IFC berhasil diekstrak! ({len(elements)} elemen)")
+                                else:
+                                    st.error("File IFC tidak valid atau rusak.")
+                            except Exception as e:
+                                st.error(f"Gagal memproses IFC: {e}")
+                                               
                             # Masukkan Teks Ringkasan ke Otak AI
                             full_prompt[0] += f"\n\n[DATA FILE: {f.name}]\n{text_data}"
                             
@@ -760,6 +801,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
