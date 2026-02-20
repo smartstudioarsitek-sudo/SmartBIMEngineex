@@ -24,11 +24,12 @@ def process_special_file(uploaded_file):
     try:
         # --- 1. HANDLING DXF (CAD) ---
         if filename.endswith(".dxf"):
-            # Baca DXF stream
-            uploaded_file.seek(0)
-            doc = ezdxf.readfile(io.TextWrapper(uploaded_file, encoding='utf-8') if isinstance(uploaded_file, io.StringIO) else io.BytesIO(uploaded_file.getvalue()))
-            msp = doc.modelspace()
-            
+            try:
+                # FIX: Gunakan .read() untuk membaca stream dari memory, BUKAN .readfile()
+                stream = io.StringIO(uploaded_file.getvalue().decode('utf-8', errors='ignore'))
+                doc = ezdxf.read(stream)
+                msp = doc.modelspace()
+                   
             # A. Ekstrak Teks (Mata AI membaca Tulisan)
             text_entities = []
             # Ambil MTEXT dan TEXT biasa
