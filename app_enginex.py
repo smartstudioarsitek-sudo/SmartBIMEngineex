@@ -624,6 +624,45 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
 
     # --- 2. DATA STRUKTUR ---
     st.divider()
+    # --- FITUR BARU: INTEGRASI BIM KE FEM ---
+    st.markdown("---")
+    st.subheader("🔗 Ekstraksi BIM (IFC -> OpenSees)")
+    ifc_fem_file = st.file_uploader("Upload File .ifc untuk dianalisis periode getarnya:", type=['ifc'], key="ifc_fem")
+    
+    if ifc_fem_file:
+        if st.button("🚀 Ekstrak Geometri & Hitung Getaran", type="primary", use_container_width=True):
+            import tempfile
+            
+            # 1. Parsing IFC
+            with st.spinner("1️⃣ Membaca File IFC..."):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+                    tmp.write(ifc_fem_file.getvalue())
+                    tmp_path = tmp.name
+                engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
+            
+            if engine_ifc.valid:
+                # 2. Ekstrak Garis As
+                with st.spinner("2️⃣ Mengekstrak Garis As (Centerline) Struktur..."):
+                    elements = engine_ifc.model.by_type("IfcProduct")
+                    analytical_data = []
+                    for el in elements:
+                        nodes = engine_ifc.get_analytical_nodes(el)
+                        if nodes: analytical_data.append(nodes)
+                        
+                st.success(f"✅ {len(analytical_data)} garis elemen struktur berhasil ditarik dari IFC!")
+                
+                # 3. Hitung Matriks dengan OpenSees
+                with st.spinner("3️⃣ Membangun Matriks Kekakuan & Menghitung Eigenvalue..."):
+                    engine_fem = libs_fem.OpenSeesEngine()
+                    success = engine_fem.build_model_from_ifc(analytical_data, fc_mutu=30)
+                    
+                    if success:
+                        df_modal = engine_fem.run_modal_analysis(num_modes=3)
+                        st.success("✅ Analisis Struktur Dinamis Selesai!")
+                        st.dataframe(df_modal, use_container_width=True)
+            else:
+                st.error("File IFC Rusak atau Tidak Valid.")
+    st.markdown("---")
     st.subheader("🏗️ Geometri Struktur Portal")
     
     c1, c2 = st.columns(2)
@@ -785,6 +824,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
