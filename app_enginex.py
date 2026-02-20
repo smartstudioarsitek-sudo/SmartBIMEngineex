@@ -668,6 +668,38 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
                     if success:
                         df_modal = engine_fem.run_modal_analysis(num_modes=3)
                         st.success("✅ Analisis Struktur Dinamis Selesai!")
+                        # --- TAMBAHAN KODE GRAFIK PLOTLY ---
+                        st.subheader("📈 Kurva Respons Spektrum & Posisi Mode Getar")
+                        
+                        # Membangun Kurva Respons Spektrum (Mengambil data 'hasil_gempa' dari input atas)
+                        T_vals = np.linspace(0, 4, 100)
+                        Sa_vals = []
+                        for t in T_vals:
+                            if t < hasil_gempa['T0']: val = hasil_gempa['SDS'] * (0.4 + 0.6*t/hasil_gempa['T0'])
+                            elif t < hasil_gempa['Ts']: val = hasil_gempa['SDS']
+                            elif t > 0: val = hasil_gempa['SD1'] / t
+                            else: val = 0
+                            Sa_vals.append(val)
+                            
+                        # Plot Kurva Utama
+                        fig_rsa = px.line(x=T_vals, y=Sa_vals, title=f"Respons Spektrum ({pilihan_kota} - {kode_situs})")
+                        fig_rsa.update_traces(line_color='#2563eb', line_width=3, fill='tozeroy', fillcolor='rgba(37, 99, 235, 0.1)')
+                        
+                        # Menancapkan Tiang Periode Getar (T) dari hasil Analisis IFC
+                        colors = ['#ef4444', '#f59e0b', '#10b981'] # Merah, Orange, Hijau
+                        for index, row in df_modal.iterrows():
+                            T_mode = row['Period (T) [detik]']
+                            fig_rsa.add_vline(
+                                x=T_mode, line_dash="dash", line_color=colors[index % 3], line_width=2,
+                                annotation_text=f"Mode {int(row['Mode'])} (T={T_mode}s)", 
+                                annotation_position="top right"
+                            )
+                                              
+                        fig_rsa.update_layout(xaxis_title="Periode T (detik)", yaxis_title="Percepatan Spektral Sa (g)")
+                        st.plotly_chart(fig_rsa, use_container_width=True)
+                        # -----------------------------------
+
+                        st.subheader("📊 Tabel Waktu Getar Alami (Eigenvalue)")
                         st.dataframe(df_modal, use_container_width=True)
             else:
                 st.error("File IFC Rusak atau Tidak Valid.")
@@ -833,6 +865,7 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+
 
 
 
