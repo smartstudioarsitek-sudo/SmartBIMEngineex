@@ -24,6 +24,7 @@ class Export_Engine:
     def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None):
         """
         Auto-Chain Excel Generator yang menerima DATA ASLI dari ekstraksi IFC.
+        Dilengkapi dengan Safety Net anti-crash jika data kosong.
         """
         output = BytesIO()
         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -45,7 +46,7 @@ class Export_Engine:
         ws_basic = workbook.add_worksheet('7. Basic Price')
 
         # =======================================================
-        # TAB 7: BASIC PRICE & TAB 4: AHSP (Sama seperti sebelumnya)
+        # TAB 7: BASIC PRICE & TAB 4: AHSP
         # =======================================================
         ws_basic.set_column('B:B', 30)
         ws_basic.write('A1', 'DAFTAR HARGA DASAR UPAH & MATERIAL', fmt_title)
@@ -77,32 +78,35 @@ class Export_Engine:
         ws_rab.write('A1', f'RENCANA ANGGARAN BIAYA (RAB) - {project_name.upper()}', fmt_title)
         for col, h in enumerate(['No', 'Elemen Struktur', 'Volume', 'Satuan', 'Harga Satuan (Rp)', 'Total Harga (Rp)']): ws_rab.write(2, col, h, fmt_header)
 
+        # [UPDATE ANTI-CRASH] Jika df_boq kosong (user belum upload IFC), buat 1 data dummy
+        if df_boq is None or df_boq.empty:
+            df_boq = pd.DataFrame([{"Kategori": "IfcColumn", "Nama": "Kolom K1 (Upload IFC untuk data asli)", "Volume": 64.0}])
+
         baris_terakhir_rab = 3
 
-        if df_boq is not None and not df_boq.empty:
-            for index, row in df_boq.iterrows():
-                row_excel = index + 3 # Mulai dari baris ke-4
-                
-                # Tulis Data Asli ke Tab BOQ
-                ws_boq.write(row_excel, 0, index + 1, fmt_border)
-                ws_boq.write(row_excel, 1, str(row['Kategori']), fmt_border)
-                ws_boq.write(row_excel, 2, str(row['Nama']), fmt_border)
-                ws_boq.write(row_excel, 3, float(row['Volume']), fmt_border)
-                
-                # Tulis Rumus Auto-Chain ke Tab RAB
-                ws_rab.write(row_excel, 0, index + 1, fmt_border)
-                ws_rab.write(row_excel, 1, f"Pengecoran {row['Nama']}", fmt_border)
-                
-                # Ambil Volume dari Tab BOQ
-                ws_rab.write_formula(row_excel, 2, f"='3. Backup BOQ'!D{row_excel+1}", fmt_border)
-                ws_rab.write(row_excel, 3, 'm3', fmt_border)
-                
-                # Ambil Harga Satuan dari Tab AHSP
-                ws_rab.write_formula(row_excel, 4, "='4. AHSP S2 30 2025'!F7", fmt_currency)
-                
-                # Kalikan Volume x Harga
-                ws_rab.write_formula(row_excel, 5, f"=C{row_excel+1}*E{row_excel+1}", fmt_currency)
-                baris_terakhir_rab = row_excel
+        for index, row in df_boq.iterrows():
+            row_excel = index + 3 # Mulai dari baris ke-4 (indeks 3 di xlsxwriter)
+            
+            # Tulis Data Asli ke Tab BOQ
+            ws_boq.write(row_excel, 0, index + 1, fmt_border)
+            ws_boq.write(row_excel, 1, str(row['Kategori']), fmt_border)
+            ws_boq.write(row_excel, 2, str(row['Nama']), fmt_border)
+            ws_boq.write(row_excel, 3, float(row['Volume']), fmt_border)
+            
+            # Tulis Rumus Auto-Chain ke Tab RAB
+            ws_rab.write(row_excel, 0, index + 1, fmt_border)
+            ws_rab.write(row_excel, 1, f"Pengecoran {row['Nama']}", fmt_border)
+            
+            # Ambil Volume dari Tab BOQ
+            ws_rab.write_formula(row_excel, 2, f"='3. Backup BOQ'!D{row_excel+1}", fmt_border)
+            ws_rab.write(row_excel, 3, 'm3', fmt_border)
+            
+            # Ambil Harga Satuan dari Tab AHSP
+            ws_rab.write_formula(row_excel, 4, "='4. AHSP S2 30 2025'!F7", fmt_currency)
+            
+            # Kalikan Volume x Harga
+            ws_rab.write_formula(row_excel, 5, f"=C{row_excel+1}*E{row_excel+1}", fmt_currency)
+            baris_terakhir_rab = row_excel
 
         # Total RAB
         ws_rab.write(baris_terakhir_rab + 1, 4, 'TOTAL BIAYA STRUKTUR', fmt_header)
