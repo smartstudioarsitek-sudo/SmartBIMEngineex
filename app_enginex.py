@@ -417,7 +417,6 @@ with st.sidebar:
             db.clear_chat(nama_proyek, st.session_state.current_expert_active)
             st.rerun()
        
-        )
         
 # ==========================================
 # 7. LOGIKA TAMPILAN UTAMA
@@ -1052,6 +1051,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
