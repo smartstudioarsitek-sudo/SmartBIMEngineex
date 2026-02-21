@@ -62,14 +62,31 @@ class BPS_DuckDB_Engine:
         # 2. Tarik dari API jika Cache kosong
         with st.spinner(f"📡 Mengunduh indeks harga dari server BPS/ESSH untuk wilayah {provinsi}..."):
             raw_data = self._fetch_stadata_mock(provinsi)
-            
             if raw_data["status"] == "OK":
                 # Konversi JSON ke DataFrame
                 df_new = pd.DataFrame(raw_data["data"])
-                df_new.rename(columns={'turvar_id': 'id_material', 'name': 'nama_material', 'price': 'harga_dasar'}, inplace=True)
-                df_new['provinsi'] = provinsi
+                
+                # [FIX]: Rename SEMUA kolom agar persis menjadi 6 kolom
+                df_new.rename(columns={
+                    'turvar_id': 'id_material', 
+                    'name': 'nama_material', 
+                    'unit': 'satuan',         # <--- ini yang tadi terlewat
+                    'price': 'harga_dasar',
+                    'region': 'provinsi'      # <--- mengubah region bawaan API jadi provinsi
+                }, inplace=True)
+                
                 df_new['last_updated'] = pd.Timestamp.now()
                 
+                # [FIX]: Kunci urutan kolom agar identik 100% dengan CREATE TABLE DuckDB
+                df_new = df_new[['id_material', 'nama_material', 'satuan', 'harga_dasar', 'provinsi', 'last_updated']]
+                
+                # 3. Injeksi ke DuckDB (Relational Algebra Operation)
+                self.con.register('df_view', df_new)
+                self.con.execute("INSERT INTO cache_harga_material SELECT * FROM df_view")
+                
+                return df_new
+                
+                         
                 # 3. Injeksi ke DuckDB (Relational Algebra Operation)
                 self.con.register('df_view', df_new)
                 self.con.execute("INSERT INTO cache_harga_material SELECT * FROM df_view")
