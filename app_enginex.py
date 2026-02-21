@@ -1028,21 +1028,76 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
 
 # ==========================================
+# ==========================================
 # 8. EXPORT 5D BIM (SAFE MODE)
 # Ditaruh di paling bawah agar membaca data IFC terbaru!
 # ==========================================
 with st.sidebar:
     st.markdown("---")
     st.markdown("### 📊 Export 5D BIM")
-    st.caption("Auto-Chain: Rekap, RAB, BOQ, AHSP, dll.")
+    st.caption("Ekstraksi BOQ IFC menjadi Excel 7 Tab.")
     
-    # Tarik data asli HANYA SETELAH semua proses di atas selesai
+    # 1. CARI FILE IFC DARI KOLOM UPLOAD DI ATAS
+    ifc_file_target = None
+    if uploaded_files:
+        for f in uploaded_files:
+            if f.name.lower().endswith('.ifc'):
+                ifc_file_target = f
+                break
+
+    # 2. TOMBOL KHUSUS EKSTRAKSI (TIDAK PERLU CHAT)
+    if ifc_file_target:
+        if st.button("🔄 1. Ekstrak Data IFC", use_container_width=True, type="secondary"):
+            with st.spinner("Menarik data 3D menjadi Volume..."):
+                import tempfile
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+                        tmp.write(ifc_file_target.getvalue())
+                        tmp_path = tmp.name
+
+                    engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
+                    if engine_ifc.valid:
+                        elements = engine_ifc.model.by_type("IfcProduct")
+                        data_boq_asli = []
+                        
+                        for el in elements:
+                            # Filter hanya elemen struktural fisik, buang elemen abstrak
+                            if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
+                                vol = engine_ifc.get_element_quantity(el)
+                                vol_final = round(vol, 3) if vol and vol > 0 else 1.0
+                                nama_el = el.Name if el.Name else f"Elemen_{el.GlobalId[:5]}"
+                                
+                                data_boq_asli.append({
+                                    "Kategori": el.is_a(),
+                                    "Nama": nama_el,
+                                    "Volume": vol_final
+                                })
+                                
+                        if len(data_boq_asli) > 0:
+                            st.session_state['real_boq_data'] = pd.DataFrame(data_boq_asli)
+                            st.success(f"✅ Sukses! {len(data_boq_asli)} Elemen Tersimpan di Memori.")
+                        else:
+                            st.error("⚠️ IFC terbaca, tapi tidak ada elemen fisik (Kolom/Balok/Pelat) yang ditemukan.")
+                    else:
+                        st.error("❌ File IFC Rusak atau Tidak Valid.")
+                except Exception as e:
+                    st.error(f"❌ Gagal Ekstrak: {e}")
+    else:
+        st.info("💡 Upload file .ifc di menu atas untuk mengaktifkan ekstraksi.")
+
+    # 3. TOMBOL DOWNLOAD EXCEL
     df_boq_aktual = st.session_state.get('real_boq_data', None)
     
+    # Indikator Visual agar Kakak tahu apakah data asli sudah siap
+    if df_boq_aktual is not None and not df_boq_aktual.empty:
+        st.caption(f"🟢 Ready: **{len(df_boq_aktual)} baris** data asli dari BIM.")
+    else:
+        st.caption("🔴 Status: Data Kosong / Dummy.")
+
     try:
         excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek, df_boq_aktual)
         st.download_button(
-            label="📥 Download Excel RAB (7 Tab)",
+            label="📥 2. Download Excel RAB (7 Tab)",
             data=excel_bytes,
             file_name=f"RAB_{nama_proyek.replace(' ', '_')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1051,6 +1106,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
