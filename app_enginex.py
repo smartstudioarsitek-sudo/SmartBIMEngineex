@@ -531,7 +531,20 @@ if selected_menu == "🤖 AI Assistant":
                                         vol = engine_ifc.get_element_quantity(el)
                                         vol_text = f", Volume: {vol:.3f} m3" if vol > 0 else ""
                                         ifc_summary += f"- [{el.is_a()}] ID: {el.GlobalId}, Nama: {el.Name}{vol_text}\n"
-                                        
+                                    
+                                    # --- [UPDATE] SIMPAN DATA ASLI UNTUK EXCEL ---
+                                    data_boq_asli = []
+                                    for el in elements:
+                                        vol = engine_ifc.get_element_quantity(el)
+                                        if vol > 0:
+                                            data_boq_asli.append({
+                                                "Kategori": el.is_a(),
+                                                "Nama": el.Name or "Elemen",
+                                                "Volume": round(vol, 3)
+                                            })
+                                    st.session_state['real_boq_data'] = pd.DataFrame(data_boq_asli)
+                                    # ---------------------------------------------
+                                    
                                     if len(elements) > 100:
                                         ifc_summary += f"\n... dan {len(elements) - 100} elemen lainnya disembunyikan untuk menghemat memori."
                                         
@@ -1026,6 +1039,7 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.plotly_chart(fig_pump, use_container_width=True)
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
+
 
 
 
