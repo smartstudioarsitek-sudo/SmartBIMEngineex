@@ -416,17 +416,25 @@ with st.sidebar:
         if st.button("🧹 Reset Chat"):
             db.clear_chat(nama_proyek, st.session_state.current_expert_active)
             st.rerun()
-        # --- TOMBOL UJI COBA EXCEL 7 TAB ---
+        # --- TOMBOL EXCEL 7 TAB (ANTI-BUG) ---
         st.markdown("### 📊 Export 5D BIM")
         st.caption("Auto-Chain: Rekap, RAB, BOQ, AHSP, dll.")
-        if st.button("📥 Download Excel RAB (7 Tab)", type="secondary"):
-            excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek)
-            st.download_button(
-                label="✅ Klik untuk Simpan File .xlsx",
-                data=excel_bytes,
-                file_name=f"RAB_{nama_proyek.replace(' ', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        
+        # Tarik data dari memori (jika ada)
+        df_boq_aktual = st.session_state.get('real_boq_data', None)
+        
+        # Langsung siapkan file Excelnya di latar belakang
+        excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek, df_boq_aktual)
+        
+        st.download_button(
+            label="📥 Download Excel RAB (7 Tab)",
+            data=excel_bytes,
+            file_name=f"RAB_{nama_proyek.replace(' ', '_')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            use_container_width=True
+        )
+        
 # ==========================================
 # 7. LOGIKA TAMPILAN UTAMA
 # ==========================================
@@ -1018,6 +1026,7 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.plotly_chart(fig_pump, use_container_width=True)
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
+
 
 
 
