@@ -1028,6 +1028,30 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
 
+# ==========================================
+# 8. EXPORT 5D BIM (SAFE MODE)
+# Ditaruh di paling bawah agar membaca data IFC terbaru!
+# ==========================================
+with st.sidebar:
+    st.markdown("---")
+    st.markdown("### 📊 Export 5D BIM")
+    st.caption("Auto-Chain: Rekap, RAB, BOQ, AHSP, dll.")
+    
+    # Tarik data asli HANYA SETELAH semua proses di atas selesai
+    df_boq_aktual = st.session_state.get('real_boq_data', None)
+    
+    try:
+        excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek, df_boq_aktual)
+        st.download_button(
+            label="📥 Download Excel RAB (7 Tab)",
+            data=excel_bytes,
+            file_name=f"RAB_{nama_proyek.replace(' ', '_')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            use_container_width=True
+        )
+    except Exception as e:
+        st.error(f"Gagal menyiapkan Excel: {e}")
 
 
 
