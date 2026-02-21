@@ -20,6 +20,7 @@ def get_working_model(system_instruction):
         "gemini-2.0-flash-exp",
         "gemini-1.5-pro",
         "gemini-1.5-flash" 
+        "gemini-pro" # Fallback terakhir jika API Key versi lama
     ]
     
     for model_name in models_to_try:
