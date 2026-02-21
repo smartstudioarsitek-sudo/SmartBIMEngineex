@@ -555,13 +555,17 @@ if selected_menu == "🤖 AI Assistant":
                     chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
                     
                     models_to_try = [
-                        "gemini-1.5-flash", 
-                        "gemini-1.5-pro", 
+                        "gemini-flash-latest",
+                        "gemini-2.5-flash-lite",
+                        "gemini-2.5-flash-image",
+                        "gemini-2.5-flash-preview",
+                        "gemini-2.5-flash-lite-preview",
                         "gemini-3-flash-preview",
-                        "Robotika Gemini- ER 1.5",
-                        "Gemini Robotics-ER 1.5",
                         "gemini-robotics-er-1.5-preview",
-                        "gemini-pro"
+                        "gemini-2.5-computer",
+                        "gemini-2.0-flash-exp",
+                        "gemini-1.5-pro",
+                        "gemini-1.5-flash"     
                     ]
                     
                     model = None
@@ -1018,6 +1022,7 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.plotly_chart(fig_pump, use_container_width=True)
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
+
 
 
 
