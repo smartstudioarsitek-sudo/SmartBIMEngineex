@@ -9,11 +9,17 @@ def get_working_model(system_instruction):
     Mencari versi model Gemini yang paling kompatibel dan tidak error.
     """
     models_to_try = [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
+        "gemini-flash-latest",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash-image",
+        "gemini-2.5-flash-preview",
+        "gemini-2.5-flash-lite-preview",
         "gemini-3-flash-preview",
         "gemini-robotics-er-1.5-preview",
-        "gemini-pro" # Fallback terakhir jika API Key versi lama
+        "gemini-2.5-computer",
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash" 
     ]
     
     for model_name in models_to_try:
