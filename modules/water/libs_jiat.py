@@ -95,4 +95,49 @@ class JIAT_Engine:
             "Head_Total_m": round(Head_Manometrik, 2),
             "Power_kW": round(Power_kW, 2),
             "Power_HP": round(Power_kW * 1.341, 2)
+            
+    def generate_pump_system_curve(self, Q_target_lps, H_statis, L_pipa, D_pipa_mm, C_hw=130):
+        """
+        [MODUL AUDIT TPA] Menghasilkan data untuk plotting Kurva Head-Discharge Pompa JIAT.
+        Mengkalibrasi perpotongan antara System Curve dan Pump Performance Curve.
+        """
+        # Buat array Debit (Q) dari 0 hingga 150% dari Q target untuk menggambar sumbu X
+        q_vals = np.linspace(0, Q_target_lps * 1.5, 50)
+        
+        h_sys = []
+        h_pump = []
+        
+        # 1. Menentukan Parameter Pompa Asumsi (Pump Performance Curve)
+        # H_pump = H_shutoff - K_pump * Q^2 (Karakteristik Sentrifugal)
+        H_shutoff = H_statis * 1.5 # Asumsi Head Buntu (Kran ditutup penuh)
+        
+        # Cari Friction Loss pada Q Target (Batas Luaran)
+        hf_target, _ = self.hitung_head_loss_pipa(L_pipa, D_pipa_mm, Q_target_lps, C_hw)
+        H_target_sys = H_statis + (hf_target * 1.1) # Ditambah 10% Minor Loss
+        
+        # Kalibrasi Konstanta Pompa agar kurva memotong persis sedikit di atas Q_target (Safety Margin 5%)
+        K_pump = (H_shutoff - (H_target_sys * 1.05)) / (Q_target_lps**2)
+        
+        # 2. Generasi Titik Koordinat Kurva
+        for q in q_vals:
+            # Hitung Kurva Sistem (Statis + Dinamis HW)
+            if q == 0:
+                hf = 0
+            else:
+                hf, _ = self.hitung_head_loss_pipa(L_pipa, D_pipa_mm, q, C_hw)
+            
+            hs = H_statis + (hf * 1.1)
+            h_sys.append(hs)
+            
+            # Hitung Kurva Kinerja Pompa
+            hp = H_shutoff - K_pump * (q**2)
+            h_pump.append(max(0, hp)) # Head tidak boleh negatif
+            
+        df_curve = pd.DataFrame({
+            "Debit (L/s)": q_vals,
+            "System Head (m)": h_sys,
+            "Pump Head (m)": h_pump
+        })
+        
+        return df_curve, H_target_sys
         }
