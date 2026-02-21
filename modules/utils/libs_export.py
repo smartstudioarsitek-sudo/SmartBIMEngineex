@@ -133,8 +133,78 @@ class Export_Engine:
         ws_rekap.write('B8', 'C. GRAND TOTAL (A + B)', fmt_header)
         ws_rekap.write_formula('C8', "=C6 + C7", fmt_currency_bold)
 
-        ws_smkk.write('A1', 'TAB SMKK & TKDN UNDER CONSTRUCTION', fmt_title)
-        ws_tkdn.write('A1', 'TAB SMKK & TKDN UNDER CONSTRUCTION', fmt_title)
+        # =======================================================
+        # TAB 5: SMKK (Sistem Manajemen Keselamatan Konstruksi)
+        # =======================================================
+        ws_smkk.set_column('B:B', 45)
+        ws_smkk.write('A1', 'RENCANA BIAYA PENERAPAN SMKK (K3)', fmt_title)
+        
+        headers_smkk = ['No', 'Uraian Pekerjaan K3', 'Volume', 'Satuan', 'Harga Satuan (Rp)', 'Total Harga (Rp)']
+        for col, h in enumerate(headers_smkk): ws_smkk.write(2, col, h, fmt_header)
+        
+        # Daftar Item Standar SMKK PUPR
+        smkk_items = [
+            ("Penyiapan RKK (Rencana Keselamatan Konstruksi)", 1, "Set", 500000),
+            ("Topi Pelindung (Safety Helmet)", 20, "Bh", 65000),
+            ("Rompi Keselamatan (Safety Vest)", 20, "Bh", 45000),
+            ("Sepatu Keselamatan (Safety Shoes)", 20, "Psg", 250000),
+            ("Rambu Peringatan / Barikade", 5, "Set", 150000),
+            ("BPJS Ketenagakerjaan & Kesehatan", 1, "Ls", 2500000)
+        ]
+        
+        row_smkk = 3
+        for idx, (item, vol, sat, hrg) in enumerate(smkk_items):
+            ws_smkk.write(row_smkk, 0, idx + 1, fmt_border)
+            ws_smkk.write(row_smkk, 1, item, fmt_border)
+            ws_smkk.write(row_smkk, 2, vol, fmt_border)
+            ws_smkk.write(row_smkk, 3, sat, fmt_border)
+            ws_smkk.write(row_smkk, 4, hrg, fmt_currency)
+            # Rumus Excel: Volume x Harga Satuan
+            ws_smkk.write_formula(row_smkk, 5, f"=C{row_smkk+1}*E{row_smkk+1}", fmt_currency)
+            row_smkk += 1
+            
+        ws_smkk.write(row_smkk, 1, 'TOTAL BIAYA SMKK', fmt_header)
+        ws_smkk.write_formula(row_smkk, 5, f"=SUM(F4:F{row_smkk})", fmt_currency_bold)
+
+        # =======================================================
+        # TAB 6: TKDN (Tingkat Komponen Dalam Negeri)
+        # =======================================================
+        ws_tkdn.set_column('B:B', 30)
+        ws_tkdn.set_column('C:E', 22)
+        ws_tkdn.write('A1', 'PERHITUNGAN TINGKAT KOMPONEN DALAM NEGERI (TKDN)', fmt_title)
+        
+        headers_tkdn = ['No', 'Kategori Komponen', 'KDN (Dalam Negeri)', 'KLN (Luar Negeri)', 'Total Biaya (Rp)']
+        for col, h in enumerate(headers_tkdn): ws_tkdn.write(2, col, h, fmt_header)
+        
+        # 1. Komponen Material (Mengambil data Total RAB dari Tab 2)
+        ws_tkdn.write('A4', 1, fmt_border)
+        ws_tkdn.write('B4', 'Bahan / Material Struktur', fmt_border)
+        
+        # SUNTIKAN RUMUS LINTAS TAB: Ambil Total RAB
+        ws_tkdn.write_formula('E4', f"='2. RAB'!F{baris_terakhir_rab + 2}", fmt_currency) 
+        # Asumsi 85% Material Lokal, 15% Material Impor
+        ws_tkdn.write_formula('C4', "=E4 * 0.85", fmt_currency) 
+        ws_tkdn.write_formula('D4', "=E4 * 0.15", fmt_currency) 
+        
+        # 2. Komponen Upah/Alat (Dummy Data Terpisah)
+        ws_tkdn.write('A5', 2, fmt_border)
+        ws_tkdn.write('B5', 'Tenaga Kerja & Upah', fmt_border)
+        ws_tkdn.write('E5', 50000000, fmt_currency) # Asumsi Upah
+        ws_tkdn.write_formula('C5', "=E5 * 1.0", fmt_currency) # 100% Tenaga Kerja Lokal
+        ws_tkdn.write('D5', 0, fmt_currency)
+        
+        # Total dan Persentase
+        ws_tkdn.write(5, 1, 'TOTAL', fmt_header)
+        ws_tkdn.write_formula(5, 2, "=SUM(C4:C5)", fmt_currency_bold)
+        ws_tkdn.write_formula(5, 3, "=SUM(D4:D5)", fmt_currency_bold)
+        ws_tkdn.write_formula(5, 4, "=SUM(E4:E5)", fmt_currency_bold)
+        
+        # Format Persentase Khusus
+        fmt_percent = workbook.add_format({'num_format': '0.00" %"', 'bold': True, 'border': 1, 'bg_color': '#D1D5DB', 'align': 'center'})
+        ws_tkdn.write(7, 1, 'NILAI TKDN PROYEK (%) =', fmt_header)
+        # Rumus TKDN: (Total KDN / Total Biaya Keseluruhan) x 100
+        ws_tkdn.write_formula(7, 2, "=(C6/E6)*100", fmt_percent)
 
         workbook.close()
         return output.getvalue()
+
