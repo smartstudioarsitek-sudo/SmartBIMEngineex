@@ -44,17 +44,20 @@ class Export_Engine:
         ws_tkdn = workbook.add_worksheet('6. TKDN')
         ws_basic = workbook.add_worksheet('7. Basic Price')
 
-        # =======================================================
-        # TAB 7: BASIC PRICE (DINAMIS DARI BPS / DUCKDB)
+       # =======================================================
+        # TAB 7: BASIC PRICE (DINAMIS DARI ESSH & BPS)
         # =======================================================
         ws_basic.set_column('B:B', 30)
-        ws_basic.write('A1', 'DAFTAR HARGA DASAR UPAH & MATERIAL (API BPS/ESSH)', fmt_title)
-        for col, h in enumerate(['No', 'Uraian', 'Satuan', 'Harga Dasar (Rp)']): 
+        ws_basic.set_column('E:E', 25) # Melebarkan kolom Sumber Data
+        
+        ws_basic.write('A1', 'DAFTAR HARGA DASAR UPAH & MATERIAL (HIERARKI REGULASI)', fmt_title)
+        
+        # [UPDATE] Tambah Header 'Sumber Data'
+        for col, h in enumerate(['No', 'Uraian', 'Satuan', 'Harga Dasar (Rp)', 'Sumber Data']): 
             ws_basic.write(2, col, h, fmt_header)
         
         last_row_basic = 3
         
-        # [INJEKSI DATA API]
         if df_basic_price is not None and not df_basic_price.empty:
             for index, row in df_basic_price.iterrows():
                 row_excel = index + 3
@@ -62,15 +65,15 @@ class Export_Engine:
                 ws_basic.write(row_excel, 1, str(row.get('nama_material', '-')), fmt_border)
                 ws_basic.write(row_excel, 2, str(row.get('satuan', '-')), fmt_border)
                 ws_basic.write(row_excel, 3, float(row.get('harga_dasar', 0)), fmt_currency)
+                # [UPDATE] Cetak Sumber Harga ke Kolom E
+                ws_basic.write(row_excel, 4, str(row.get('sumber', 'Data Lokal')), fmt_border)
                 last_row_basic = row_excel
         else:
-            # Fallback jika API gagal / tidak ada internet
             ws_basic.write('A4', 1, fmt_border); ws_basic.write('B4', 'Semen Portland', fmt_border)
             ws_basic.write('C4', 'kg', fmt_border); ws_basic.write('D4', 1500, fmt_currency)
-            ws_basic.write('A5', 2, fmt_border); ws_basic.write('B5', 'Pekerja (Tukang)', fmt_border)
-            ws_basic.write('C5', 'OH', fmt_border); ws_basic.write('D5', 150000, fmt_currency)
+            ws_basic.write('E4', 'Default Dummy', fmt_border)
             last_row_basic = 4
-
+        
         # =======================================================
         # TAB 4: AHSP (MENGGUNAKAN VLOOKUP CERDAS)
         # =======================================================
@@ -236,5 +239,6 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
 
