@@ -30,6 +30,7 @@ shapely
 fiona
 gpxpy
 pdfplumber
+tabulate
 
 
 
