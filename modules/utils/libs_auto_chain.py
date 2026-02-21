@@ -5,33 +5,47 @@ from modules.utils import prompt_registry
 
 def get_working_model(system_instruction):
     """
-    [FITUR BARU] AUTO-FALLBACK MODEL
-    Mencari versi model Gemini yang paling kompatibel dan tidak error.
+    [FITUR BARU] AUTO-FALLBACK MODEL TINGKAT TINGGI
+    Tidak lagi menebak nama, melainkan menarik daftar resmi dari server Google (ListModels).
     """
-    models_to_try = [
-        "gemini-flash-latest",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-flash-image",
-        "gemini-2.5-flash-preview",
-        "gemini-2.5-flash-lite-preview",
-        "gemini-3-flash-preview",
-        "gemini-robotics-er-1.5-preview",
-        "gemini-2.5-computer",
-        "gemini-2.0-flash-exp",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash" 
-        "gemini-pro" # Fallback terakhir jika API Key versi lama
-    ]
-    
-    for model_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(model_name, system_instruction=system_instruction)
-            # Uji coba instansiasi (jika gagal akan lari ke except)
-            return model, model_name
-        except:
-            continue
+    try:
+        # 1. Tarik daftar model yang BENAR-BENAR tersedia untuk API Key ini
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # 2. Urutan prioritas kita (Cari yang paling pintar/cepat)
+        priorities = [
+            "models/gemini-1.5-flash",
+            "models/gemini-1.5-pro",
+            "models/gemini-1.5-flash-latest",
+            "models/gemini-pro"
+        ]
+        
+        # 3. Cocokkan prioritas dengan daftar dari Google
+        selected_model = None
+        for p in priorities:
+            if p in available_models:
+                selected_model = p.replace("models/", "") # Bersihkan nama
+                break
+                
+        # 4. Fallback Darurat: Jika prioritas tidak ada, ambil model apa saja yang bisa teks
+        if not selected_model:
+            for v in available_models:
+                if "gemini" in v and "vision" not in v:
+                    selected_model = v.replace("models/", "")
+                    break
+                    
+        # 5. Eksekusi Model
+        if selected_model:
+            model = genai.GenerativeModel(selected_model, system_instruction=system_instruction)
+            return model, selected_model
+        else:
+            raise Exception("API Key Anda tidak memiliki akses ke model teks Gemini.")
             
-    raise Exception("Tidak ada versi Gemini yang kompatibel dengan API Key Anda.")
+    except Exception as e:
+        raise Exception(f"Gagal memverifikasi API Key ke Google: {str(e)}")
 
 def render_auto_chain_panel(module_category, persona_name):
     """
