@@ -107,7 +107,11 @@ sys.modules['libs_auto_chain'] = libs_auto_chain # Register Chain Baru
 if has_geotek:
     sys.modules['libs_geoteknik'] = libs_geoteknik
     sys.modules['libs_pondasi'] = libs_pondasi
-
+    try:
+        from modules.cost import libs_bps
+        sys.modules['libs_bps'] = libs_bps
+    except ImportError:
+        pass
 # ==========================================
 # 2. KONFIGURASI HALAMAN & STYLE
 # ==========================================
@@ -1238,6 +1242,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
