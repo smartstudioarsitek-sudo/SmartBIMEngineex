@@ -374,6 +374,7 @@ with st.sidebar:
     )
     # [BUG FIX: TAMBAHKAN BARIS INI] Pengaman agar aplikasi tidak crash saat pindah tab
     uploaded_files = None   
+    nama_proyek = "Proyek_Aktif"  # <--- [TAMBAHKAN BARIS INI]
     st.divider()
 
     if selected_menu == "🤖 AI Assistant":
@@ -1180,6 +1181,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
