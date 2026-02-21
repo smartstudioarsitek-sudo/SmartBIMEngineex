@@ -551,7 +551,7 @@ if selected_menu == "🤖 AI Assistant":
                     3. Format Laporan mengikuti standar Dokumen Lelang (Bab I, II, III...).
                     4. Tampilkan Tabel menggunakan st.table() atau st.dataframe().
                     """
-                    model = genai.GenerativeModel("gemini-flash-latest",system_instruction=SYS)
+                    model = genai.GenerativeModel("gemini-1.5-pro-latest",system_instruction=SYS)
                     chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
                     
                     chat = model.start_chat(history=chat_hist)
@@ -988,6 +988,7 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.plotly_chart(fig_pump, use_container_width=True)
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
+
 
 
 
