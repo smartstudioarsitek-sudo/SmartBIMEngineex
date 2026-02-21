@@ -372,7 +372,8 @@ with st.sidebar:
         ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur", "🌊 Analisis Hidrologi", "📑 Laporan RAB 5D"],
         label_visibility="collapsed"
     )
-        
+    # [BUG FIX: TAMBAHKAN BARIS INI] Pengaman agar aplikasi tidak crash saat pindah tab
+    uploaded_files = None   
     st.divider()
 
     if selected_menu == "🤖 AI Assistant":
@@ -1179,6 +1180,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
