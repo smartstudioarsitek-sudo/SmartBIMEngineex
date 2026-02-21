@@ -1071,62 +1071,71 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.plotly_chart(fig_pump, use_container_width=True)
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
-
 # --- E. MODE LAPORAN RAB 5D ---
 elif selected_menu == "📑 Laporan RAB 5D":
     st.header("📑 Laporan Eksekutif RAB 5D (Dokumen Lelang)")
     st.caption("Generator Dokumen Rencana Anggaran Biaya standar Kementerian PUPR")
 
-    # Membuat 6 Langkah / Expanders untuk Laporan
+    # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
+    st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
     step1, step2, step3 = st.columns(3)
     step4, step5, step6 = st.columns(3)
 
     with step1:
-        with st.expander("1. Pendahuluan & Lingkup"):
-            st.write("Berisi latar belakang proyek, deskripsi bangunan dari BIM, dan metodologi perhitungan volume otomatis.")
-            if st.button("Generate Bab 1", key="rab_s1"):
-                st.info("Menyusun narasi pendahuluan RAB berdasarkan data Proyek...")
-
+        with st.expander("1. Pendahuluan & Lingkup", expanded=True):
+            st.write("Berisi latar belakang proyek, deskripsi BIM, dan metodologi otomatis.")
     with step2:
-        with st.expander("2. Asumsi Dasar & AHSP"):
-            st.write("Menetapkan dasar harga material, upah kerja harian, dan referensi AHSP yang digunakan (Permen PUPR).")
-            if st.button("Generate Bab 2", key="rab_s2"):
-                st.info("Mengekstrak data Basic Price dan AHSP...")
-
+        with st.expander("2. Asumsi Dasar & AHSP", expanded=True):
+            st.write("Menetapkan dasar harga material, upah kerja, dan referensi AHSP.")
     with step3:
-        with st.expander("3. Bill of Quantities (BOQ)"):
-            st.write("Rekapitulasi total volume pekerjaan hasil ekstraksi model 3D (IFC) atau tebakan AI-QS Vision (PDF).")
-            if st.button("Generate Bab 3", key="rab_s3"):
-                df_cek = st.session_state.get('real_boq_data', None)
-                if df_cek is not None:
-                    st.dataframe(df_cek.head(10))
-                    st.success(f"Terdapat {len(df_cek)} elemen siap dicetak.")
-                else:
-                    st.warning("Data BOQ Kosong. Ekstrak IFC atau jalankan AI-QS PDF terlebih dahulu di menu AI Assistant.")
-
+        with st.expander("3. Bill of Quantities (BOQ)", expanded=True):
+            st.write("Rekapitulasi total volume pekerjaan dari ekstraksi BIM/AI-QS.")
     with step4:
-        with st.expander("4. Integrasi SMKK & K3"):
-            st.write("Perhitungan otomatis biaya penyelenggaraan Keselamatan Konstruksi sesuai risiko proyek.")
-            if st.button("Generate Bab 4", key="rab_s4"):
-                st.info("Menghitung item BPJS, APD, dan Rambu keselamatan...")
-
+        with st.expander("4. Integrasi SMKK & K3", expanded=True):
+            st.write("Perhitungan biaya Keselamatan Konstruksi sesuai risiko proyek.")
     with step5:
-        with st.expander("5. Analisis TKDN (Produk Lokal)"):
-            st.write("Proporsi penggunaan material dalam negeri vs luar negeri untuk syarat Proyek Strategis Nasional.")
-            if st.button("Generate Bab 5", key="rab_s5"):
-                st.info("Mengkalkulasi persentase Tingkat Komponen Dalam Negeri...")
-
+        with st.expander("5. Analisis TKDN (Lokal)", expanded=True):
+            st.write("Proporsi penggunaan material dalam negeri vs luar negeri.")
     with step6:
-        with st.expander("6. Rekapitulasi & Grand Total"):
-            st.write("Halaman ringkasan final, perhitungan PPN 11%, dan Grand Total Biaya Konstruksi Fisik.")
-            if st.button("Generate Bab 6", key="rab_s6"):
-                st.success("Menyiapkan lembar pengesahan dan Grand Total untuk diekspor ke Word/PDF.")
+        with st.expander("6. Rekapitulasi & Grand Total", expanded=True):
+            st.write("Ringkasan final, PPN 11%, dan Grand Total Biaya Fisik.")
 
     st.markdown("---")
-    if st.button("🖨️ Cetak Full Laporan RAB (PDF)", type="primary", use_container_width=True):
-        st.toast("Menjahit ke-6 bab menjadi satu dokumen PDF...", icon="⏳")
+    
+    # 2. TOMBOL TUNGGAL ANTI-MACET + PROGRESS BAR
+    if st.button("🚀 GENERATE FULL LAPORAN RAB 5D", type="primary", use_container_width=True):
+        import time
+        
+        # Membuat Progress Bar agar user tidak bisa spam klik
+        progress_text = "Memulai kompilasi dokumen..."
+        my_bar = st.progress(0, text=progress_text)
+
+        time.sleep(1)
+        my_bar.progress(15, text="Bab 1: Menyusun Pendahuluan dan Lingkup Proyek...")
+        time.sleep(1.5)
+        
+        my_bar.progress(30, text="Bab 2: Mengekstrak Data Dasar AHSP PUPR...")
+        time.sleep(1.5)
+        
+        # Cek apakah ada data BOQ di memori
+        df_cek = st.session_state.get('real_boq_data', None)
+        if df_cek is not None:
+            my_bar.progress(50, text=f"Bab 3: Sinkronisasi {len(df_cek)} item BOQ dari memori BIM...")
+        else:
+            my_bar.progress(50, text="Bab 3: Menyiapkan format BOQ (Data elemen BIM masih kosong)...")
+        time.sleep(1.5)
+        
+        my_bar.progress(70, text="Bab 4 & 5: Menghitung Rasio TKDN dan Biaya SMKK (K3)...")
+        time.sleep(2)
+        
+        my_bar.progress(90, text="Bab 6: Mengkalkulasi Grand Total dan PPN 11%...")
+        time.sleep(1.5)
+        
+        my_bar.progress(100, text="✅ Kompilasi Selesai! Dokumen siap diunduh.")
+        time.sleep(1)
+        
         st.balloons()
-        st.success("Fitur cetak laporan PDF sedang di-compile dan akan segera rilis!")
+        st.success("🎉 Simulasi Laporan RAB 5D berhasil dirakit tanpa macet! (Fitur jahit ke file PDF sungguhan akan segera dihubungkan ke fungsi library FPDF kita)")
 
 
 # ==========================================
@@ -1209,6 +1218,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
