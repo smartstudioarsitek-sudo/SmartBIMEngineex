@@ -551,9 +551,36 @@ if selected_menu == "🤖 AI Assistant":
                     3. Format Laporan mengikuti standar Dokumen Lelang (Bab I, II, III...).
                     4. Tampilkan Tabel menggunakan st.table() atau st.dataframe().
                     """
-                    model = genai.GenerativeModel("gemini-flash-latest",system_instruction=SYS)
+                    # --- [FITUR BARU] AUTO-FALLBACK MODEL UNTUK CHAT UTAMA ---
                     chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
                     
+                    models_to_try = [
+                        "gemini-1.5-flash-latest", 
+                        "gemini-1.5-pro-latest", 
+                        "gemini-1.5-flash", 
+                        "gemini-pro"
+                    ]
+                    
+                    model = None
+                    chat = None
+                    used_model = ""
+                    
+                    for m_name in models_to_try:
+                        try:
+                            # Coba inisialisasi model
+                            model = genai.GenerativeModel(m_name, system_instruction=SYS)
+                            # Coba buat sesi chat (Jika model tidak valid di API version ini, dia akan error dan pindah ke 'except')
+                            chat = model.start_chat(history=chat_hist)
+                            used_model = m_name
+                            break # Jika sukses, hentikan pencarian (keluar dari loop)
+                        except:
+                            continue # Jika gagal, coba model berikutnya di daftar
+                            
+                    if chat is None:
+                        st.error("🚨 API Key Anda tidak mengenali versi Gemini yang tersedia. Coba perbarui API Key.")
+                        st.stop()
+                        
+                    # ---------------------------------------------------------                    
                     chat = model.start_chat(history=chat_hist)
                     response = chat.send_message(full_prompt)
                     
@@ -988,6 +1015,7 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.plotly_chart(fig_pump, use_container_width=True)
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
+
 
 
 
