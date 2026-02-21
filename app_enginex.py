@@ -601,6 +601,7 @@ if selected_menu == "🤖 AI Assistant":
                     response = chat.send_message(full_prompt)
 
                     # --- [UPGRADE: HITL] JARING PENANGKAP AI-QS VISION ---
+                    import json
                     boq_match = re.search(r'```json\n(.*?"Kategori".*?)\n```', response.text, re.DOTALL | re.IGNORECASE)
                     if boq_match:
                         try:
@@ -608,34 +609,12 @@ if selected_menu == "🤖 AI Assistant":
                             boq_list = json.loads(json_str)
                             if isinstance(boq_list, list) and len(boq_list) > 0 and "Kategori" in boq_list[0]:
                                 df_ai = pd.DataFrame(boq_list)
-                                
                                 # Simpan sementara untuk direview
                                 st.session_state['draft_boq_data'] = df_ai
                                 st.success(f"🎯 [AI-QS VISION] Menemukan {len(boq_list)} item pekerjaan. Menunggu Validasi (HITL)...")
                         except Exception as e:
                             st.warning(f"AI mencoba membuat tabel BOQ, tapi format JSON meleset: {e}")
-
-        # --- RENDER TABEL VALIDASI (Di Luar Chat Bubble) ---
-        if 'draft_boq_data' in st.session_state and not st.session_state['draft_boq_data'].empty:
-            st.markdown("### 🕵️ Validasi Ekstraksi AI (Human-in-the-Loop)")
-            st.info("⚠️ Silakan periksa hasil ekstraksi Vision LLM. Anda dapat mengedit nama, kategori, atau volume secara manual sebelum masuk ke Engine RAB.")
-            
-            # Data Editor Interaktif
-            edited_df = st.data_editor(
-                st.session_state['draft_boq_data'],
-                num_rows="dynamic",
-                use_container_width=True,
-                key="hitl_editor"
-            )
-            
-            if st.button("✅ Setujui & Masukkan ke Memori RAB", type="primary"):
-                st.session_state['real_boq_data'] = edited_df
-                # Bersihkan draft setelah disetujui
-                st.session_state['draft_boq_data'] = pd.DataFrame()
-                st.success("Data divalidasi dan terkunci untuk ekspor 7-Tab Excel!")
-                st.rerun()
-                    
-                    
+                            
                     parts = re.split(r"(```python.*?```)", response.text, flags=re.DOTALL)
                     for part in parts:
                         if part.startswith("```python"):
@@ -650,16 +629,35 @@ if selected_menu == "🤖 AI Assistant":
                     
                     # Export Button (Gov Standard)
                     st.markdown("---")
-                    # Menggunakan libs_pdf yang sudah diupgrade untuk hasil lebih bagus
                     try:
                         pdf_bytes = libs_pdf.create_pdf(response.text, title="CHAT LOG REPORT")
                     except:
-                        pdf_bytes = create_pdf(response.text) # Fallback ke fungsi lokal jika libs_pdf bermasalah
+                        pdf_bytes = create_pdf(response.text)
                         
                     if pdf_bytes: st.download_button("📄 Download Laporan (SIMBG Ready)", pdf_bytes, "Laporan_Teknis.pdf")
                     
                 except Exception as e:
                     st.error(f"Error: {e}")
+
+    # --- RENDER TABEL VALIDASI HITL (Di Luar Try-Except & Chat Bubble) ---
+    if 'draft_boq_data' in st.session_state and not st.session_state['draft_boq_data'].empty:
+        st.markdown("### 🕵️ Validasi Ekstraksi AI (Human-in-the-Loop)")
+        st.info("⚠️ Silakan periksa hasil ekstraksi Vision LLM. Anda dapat mengedit data secara manual sebelum masuk ke RAB.")
+        
+        edited_df = st.data_editor(
+            st.session_state['draft_boq_data'],
+            num_rows="dynamic",
+            use_container_width=True,
+            key="hitl_editor"
+        )
+        
+        if st.button("✅ Setujui & Masukkan ke Memori RAB", type="primary"):
+            st.session_state['real_boq_data'] = edited_df
+            st.session_state['draft_boq_data'] = pd.DataFrame()
+            st.success("Data divalidasi dan terkunci untuk ekspor 7-Tab Excel!")
+            st.rerun()
+
+  
                     
     # ==========================================
     # MODUL AUTO-CHAIN GENERATOR (INTEGRATED)
@@ -1242,6 +1240,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
