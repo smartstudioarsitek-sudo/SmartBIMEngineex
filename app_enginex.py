@@ -594,7 +594,23 @@ if selected_menu == "🤖 AI Assistant":
                     # ---------------------------------------------------------               
                     chat = model.start_chat(history=chat_hist)
                     response = chat.send_message(full_prompt)
-                    
+
+                    # --- [FITUR BARU] JARING PENANGKAP AI-QS UNTUK PDF/DXF ---
+                    # Jika AI mengeluarkan tabel JSON format BOQ, langsung tangkap ke Excel!
+                    import json
+                    boq_match = re.search(r'```json\n(.*?"Kategori".*?)\n```', response.text, re.DOTALL | re.IGNORECASE)
+                    if boq_match:
+                        try:
+                            # Bersihkan dan ubah teks AI menjadi Data Tabel Pandas
+                            json_str = boq_match.group(1)
+                            boq_list = json.loads(json_str)
+                            
+                            # Cek validitas format
+                            if isinstance(boq_list, list) and len(boq_list) > 0 and "Kategori" in boq_list[0]:
+                                st.session_state['real_boq_data'] = pd.DataFrame(boq_list)
+                                st.success(f"🎯 [AI-QS VISION] Berhasil mengestimasi {len(boq_list)} item pekerjaan dari gambar 2D! Data siap diekspor ke Excel 7 Tab.")
+                        except Exception as e:
+                            st.warning(f"AI mencoba membuat tabel BOQ, tapi format JSON meleset: {e}")
                     parts = re.split(r"(```python.*?```)", response.text, flags=re.DOTALL)
                     for part in parts:
                         if part.startswith("```python"):
@@ -1106,6 +1122,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
