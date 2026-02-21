@@ -366,14 +366,13 @@ with st.sidebar:
     render_project_file_manager()
 
     st.divider()
-
     # 3. NAVIGASI MENU
     selected_menu = st.radio(
         "Pilih Modul:", 
-        ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur","🌊 Analisis Hidrologi"],
+        ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur", "🌊 Analisis Hidrologi", "📑 Laporan RAB 5D"],
         label_visibility="collapsed"
     )
-    
+        
     st.divider()
 
     if selected_menu == "🤖 AI Assistant":
@@ -1043,7 +1042,65 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
 
+# --- E. MODE LAPORAN RAB 5D ---
+elif selected_menu == "📑 Laporan RAB 5D":
+    st.header("📑 Laporan Eksekutif RAB 5D (Dokumen Lelang)")
+    st.caption("Generator Dokumen Rencana Anggaran Biaya standar Kementerian PUPR")
+
+    # Membuat 6 Langkah / Expanders untuk Laporan
+    step1, step2, step3 = st.columns(3)
+    step4, step5, step6 = st.columns(3)
+
+    with step1:
+        with st.expander("1. Pendahuluan & Lingkup"):
+            st.write("Berisi latar belakang proyek, deskripsi bangunan dari BIM, dan metodologi perhitungan volume otomatis.")
+            if st.button("Generate Bab 1", key="rab_s1"):
+                st.info("Menyusun narasi pendahuluan RAB berdasarkan data Proyek...")
+
+    with step2:
+        with st.expander("2. Asumsi Dasar & AHSP"):
+            st.write("Menetapkan dasar harga material, upah kerja harian, dan referensi AHSP yang digunakan (Permen PUPR).")
+            if st.button("Generate Bab 2", key="rab_s2"):
+                st.info("Mengekstrak data Basic Price dan AHSP...")
+
+    with step3:
+        with st.expander("3. Bill of Quantities (BOQ)"):
+            st.write("Rekapitulasi total volume pekerjaan hasil ekstraksi model 3D (IFC) atau tebakan AI-QS Vision (PDF).")
+            if st.button("Generate Bab 3", key="rab_s3"):
+                df_cek = st.session_state.get('real_boq_data', None)
+                if df_cek is not None:
+                    st.dataframe(df_cek.head(10))
+                    st.success(f"Terdapat {len(df_cek)} elemen siap dicetak.")
+                else:
+                    st.warning("Data BOQ Kosong. Ekstrak IFC atau jalankan AI-QS PDF terlebih dahulu di menu AI Assistant.")
+
+    with step4:
+        with st.expander("4. Integrasi SMKK & K3"):
+            st.write("Perhitungan otomatis biaya penyelenggaraan Keselamatan Konstruksi sesuai risiko proyek.")
+            if st.button("Generate Bab 4", key="rab_s4"):
+                st.info("Menghitung item BPJS, APD, dan Rambu keselamatan...")
+
+    with step5:
+        with st.expander("5. Analisis TKDN (Produk Lokal)"):
+            st.write("Proporsi penggunaan material dalam negeri vs luar negeri untuk syarat Proyek Strategis Nasional.")
+            if st.button("Generate Bab 5", key="rab_s5"):
+                st.info("Mengkalkulasi persentase Tingkat Komponen Dalam Negeri...")
+
+    with step6:
+        with st.expander("6. Rekapitulasi & Grand Total"):
+            st.write("Halaman ringkasan final, perhitungan PPN 11%, dan Grand Total Biaya Konstruksi Fisik.")
+            if st.button("Generate Bab 6", key="rab_s6"):
+                st.success("Menyiapkan lembar pengesahan dan Grand Total untuk diekspor ke Word/PDF.")
+
+    st.markdown("---")
+    if st.button("🖨️ Cetak Full Laporan RAB (PDF)", type="primary", use_container_width=True):
+        st.toast("Menjahit ke-6 bab menjadi satu dokumen PDF...", icon="⏳")
+        st.balloons()
+        st.success("Fitur cetak laporan PDF sedang di-compile dan akan segera rilis!")
+
+
 # ==========================================
+# 8. EXPORT 5D BIM (SAFE MODE)
 # ==========================================
 # 8. EXPORT 5D BIM (SAFE MODE)
 # Ditaruh di paling bawah agar membaca data IFC terbaru!
@@ -1122,6 +1179,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
