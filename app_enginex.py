@@ -832,124 +832,153 @@ elif selected_menu == "🏗️ Audit Struktur":
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
 
-# --- D. MODE ANALISIS HIDROLOGI (SNI 2415:2016) ---
+# --- D. MODE ANALISIS HIDROLOGI & JIAT (SNI 2415 & KP-01) ---
 elif selected_menu == "🌊 Analisis Hidrologi":
-    st.header("🌊 Analisis Hidrologi & SDA")
-    st.markdown("Evaluasi Debit Banjir Rencana (SNI 2415:2016) menggunakan **Log Pearson Tipe III** dan **HSS Nakayasu**.")
+    st.header("🌊 Analisis Sumber Daya Air & JIAT")
     
-    if 'libs_hidrologi' not in sys.modules:
-        st.warning("⚠️ Modul `libs_hidrologi` belum dimuat.")
+    if 'libs_hidrologi' not in sys.modules or 'libs_jiat' not in sys.modules:
+        st.warning("⚠️ Modul Hidrologi/JIAT belum dimuat.")
     else:
         hydro = libs_hidrologi.Hidrologi_Engine()
+        jiat_eng = libs_jiat.JIAT_Engine()
 
-        # --- PANEL INPUT ---
-        with st.expander("⚙️ Parameter DAS & Data Hujan", expanded=True):
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                st.markdown("**1. Data Curah Hujan Harian Maksimum Tahunan**")
-                st.caption("Pisahkan angka dengan koma (Contoh: 85.5, 92.1, ...)")
-                hujan_input = st.text_area(
-                    "Input Data Hujan (Minimal 10 Tahun disarankan):",
-                    value="85.5, 92.1, 105.4, 78.2, 115.0, 99.5, 88.0, 140.2, 110.5, 95.0",
-                    height=100
-                )
-                try:
-                    data_hujan = [float(x.strip()) for x in hujan_input.split(',')]
-                except:
-                    data_hujan = []
-                    st.error("Format input salah! Pastikan hanya angka dan koma.")
+        # Membuat 2 Tab untuk merapikan UI
+        tab_banjir, tab_jiat = st.tabs(["📊 Debit Banjir (HSS Nakayasu)", "🚰 Audit Pompa JIAT (Kurva Head-Discharge)"])
 
-            with col2:
-                st.markdown("**2. Karakteristik Daerah Aliran Sungai (DAS)**")
-                c_das1, c_das2 = st.columns(2)
-                luas_das = c_das1.number_input("Luas DAS (A) [km²]", value=25.5, step=1.0)
-                panjang_sungai = c_das2.number_input("Panjang Sungai (L) [km]", value=8.5, step=0.5)
-
-                st.markdown("**3. Infiltrasi & Periode Ulang**")
-                cn_options = {
-                    "Hutan Rimba (Kondisi Baik) - CN: 55": 55,
-                    "Pertanian / Sawah - CN: 75": 75,
-                    "Kawasan Perumahan (Kepadatan Sedang) - CN: 85": 85,
-                    "Kawasan Industri / Komersial - CN: 92": 92,
-                    "Perkerasan Aspal / Beton Penuh - CN: 98": 98
-                }
-                pilihan_cn = st.selectbox("Tutupan Lahan Utama (NRCS Curve Number)", list(cn_options.keys()), index=2)
-                cn_val = cn_options[pilihan_cn]
-                periode_ulang = st.selectbox("Tinjauan Periode Ulang Banjir", [2, 5, 10, 25, 50, 100], index=4, format_func=lambda x: f"{x} Tahun")
-
-        # --- EKSEKUSI ---
-        if st.button("🚀 Eksekusi Analisis Hidrologi", type="primary", use_container_width=True):
-            if len(data_hujan) < 2:
-                st.error("⛔ Analisis statistik membutuhkan minimal 2 data curah hujan tahunan!")
-            else:
-                with st.spinner("🔄 Menghitung Distribusi Frekuensi & Membentuk Hidrograf..."):
-                    
-                    # 1. Kalkulasi Statistik & Distribusi
-                    hasil_stat = hydro.analisis_frekuensi_hujan(data_hujan)
-                    
-                    st.divider()
-                    st.subheader("📊 Analisis Frekuensi Curah Hujan Ekstrem")
-                    
-                    # Layout Metrik Statistik
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Rata-rata Hujan ($\mu$)", f"{hasil_stat['Statistik_Dasar']['Mean']} mm")
-                    m2.metric("Standar Deviasi ($\sigma$)", f"{hasil_stat['Statistik_Dasar']['Std_Dev']} mm")
-                    m3.metric("Koef. Skewness ($Cs$)", f"{hasil_stat['Statistik_Dasar']['Skewness']}")
-
-                    # Tabel Komparasi Distribusi (SNI Requirement)
-                    df_hujan = pd.DataFrame({
-                        "Periode Ulang": [f"{t} Tahun" for t in [2, 5, 10, 25, 50, 100]],
-                        "Gumbel Tipe I (mm)": list(hasil_stat['Curah_Hujan_Gumbel_mm'].values()),
-                        "Log Pearson Tipe III (mm)": list(hasil_stat['Curah_Hujan_LP3_mm'].values())
-                    })
-                    st.markdown("**Perbandingan Metode Distribusi (Rekomendasi PUPR: Log Pearson III)**")
-                    
-                    # Highlight baris sesuai periode ulang yang dipilih
-                    def highlight_row(row):
-                        if str(periode_ulang) in row['Periode Ulang']:
-                            return ['background-color: #dcfce7; color: #166534; font-weight:bold'] * len(row)
-                        return [''] * len(row)
-                    
-                    st.dataframe(df_hujan.style.apply(highlight_row, axis=1), use_container_width=True)
-
-                    # 2. Hujan Efektif (Pe) via Curve Number
-                    r_design = hasil_stat['Curah_Hujan_LP3_mm'][f'R{periode_ulang}']
-                    pe = hydro.hitung_hujan_efektif_cn(r_design, cn_val)
-                    
-                    st.info(f"💧 **Transformasi Hujan ke Limpasan (NRCS-CN):**\n\n"
-                            f"Hujan Total ($P$) = **{r_design} mm** ➔ "
-                            f"Hujan Efektif ($P_e$) = **{pe} mm** *(Volume riil yang menjadi banjir akibat CN {cn_val})*")
-
-                    # 3. Hidrograf Nakayasu
-                    df_hss, params = hydro.hitung_hss_nakayasu(luas_das, panjang_sungai, R0_mm=pe)
-
-                    st.divider()
-                    st.subheader(f"🌊 Hidrograf Banjir Rencana (Periode Ulang {periode_ulang} Tahun)")
-
-                    c_m1, c_m2, c_m3 = st.columns(3)
-                    c_m1.metric("Waktu Kelambatan ($T_g$)", params['Time Lag (Tg)'])
-                    c_m2.metric("Waktu Puncak ($T_p$)", params['Time Peak (Tp)'])
-                    c_m3.metric("Debit Puncak ($Q_p$)", params['Debit Puncak (Qp)'], delta="Banjir Desain", delta_color="off")
-
-                    # Visualisasi Kurva Area dengan Plotly
-                    fig_hss = px.area(
-                        df_hss, 
-                        x="Waktu (Jam)", 
-                        y="Debit (m3/s)", 
-                        title=f"Kurva Hidrograf Satuan Sintetis Nakayasu (DAS: {luas_das} km²)"
+        # =========================================================
+        # TAB 1: HIDROLOGI BANJIR (KODE SEBELUMNYA DIAMANKAN DI SINI)
+        # =========================================================
+        with tab_banjir:
+            st.markdown("Evaluasi Debit Banjir Rencana (SNI 2415:2016)")
+            with st.expander("⚙️ Parameter DAS & Data Hujan", expanded=True):
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    hujan_input = st.text_area(
+                        "Input Data Hujan (Pisahkan dengan koma):",
+                        value="85.5, 92.1, 105.4, 78.2, 115.0, 99.5, 88.0, 140.2, 110.5, 95.0", height=100
                     )
-                    fig_hss.update_traces(line_color='#0ea5e9', fillcolor='rgba(14, 165, 233, 0.25)', line_width=3)
-                    fig_hss.update_layout(xaxis_title="Waktu (Jam)", yaxis_title="Debit Limpasan (m³/s)")
+                    try: data_hujan = [float(x.strip()) for x in hujan_input.split(',')]
+                    except: data_hujan = []; st.error("Format input salah!")
+
+                with col2:
+                    c_das1, c_das2 = st.columns(2)
+                    luas_das = c_das1.number_input("Luas DAS (km²)", value=25.5, step=1.0)
+                    panjang_sungai = c_das2.number_input("Panjang Sungai (km)", value=8.5, step=0.5)
+
+                    cn_options = {"Hutan (55)": 55, "Pertanian (75)": 75, "Perumahan (85)": 85, "Beton/Aspal (98)": 98}
+                    pilihan_cn = st.selectbox("Tutupan Lahan (Curve Number)", list(cn_options.keys()), index=2)
+                    cn_val = cn_options[pilihan_cn]
+                    periode_ulang = st.selectbox("Periode Ulang", [2, 5, 10, 25, 50, 100], index=4)
+
+            if st.button("🚀 Eksekusi Hidrologi", type="primary", use_container_width=True):
+                hasil_stat = hydro.analisis_frekuensi_hujan(data_hujan)
+                
+                st.subheader("1. Komparasi Distribusi Frekuensi")
+                df_hujan = pd.DataFrame({
+                    "Periode Ulang": [f"{t} Tahun" for t in [2, 5, 10, 25, 50, 100]],
+                    "Gumbel Tipe I (mm)": list(hasil_stat['Curah_Hujan_Gumbel_mm'].values()),
+                    "Log Pearson Tipe III (mm)": list(hasil_stat['Curah_Hujan_LP3_mm'].values())
+                })
+                st.dataframe(df_hujan, use_container_width=True)
+
+                r_design = hasil_stat['Curah_Hujan_LP3_mm'][f'R{periode_ulang}']
+                pe = hydro.hitung_hujan_efektif_cn(r_design, cn_val)
+                df_hss, params = hydro.hitung_hss_nakayasu(luas_das, panjang_sungai, R0_mm=pe)
+
+                st.subheader(f"2. Hidrograf Nakayasu (Periode {periode_ulang} Tahun)")
+                c_m1, c_m2, c_m3 = st.columns(3)
+                c_m1.metric("Hujan Efektif (Pe)", f"{pe} mm", delta=f"Dari P={r_design}mm")
+                c_m2.metric("Waktu Puncak (Tp)", params['Time Peak (Tp)'])
+                c_m3.metric("Debit Puncak (Qp)", params['Debit Puncak (Qp)'], delta_color="off")
+
+                fig_hss = px.area(df_hss, x="Waktu (Jam)", y="Debit (m3/s)", title="Kurva HSS Nakayasu")
+                fig_hss.update_traces(line_color='#0ea5e9', fillcolor='rgba(14, 165, 233, 0.25)', line_width=3)
+                tp_val = float(params['Time Peak (Tp)'].split(' ')[0])
+                fig_hss.add_vline(x=tp_val, line_dash="dash", line_color="red")
+                st.plotly_chart(fig_hss, use_container_width=True)
+
+        # =========================================================
+        # TAB 2: AUDIT POMPA JIAT (FITUR BARU)
+        # =========================================================
+        with tab_jiat:
+            st.markdown("Kalibrasi **Sistem Head (Hazen-Williams)** vs **Kinerja Pompa (Performance Curve)**")
+            
+            with st.expander("⚙️ Parameter Jaringan Irigasi Air Tanah (JIAT)", expanded=True):
+                c_j1, c_j2, c_j3 = st.columns(3)
+                q_target = c_j1.number_input("Debit Kebutuhan Irigasi (L/s)", value=15.0, step=1.0)
+                h_statik = c_j2.number_input("Head Statis / Elevasi (m)", value=45.0, step=5.0)
+                l_pipa = c_j3.number_input("Panjang Jalur Pipa (m)", value=1200.0, step=50.0)
+                
+                c_j4, c_j5, c_j6 = st.columns(3)
+                d_pipa = c_j4.number_input("Diameter Pipa Dalam (mm)", value=100.0, step=10.0)
+                c_hazen = c_j5.number_input("Koef. Hazen-Williams (C)", value=130, step=5)
+                sf_pompa = c_j6.number_input("Safety Factor Pompa (%)", value=15, step=5)
+
+            if st.button("🚀 Render Kurva Kalibrasi Pompa", type="primary", use_container_width=True):
+                with st.spinner("Menghitung intersepsi matriks hidrolika..."):
                     
-                    # Tambahkan penanda garis vertikal pada Titik Puncak (Tp)
-                    tp_val = float(params['Time Peak (Tp)'].split(' ')[0])
-                    qp_val = float(params['Debit Puncak (Qp)'].split(' ')[0])
-                    fig_hss.add_vline(x=tp_val, line_dash="dash", line_color="red", annotation_text=f"Puncak Qp: {qp_val} m³/s")
+                    # 1. Eksekusi Engine JIAT
+                    df_pump, h_target = jiat_eng.generate_pump_system_curve(q_target, h_statik, l_pipa, d_pipa, c_hazen)
+                    rek_pompa = jiat_eng.rekomendasi_pompa(q_target, h_statik, l_pipa, d_pipa)
                     
-                    st.plotly_chart(fig_hss, use_container_width=True)
+                    st.divider()
+                    st.subheader("📊 Metrik Evaluasi Hidraulika")
                     
-                    with st.expander("Tabel Koordinat Kurva Hidrograf"):
-                        st.dataframe(df_hss.set_index("Waktu (Jam)").T)
+                    m_p1, m_p2, m_p3 = st.columns(3)
+                    m_p1.metric("Head Statik Murni", f"{h_statik} m")
+                    m_p2.metric("Total Dynamic Head (TDH)", f"{rek_pompa['Head_Total_m']} m", delta=f"+ {rek_pompa['Head_Total_m'] - h_statik:.2f} m (Friction Loss)", delta_color="inverse")
+                    m_p3.metric("Kebutuhan Daya Pompa", f"{rek_pompa['Power_kW']} kW", delta=f"{rek_pompa['Power_HP']} HP", delta_color="off")
+
+                    st.subheader("📈 Kurva Operasi Pompa (Operating/Duty Point)")
+                    
+                    # 2. Visualisasi Kurva Ganda dengan Plotly
+                    fig_pump = go.Figure()
+                    
+                    # A. Plot System Head Curve (Kurva Sistem Pipa - Eksponensial Naik)
+                    fig_pump.add_trace(go.Scatter(
+                        x=df_pump["Debit (L/s)"], y=df_pump["System Head (m)"],
+                        mode='lines', name='Kurva Sistem (Friction)',
+                        line=dict(color='blue', width=3)
+                    ))
+                    
+                    # B. Plot Pump Performance Curve (Kurva Kinerja Pompa - Parabola Turun)
+                    fig_pump.add_trace(go.Scatter(
+                        x=df_pump["Debit (L/s)"], y=df_pump["Pump Head (m)"],
+                        mode='lines', name='Kurva Kapasitas Pompa',
+                        line=dict(color='red', width=3)
+                    ))
+                    
+                    # C. Tandai Titik Kerja (Duty Point)
+                    # Menambahkan margin sesuai input Safety Factor
+                    q_duty = q_target * (1 + (sf_pompa/100))
+                    h_duty = h_target * (1 + (sf_pompa/100))
+                    
+                    fig_pump.add_trace(go.Scatter(
+                        x=[q_target], y=[h_target],
+                        mode='markers+text', name='Titik Kebutuhan Dasar',
+                        marker=dict(color='orange', size=10, symbol='diamond'),
+                        text=[f"Q:{q_target} L/s<br>H:{h_target:.1f} m"], textposition="bottom right"
+                    ))
+
+                    fig_pump.add_trace(go.Scatter(
+                        x=[q_duty], y=[h_duty],
+                        mode='markers+text', name='Titik Operasi (Duty Point)',
+                        marker=dict(color='green', size=14, symbol='star'),
+                        text=[f"Duty Point<br>Q:{q_duty:.1f} L/s<br>H:{h_duty:.1f} m"], textposition="top right"
+                    ))
+
+                    fig_pump.update_layout(
+                        title="Perpotongan Karakteristik Sistem Pipa vs Kapasitas Pompa Sentrifugal",
+                        xaxis_title="Kapasitas Debit - Q (Liter / Detik)",
+                        yaxis_title="Total Head - H (Meter)",
+                        hovermode="x unified",
+                        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+                    )
+                    
+                    st.plotly_chart(fig_pump, use_container_width=True)
+                    
+                    st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
+
 
 
 
