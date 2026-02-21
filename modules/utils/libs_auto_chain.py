@@ -12,6 +12,7 @@ def get_working_model(system_instruction):
         "gemini-1.5-flash-latest",
         "gemini-1.5-pro-latest",
         "gemini-1.5-flash",
+        "gemini-robotics-er-1.5-preview",
         "gemini-pro" # Fallback terakhir jika API Key versi lama
     ]
     
