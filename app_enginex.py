@@ -596,22 +596,42 @@ if selected_menu == "🤖 AI Assistant":
                     chat = model.start_chat(history=chat_hist)
                     response = chat.send_message(full_prompt)
 
-                    # --- [FITUR BARU] JARING PENANGKAP AI-QS UNTUK PDF/DXF ---
-                    # Jika AI mengeluarkan tabel JSON format BOQ, langsung tangkap ke Excel!
-                    import json
+                    # --- [UPGRADE: HITL] JARING PENANGKAP AI-QS VISION ---
                     boq_match = re.search(r'```json\n(.*?"Kategori".*?)\n```', response.text, re.DOTALL | re.IGNORECASE)
                     if boq_match:
                         try:
-                            # Bersihkan dan ubah teks AI menjadi Data Tabel Pandas
                             json_str = boq_match.group(1)
                             boq_list = json.loads(json_str)
-                            
-                            # Cek validitas format
                             if isinstance(boq_list, list) and len(boq_list) > 0 and "Kategori" in boq_list[0]:
-                                st.session_state['real_boq_data'] = pd.DataFrame(boq_list)
-                                st.success(f"🎯 [AI-QS VISION] Berhasil mengestimasi {len(boq_list)} item pekerjaan dari gambar 2D! Data siap diekspor ke Excel 7 Tab.")
+                                df_ai = pd.DataFrame(boq_list)
+                                
+                                # Simpan sementara untuk direview
+                                st.session_state['draft_boq_data'] = df_ai
+                                st.success(f"🎯 [AI-QS VISION] Menemukan {len(boq_list)} item pekerjaan. Menunggu Validasi (HITL)...")
                         except Exception as e:
                             st.warning(f"AI mencoba membuat tabel BOQ, tapi format JSON meleset: {e}")
+
+        # --- RENDER TABEL VALIDASI (Di Luar Chat Bubble) ---
+        if 'draft_boq_data' in st.session_state and not st.session_state['draft_boq_data'].empty:
+            st.markdown("### 🕵️ Validasi Ekstraksi AI (Human-in-the-Loop)")
+            st.info("⚠️ Silakan periksa hasil ekstraksi Vision LLM. Anda dapat mengedit nama, kategori, atau volume secara manual sebelum masuk ke Engine RAB.")
+            
+            # Data Editor Interaktif
+            edited_df = st.data_editor(
+                st.session_state['draft_boq_data'],
+                num_rows="dynamic",
+                use_container_width=True,
+                key="hitl_editor"
+            )
+            
+            if st.button("✅ Setujui & Masukkan ke Memori RAB", type="primary"):
+                st.session_state['real_boq_data'] = edited_df
+                # Bersihkan draft setelah disetujui
+                st.session_state['draft_boq_data'] = pd.DataFrame()
+                st.success("Data divalidasi dan terkunci untuk ekspor 7-Tab Excel!")
+                st.rerun()
+                    
+                    
                     parts = re.split(r"(```python.*?```)", response.text, flags=re.DOTALL)
                     for part in parts:
                         if part.startswith("```python"):
@@ -1218,6 +1238,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
