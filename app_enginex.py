@@ -416,23 +416,7 @@ with st.sidebar:
         if st.button("🧹 Reset Chat"):
             db.clear_chat(nama_proyek, st.session_state.current_expert_active)
             st.rerun()
-        # --- TOMBOL EXCEL 7 TAB (ANTI-BUG) ---
-        st.markdown("### 📊 Export 5D BIM")
-        st.caption("Auto-Chain: Rekap, RAB, BOQ, AHSP, dll.")
-        
-        # Tarik data dari memori (jika ada)
-        df_boq_aktual = st.session_state.get('real_boq_data', None)
-        
-        # Langsung siapkan file Excelnya di latar belakang
-        excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek, df_boq_aktual)
-        
-        st.download_button(
-            label="📥 Download Excel RAB (7 Tab)",
-            data=excel_bytes,
-            file_name=f"RAB_{nama_proyek.replace(' ', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            use_container_width=True
+       
         )
         
 # ==========================================
@@ -531,20 +515,24 @@ if selected_menu == "🤖 AI Assistant":
                                         vol = engine_ifc.get_element_quantity(el)
                                         vol_text = f", Volume: {vol:.3f} m3" if vol > 0 else ""
                                         ifc_summary += f"- [{el.is_a()}] ID: {el.GlobalId}, Nama: {el.Name}{vol_text}\n"
-                                    
+
                                     # --- [UPDATE] SIMPAN DATA ASLI UNTUK EXCEL ---
                                     data_boq_asli = []
                                     for el in elements:
-                                        vol = engine_ifc.get_element_quantity(el)
-                                        if vol > 0:
+                                        # Filter hanya elemen fisik bangunan
+                                        if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey"]:
+                                            vol = engine_ifc.get_element_quantity(el)
+                                            # Jika volume gagal diekstrak, paksa jadi 1.0 m3 agar tetap masuk tabel
+                                            vol_final = round(vol, 3) if vol and vol > 0 else 1.0 
+                                            
                                             data_boq_asli.append({
                                                 "Kategori": el.is_a(),
-                                                "Nama": el.Name or "Elemen",
-                                                "Volume": round(vol, 3)
+                                                "Nama": el.Name or "Elemen Tanpa Nama",
+                                                "Volume": vol_final
                                             })
                                     st.session_state['real_boq_data'] = pd.DataFrame(data_boq_asli)
                                     # ---------------------------------------------
-                                    
+                                                                       
                                     if len(elements) > 100:
                                         ifc_summary += f"\n... dan {len(elements) - 100} elemen lainnya disembunyikan untuk menghemat memori."
                                         
@@ -1039,6 +1027,7 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.plotly_chart(fig_pump, use_container_width=True)
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
+
 
 
 
