@@ -11,6 +11,7 @@ def get_working_model(system_instruction):
     models_to_try = [
         "gemini-1.5-flash",
         "gemini-1.5-pro",
+        "gemini-3-flash-preview",
         "gemini-robotics-er-1.5-preview",
         "gemini-pro" # Fallback terakhir jika API Key versi lama
     ]
