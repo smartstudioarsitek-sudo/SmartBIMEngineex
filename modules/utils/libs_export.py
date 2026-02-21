@@ -21,10 +21,9 @@ class Export_Engine:
         dxf += "0\nENDSEC\n0\nEOF"
         return dxf
 
-    def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None):
+    def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None, df_basic_price=None):
         """
-        Auto-Chain Excel Generator yang menerima DATA ASLI dari ekstraksi IFC.
-        Dilengkapi dengan Safety Net anti-crash jika data kosong.
+        Auto-Chain Excel Generator terintegrasi dengan data IFC & BPS API (DuckDB).
         """
         output = BytesIO()
         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -46,27 +45,57 @@ class Export_Engine:
         ws_basic = workbook.add_worksheet('7. Basic Price')
 
         # =======================================================
-        # TAB 7: BASIC PRICE & TAB 4: AHSP
+        # TAB 7: BASIC PRICE (DINAMIS DARI BPS / DUCKDB)
         # =======================================================
         ws_basic.set_column('B:B', 30)
-        ws_basic.write('A1', 'DAFTAR HARGA DASAR UPAH & MATERIAL', fmt_title)
-        for col, h in enumerate(['No', 'Uraian', 'Satuan', 'Harga Dasar (Rp)']): ws_basic.write(2, col, h, fmt_header)
-        ws_basic.write('A4', 1, fmt_border); ws_basic.write('B4', 'Semen Portland', fmt_border); ws_basic.write('C4', 'kg', fmt_border); ws_basic.write('D4', 1500, fmt_currency)
-        ws_basic.write('A5', 2, fmt_border); ws_basic.write('B5', 'Pekerja (Tukang)', fmt_border); ws_basic.write('C5', 'OH', fmt_border); ws_basic.write('D5', 150000, fmt_currency)
+        ws_basic.write('A1', 'DAFTAR HARGA DASAR UPAH & MATERIAL (API BPS/ESSH)', fmt_title)
+        for col, h in enumerate(['No', 'Uraian', 'Satuan', 'Harga Dasar (Rp)']): 
+            ws_basic.write(2, col, h, fmt_header)
+        
+        last_row_basic = 3
+        
+        # [INJEKSI DATA API]
+        if df_basic_price is not None and not df_basic_price.empty:
+            for index, row in df_basic_price.iterrows():
+                row_excel = index + 3
+                ws_basic.write(row_excel, 0, index + 1, fmt_border)
+                ws_basic.write(row_excel, 1, str(row.get('nama_material', '-')), fmt_border)
+                ws_basic.write(row_excel, 2, str(row.get('satuan', '-')), fmt_border)
+                ws_basic.write(row_excel, 3, float(row.get('harga_dasar', 0)), fmt_currency)
+                last_row_basic = row_excel
+        else:
+            # Fallback jika API gagal / tidak ada internet
+            ws_basic.write('A4', 1, fmt_border); ws_basic.write('B4', 'Semen Portland', fmt_border)
+            ws_basic.write('C4', 'kg', fmt_border); ws_basic.write('D4', 1500, fmt_currency)
+            ws_basic.write('A5', 2, fmt_border); ws_basic.write('B5', 'Pekerja (Tukang)', fmt_border)
+            ws_basic.write('C5', 'OH', fmt_border); ws_basic.write('D5', 150000, fmt_currency)
+            last_row_basic = 4
 
+        # =======================================================
+        # TAB 4: AHSP (MENGGUNAKAN VLOOKUP CERDAS)
+        # =======================================================
         ws_ahsp.set_column('B:B', 35)
         ws_ahsp.write('A1', 'ANALISA HARGA SATUAN PEKERJAAN (AHSP)', fmt_title)
         ws_ahsp.write('A2', 'Item: 1 m3 Pengecoran Beton K-300')
-        for col, h in enumerate(['Kategori', 'Uraian', 'Koefisien', 'Satuan', 'Harga Dasar', 'Subtotal']): ws_ahsp.write(3, col, h, fmt_header)
+        for col, h in enumerate(['Kategori', 'Uraian', 'Koefisien', 'Satuan', 'Harga Dasar', 'Subtotal']): 
+            ws_ahsp.write(3, col, h, fmt_header)
         
-        ws_ahsp.write('A5', 'Bahan', fmt_border); ws_ahsp.write('B5', 'Semen', fmt_border); ws_ahsp.write('C5', 413.0, fmt_border); ws_ahsp.write('D5', 'kg', fmt_border)
-        ws_ahsp.write_formula('E5', "='7. Basic Price'!D4", fmt_currency); ws_ahsp.write_formula('F5', "=C5*E5", fmt_currency)
+        # Bahan: Semen (Gunakan VLOOKUP dengan Wildcard *Semen* untuk mencari di Tab 7)
+        ws_ahsp.write('A5', 'Bahan', fmt_border); ws_ahsp.write('B5', 'Semen', fmt_border)
+        ws_ahsp.write('C5', 413.0, fmt_border); ws_ahsp.write('D5', 'kg', fmt_border)
+        # IFERROR sebagai jaring pengaman jika kata "Semen" tidak ditemukan BPS
+        ws_ahsp.write_formula('E5', f'=IFERROR(VLOOKUP("*Semen*","\'7. Basic Price\'!B4:D{last_row_basic+1}", 3, FALSE), 1500)', fmt_currency)
+        ws_ahsp.write_formula('F5', "=C5*E5", fmt_currency)
         
-        ws_ahsp.write('A6', 'Upah', fmt_border); ws_ahsp.write('B6', 'Pekerja', fmt_border); ws_ahsp.write('C6', 1.65, fmt_border); ws_ahsp.write('D6', 'OH', fmt_border)
-        ws_ahsp.write_formula('E6', "='7. Basic Price'!D5", fmt_currency); ws_ahsp.write_formula('F6', "=C6*E6", fmt_currency)
+        # Upah: Pekerja
+        ws_ahsp.write('A6', 'Upah', fmt_border); ws_ahsp.write('B6', 'Pekerja', fmt_border)
+        ws_ahsp.write('C6', 1.65, fmt_border); ws_ahsp.write('D6', 'OH', fmt_border)
+        ws_ahsp.write_formula('E6', f'=IFERROR(VLOOKUP("*Tukang*","\'7. Basic Price\'!B4:D{last_row_basic+1}", 3, FALSE), 150000)', fmt_currency)
+        ws_ahsp.write_formula('F6', "=C6*E6", fmt_currency)
         
-        ws_ahsp.write('E7', 'Total Harga Satuan', fmt_header); ws_ahsp.write_formula('F7', "=SUM(F5:F6)", fmt_currency_bold)
-
+        ws_ahsp.write('E7', 'Total Harga Satuan', fmt_header)
+        ws_ahsp.write_formula('F7', "=SUM(F5:F6)", fmt_currency_bold)
+        
         # =======================================================
         # TAB 3 & 2: INJEKSI DATA ASLI IFC (DINAMIS)
         # =======================================================
@@ -207,4 +236,5 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
