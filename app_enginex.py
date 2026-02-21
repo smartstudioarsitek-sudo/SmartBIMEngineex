@@ -1228,10 +1228,27 @@ with st.sidebar:
     else:
         st.caption("🔴 Status: Data Kosong / Dummy.")
 
-    try:
-        excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek, df_boq_aktual)
+   try:
+        # [BARU] Inisialisasi DuckDB & Tarik Data BPS secara asinkron (simulasi)
+        df_harga_bps = None
+        if 'libs_bps' in sys.modules:
+            with st.spinner("🔄 Sinkronisasi BPS/ESSH ke Memori DuckDB..."):
+                try:
+                    # Inisiasi engine dan panggil data (Misal region Lampung)
+                    if 'bps_engine' not in st.session_state:
+                        # Gunakan dummy token untuk safety
+                        st.session_state.bps_engine = sys.modules['libs_bps'].BPS_DuckDB_Engine("TOKEN_BPS_123")
+                    
+                    # Tarik data (Akan super cepat jika sudah di-cache DuckDB)
+                    df_harga_bps = st.session_state.bps_engine.get_regional_prices("Lampung")
+                except Exception as e:
+                    st.warning(f"Koneksi BPS Timeout: {e}. Menggunakan harga standar.")
+        
+        # Kirim df_harga_bps ke engine Export
+        excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek, df_boq_aktual, df_basic_price=df_harga_bps)
+        
         st.download_button(
-            label="📥 2. Download Excel RAB (7 Tab)",
+            label="📥 2. Download Excel RAB (7 Tab + BPS)",
             data=excel_bytes,
             file_name=f"RAB_{nama_proyek.replace(' ', '_')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1240,6 +1257,7 @@ with st.sidebar:
         )
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+
 
 
 
