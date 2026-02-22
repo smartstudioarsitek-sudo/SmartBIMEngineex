@@ -1224,7 +1224,11 @@ with st.sidebar:
 
    # 3. TOMBOL DOWNLOAD EXCEL & LOKASI
     df_boq_aktual = st.session_state.get('real_boq_data', None)
-    
+    # Indikator Visual agar Kakak tahu apakah data asli sudah siap
+        if df_boq_aktual is not None and not df_boq_aktual.empty:
+            st.caption(f"🟢 Ready: **{len(df_boq_aktual)} baris** data asli dari BIM.")
+        else:
+            st.caption("🔴 Status: Data Kosong / Dummy.")
     st.markdown("### 🌍 Pengaturan Lokasi Proyek")
     # User bisa ganti lokasi, harga material akan otomatis berubah mengikuti IKK BPS!
     pilihan_provinsi = st.selectbox(
@@ -1276,6 +1280,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
