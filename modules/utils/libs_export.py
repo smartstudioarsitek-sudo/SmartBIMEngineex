@@ -22,7 +22,8 @@ class Export_Engine:
         return dxf
 
 
-    def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None, price_engine=None):
+    def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None, price_engine=None, lokasi_proyek="Lampung"):
+
         
         # --- [INJEKSI RUMUS BPJS PP 44/2015] ---
         def hitung_bpjs_berjenjang(nilai_kontrak_tanpa_ppn):
@@ -111,7 +112,8 @@ class Export_Engine:
             
             # PANGGIL MESIN PENCARI HARGA!
             if price_engine:
-                harga_angka, sumber_teks = price_engine.get_best_price(nama_item, lokasi="Lampung")
+                harga_angka, sumber_teks = price_engine.get_best_price(nama_item, lokasi=lokasi_proyek)
+             
                 
             ws_bp.write(row_bp, 0, idx, fmt_border)
             ws_bp.write(row_bp, 1, kategori, fmt_border)
@@ -334,6 +336,7 @@ class Export_Engine:
         workbook.close()
         return output.getvalue()
     
+
 
 
 
