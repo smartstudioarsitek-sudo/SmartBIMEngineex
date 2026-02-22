@@ -1164,8 +1164,6 @@ elif selected_menu == "📑 Laporan RAB 5D":
     
 # ==========================================
 # 8. EXPORT 5D BIM (SAFE MODE)
-# ==========================================
-# 8. EXPORT 5D BIM (SAFE MODE)
 # Ditaruh di paling bawah agar membaca data IFC terbaru!
 # ==========================================
 with st.sidebar:
@@ -1222,17 +1220,15 @@ with st.sidebar:
         st.info("💡 Upload file .ifc di menu atas untuk mengaktifkan ekstraksi.")
 
 
-   # 3. TOMBOL DOWNLOAD EXCEL & LOKASI
+    # ========================================================
+    # 3. TOMBOL DOWNLOAD EXCEL & PILIHAN LOKASI (BPS IKK)
+    # ========================================================
     df_boq_aktual = st.session_state.get('real_boq_data', None)
-    # Indikator Visual agar Kakak tahu apakah data asli sudah siap
-        if df_boq_aktual is not None and not df_boq_aktual.empty:
-            st.caption(f"🟢 Ready: **{len(df_boq_aktual)} baris** data asli dari BIM.")
-        else:
-            st.caption("🔴 Status: Data Kosong / Dummy.")
+    
     st.markdown("### 🌍 Pengaturan Lokasi Proyek")
     # User bisa ganti lokasi, harga material akan otomatis berubah mengikuti IKK BPS!
     pilihan_provinsi = st.selectbox(
-        "Pilih Provinsi (Untuk Kalkulasi Indeks Kemahalan Konstruksi):", 
+        "Pilih Provinsi (Kalkulasi Indeks Kemahalan Konstruksi):", 
         ["Lampung", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "Jawa Timur", "Bali", "Sumatera Selatan", "Kalimantan Barat", "Sulawesi Selatan", "Papua", "Papua Pegunungan"], 
         index=0
     )
@@ -1241,6 +1237,40 @@ with st.sidebar:
         st.caption(f"🟢 Ready: **{len(df_boq_aktual)} baris** data siap di-Export.")
     else:
         st.caption("🔴 Status: Data Kosong / Dummy.")
+
+    try:
+        import sys
+        if 'libs_price_engine' not in sys.modules:
+            from modules.cost import libs_price_engine
+                
+        with st.spinner(f"🔄 Menarik Indeks Kemahalan BPS untuk {pilihan_provinsi}..."):
+            if 'price_engine' not in st.session_state:
+                st.session_state.price_engine = sys.modules['libs_price_engine'].PriceEngine3Tier()
+        
+        # PENGAMAN: Tombol hanya nyala jika data sudah di-Setujui di HITL
+        if df_boq_aktual is not None and not df_boq_aktual.empty:
+            
+            # [PENTING] Kirim pilihan_provinsi ke mesin export
+            excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(
+                nama_proyek, 
+                df_boq_aktual, 
+                price_engine=st.session_state.price_engine,
+                lokasi_proyek=pilihan_provinsi
+            )
+            
+            st.download_button(
+                label="📥 2. Download Excel RAB (Harga Auto-IKK BPS)",
+                data=excel_bytes,
+                file_name=f"RAB_{pilihan_provinsi}_{nama_proyek.replace(' ', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
+        else:
+            st.button("📥 2. Download Excel RAB (Kunci Data Dulu!)", disabled=True, use_container_width=True)
+            
+    except Exception as e:
+        st.error(f"Gagal menyiapkan Excel: {e}")
 
     try:
         # ========================================================
@@ -1280,6 +1310,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
