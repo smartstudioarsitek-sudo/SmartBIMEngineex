@@ -1232,35 +1232,48 @@ with st.sidebar:
             st.caption("🔴 Status: Data Kosong / Dummy.")
 
         try:
-            # [BARU] Inisialisasi DuckDB & Tarik Data BPS secara asinkron (simulasi)
-            df_harga_bps = None
-            if 'libs_bps' in sys.modules:
-                with st.spinner("🔄 Sinkronisasi BPS/ESSH ke Memori DuckDB..."):
-                    try:
-                        # Inisiasi engine dan panggil data (Misal region Lampung)
-                        if 'bps_engine' not in st.session_state:
-                            # Gunakan dummy token untuk safety
-                            st.session_state.bps_engine = sys.modules['libs_bps'].BPS_DuckDB_Engine("TOKEN_BPS_123")
-                        
-                        # Tarik data (Akan super cepat jika sudah di-cache DuckDB)
-                        df_harga_bps = st.session_state.bps_engine.get_regional_prices("Lampung")
-                    except Exception as e:
-                        st.warning(f"Koneksi BPS Timeout: {e}. Menggunakan harga standar.")
+        # ========================================================
+        # [UPGRADE] INISIALISASI MESIN HARGA 3-TIER (ESSH/BPS/WEB)
+        # ========================================================
+        import sys
+        if 'libs_price_engine' not in sys.modules:
+            try:
+                from modules.cost import libs_price_engine
+            except ImportError:
+                st.error("File libs_price_engine.py belum ada di folder modules/cost/")
+                
+        with st.spinner("🔄 Menghubungkan ke Mesin Harga 3 Lapis (ESSH/BPS/Marketplace)..."):
+            if 'price_engine' not in st.session_state:
+                # Mengaktifkan memori pencarian harga
+                st.session_state.price_engine = libs_price_engine.PriceEngine3Tier()
+        
+        # PENGAMAN: Tombol hanya nyala jika data sudah di-Setujui di HITL
+        if df_boq_aktual is not None and not df_boq_aktual.empty:
             
-            # Kirim df_harga_bps ke engine Export
-            excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek, df_boq_aktual, df_basic_price=df_harga_bps)
+            # [PERUBAHAN] Kita kirim price_engine ke dalam libs_export, bukan lagi df_harga_bps
+            excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(
+                nama_proyek, 
+                df_boq_aktual, 
+                price_engine=st.session_state.price_engine 
+            )
             
             st.download_button(
-                label="📥 2. Download Excel RAB (7 Tab + BPS)",
+                label="📥 2. Download Excel RAB (7 Tab + 3-Tier Price)",
                 data=excel_bytes,
-                file_name=f"RAB_{nama_proyek.replace(' ', '_')}.xlsx",
+                file_name=f"RAB_AUDIT_{nama_proyek.replace(' ', '_')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
                 use_container_width=True
             )
-        except Exception as e:
-            st.error(f"Gagal menyiapkan Excel: {e}")
+        else:
+            # Tombol abu-abu (mati) kalau datanya belum divalidasi
+            st.button("📥 2. Download Excel RAB (Kunci Data Dulu!)", disabled=True, use_container_width=True)
+            
+    except Exception as e:
+        st.error(f"Gagal menyiapkan Excel: {e}")
+        
    
+
 
 
 
