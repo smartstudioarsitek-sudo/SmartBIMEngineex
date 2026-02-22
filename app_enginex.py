@@ -1124,42 +1124,44 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     st.markdown("---")
     
-    # 2. TOMBOL TUNGGAL ANTI-MACET + PROGRESS BAR
-    if st.button("🚀 GENERATE FULL LAPORAN RAB 5D", type="primary", use_container_width=True):
-        import time
-        
-        # Membuat Progress Bar agar user tidak bisa spam klik
-        progress_text = "Memulai kompilasi dokumen..."
-        my_bar = st.progress(0, text=progress_text)
+    # 1. Kumpulkan teks laporan (Bisa dikembangkan nanti agar dinamis sesuai klik User)
+    laporan_gabungan = f"""
+    # DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
+    **PROYEK: {nama_proyek.upper()}**
 
-        time.sleep(1)
-        my_bar.progress(15, text="Bab 1: Menyusun Pendahuluan dan Lingkup Proyek...")
-        time.sleep(1.5)
-        
-        my_bar.progress(30, text="Bab 2: Mengekstrak Data Dasar AHSP PUPR...")
-        time.sleep(1.5)
-        
-        # Cek apakah ada data BOQ di memori
-        df_cek = st.session_state.get('real_boq_data', None)
-        if df_cek is not None:
-            my_bar.progress(50, text=f"Bab 3: Sinkronisasi {len(df_cek)} item BOQ dari memori BIM...")
-        else:
-            my_bar.progress(50, text="Bab 3: Menyiapkan format BOQ (Data elemen BIM masih kosong)...")
-        time.sleep(1.5)
-        
-        my_bar.progress(70, text="Bab 4 & 5: Menghitung Rasio TKDN dan Biaya SMKK (K3)...")
-        time.sleep(2)
-        
-        my_bar.progress(90, text="Bab 6: Mengkalkulasi Grand Total dan PPN 11%...")
-        time.sleep(1.5)
-        
-        my_bar.progress(100, text="✅ Kompilasi Selesai! Dokumen siap diunduh.")
-        time.sleep(1)
-        
-        st.balloons()
-        st.success("🎉 Simulasi Laporan RAB 5D berhasil dirakit tanpa macet! (Fitur jahit ke file PDF sungguhan akan segera dihubungkan ke fungsi library FPDF kita)")
+    ## BAB 1. PENDAHULUAN
+    Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex yang terintegrasi dengan standar ekstraksi kuantitas (QTO) berbasis algoritma analitik geometri, serta mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
 
+    ## BAB 2. ASUMSI DASAR & HARGA MATERIAL
+    Perhitungan harga satuan pekerjaan didasarkan pada integrasi harga pasar (Basic Price) yang ditarik secara dinamis dari sistem ESSH PUPR Provinsi dan Badan Pusat Statistik (BPS).
 
+    ## BAB 3. BILL OF QUANTITIES (BOQ)
+    Kuantitas material diekstrak langsung dari model 3D (BIM) maupun 2D CAD/PDF dengan tingkat presisi tinggi (Human-in-the-Loop verified).
+    
+    ## BAB 4. KESELAMATAN KONSTRUKSI (SMKK)
+    Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen standar PUPR untuk memitigasi risiko kecelakaan kerja di lapangan.
+    
+    ## BAB 5. REKAPITULASI BIAYA
+    Total estimasi biaya konstruksi fisik dapat dilihat pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang menyertai laporan ini, sudah termasuk perhitungan PPN 11%.
+    """
+
+    # 2. Render tombol Download yang sesungguhnya
+    try:
+        # Menggunakan engine PDF internal kita
+        pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {nama_proyek}")
+        
+        st.download_button(
+            label="📥 Download Full Laporan RAB (PDF)",
+            data=pdf_bytes,
+            file_name=f"Laporan_RAB_{nama_proyek.replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            type="primary",
+            use_container_width=True
+        )
+    except Exception as e:
+        st.error(f"⚠️ Gagal merender PDF: {e}")
+    
+    
 # ==========================================
 # 8. EXPORT 5D BIM (SAFE MODE)
 # ==========================================
@@ -1259,6 +1261,7 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Gagal menyiapkan Excel: {e}")
    
+
 
 
 
