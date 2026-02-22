@@ -659,13 +659,14 @@ if selected_menu == "🤖 AI Assistant":
                 use_container_width=True,
                 key="hitl_editor"
             )
-            
             if st.button("✅ Setujui & Masukkan ke Memori RAB", type="primary"):
+                # Menyelaraskan memori agar terbaca di Tab Laporan 5D
+                st.session_state['boq_data'] = edited_df
                 st.session_state['real_boq_data'] = edited_df
                 st.session_state['draft_boq_data'] = pd.DataFrame()
                 st.success("Data divalidasi dan terkunci untuk ekspor 7-Tab Excel!")
                 st.rerun()
-
+       
                       
                     
     # ==========================================
@@ -1231,34 +1232,33 @@ with st.sidebar:
         st.info("💡 Upload file .ifc di menu atas untuk mengaktifkan ekstraksi.")
 
 
-    # 3. TOMBOL DOWNLOAD EXCEL
-        df_boq_aktual = st.session_state.get('real_boq_data', None)
-        
-        # Indikator Visual agar Kakak tahu apakah data asli sudah siap
-        if df_boq_aktual is not None and not df_boq_aktual.empty:
-            st.caption(f"🟢 Ready: **{len(df_boq_aktual)} baris** data asli dari BIM.")
-        else:
-            st.caption("🔴 Status: Data Kosong / Dummy.")
+    
+    # ========================================================
+    # 3. TOMBOL DOWNLOAD EXCEL (SPASI SUDAH DILURUSKAN)
+    # ========================================================
+    df_boq_aktual = st.session_state.get('real_boq_data', None)
+    
+    # Indikator Visual agar Kakak tahu apakah data asli sudah siap
+    if df_boq_aktual is not None and not df_boq_aktual.empty:
+        st.caption(f"🟢 Ready: **{len(df_boq_aktual)} baris** data asli siap di-Export.")
+    else:
+        st.caption("🔴 Status: Data Kosong / Menunggu Validasi (HITL).")
 
-        try:
-            # [BARU] Inisialisasi DuckDB & Tarik Data BPS secara asinkron (simulasi)
-            df_harga_bps = None
-            if 'libs_bps' in sys.modules:
-                with st.spinner("🔄 Sinkronisasi BPS/ESSH ke Memori DuckDB..."):
-                    try:
-                        # Inisiasi engine dan panggil data (Misal region Lampung)
-                        if 'bps_engine' not in st.session_state:
-                            # Gunakan dummy token untuk safety
-                            st.session_state.bps_engine = sys.modules['libs_bps'].BPS_DuckDB_Engine("TOKEN_BPS_123")
-                        
-                        # Tarik data (Akan super cepat jika sudah di-cache DuckDB)
-                        df_harga_bps = st.session_state.bps_engine.get_regional_prices("Lampung")
-                    except Exception as e:
-                        st.warning(f"Koneksi BPS Timeout: {e}. Menggunakan harga standar.")
-            
-            # Kirim df_harga_bps ke engine Export
+    try:
+        # [BARU] Inisialisasi DuckDB & Tarik Data BPS secara asinkron
+        df_harga_bps = None
+        if 'libs_bps' in sys.modules:
+            with st.spinner("🔄 Sinkronisasi BPS/ESSH ke Memori DuckDB..."):
+                try:
+                    if 'bps_engine' not in st.session_state:
+                        st.session_state.bps_engine = sys.modules['libs_bps'].BPS_DuckDB_Engine("TOKEN_BPS_123")
+                    df_harga_bps = st.session_state.bps_engine.get_regional_prices("Lampung")
+                except Exception as e:
+                    st.warning(f"Koneksi BPS Timeout: {e}")
+        
+        # PENGAMAN: Tombol hanya nyala jika data sudah di-Setujui di HITL
+        if df_boq_aktual is not None and not df_boq_aktual.empty:
             excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek, df_boq_aktual, df_basic_price=df_harga_bps)
-            
             st.download_button(
                 label="📥 2. Download Excel RAB (7 Tab + BPS)",
                 data=excel_bytes,
@@ -1267,9 +1267,15 @@ with st.sidebar:
                 type="primary",
                 use_container_width=True
             )
-        except Exception as e:
-            st.error(f"Gagal menyiapkan Excel: {e}")
+        else:
+            # Tombol abu-abu (mati) kalau datanya belum divalidasi
+            st.button("📥 2. Download Excel RAB (Kunci Data Dulu!)", disabled=True, use_container_width=True)
+            
+    except Exception as e:
+        st.error(f"Gagal menyiapkan Excel: {e}")
+        
    
+
 
 
 
