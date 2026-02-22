@@ -1220,15 +1220,13 @@ with st.sidebar:
         st.info("💡 Upload file .ifc di menu atas untuk mengaktifkan ekstraksi.")
 
 
-    # ========================================================
-    # 3. TOMBOL DOWNLOAD EXCEL & PILIHAN LOKASI (BPS IKK)
-    # ========================================================
+    # 3. TOMBOL DOWNLOAD EXCEL & LOKASI
     df_boq_aktual = st.session_state.get('real_boq_data', None)
     
     st.markdown("### 🌍 Pengaturan Lokasi Proyek")
     # User bisa ganti lokasi, harga material akan otomatis berubah mengikuti IKK BPS!
     pilihan_provinsi = st.selectbox(
-        "Pilih Provinsi (Kalkulasi Indeks Kemahalan Konstruksi):", 
+        "Pilih Provinsi (Untuk Kalkulasi Indeks Kemahalan Konstruksi):", 
         ["Lampung", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "Jawa Timur", "Bali", "Sumatera Selatan", "Kalimantan Barat", "Sulawesi Selatan", "Papua", "Papua Pegunungan"], 
         index=0
     )
@@ -1239,6 +1237,9 @@ with st.sidebar:
         st.caption("🔴 Status: Data Kosong / Dummy.")
 
     try:
+        # ========================================================
+        # [UPGRADE] INISIALISASI MESIN HARGA BPS-IKK
+        # ========================================================
         import sys
         if 'libs_price_engine' not in sys.modules:
             from modules.cost import libs_price_engine
@@ -1255,7 +1256,7 @@ with st.sidebar:
                 nama_proyek, 
                 df_boq_aktual, 
                 price_engine=st.session_state.price_engine,
-                lokasi_proyek=pilihan_provinsi
+                lokasi_proyek=pilihan_provinsi # <--- INJEKSI LOKASI
             )
             
             st.download_button(
@@ -1271,6 +1272,7 @@ with st.sidebar:
             
     except Exception as e:
         st.error(f"Gagal menyiapkan Excel: {e}")
+    
 
     try:
         # ========================================================
@@ -1310,6 +1312,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
