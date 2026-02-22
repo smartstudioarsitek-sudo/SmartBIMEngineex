@@ -5,6 +5,22 @@ class AHSP_Engine:
         # Database Koefisien AHSP (SNI/Permen PUPR)
         # Diperluas agar AI tidak bingung
         self.koefisien = {
+            # --- PERSIAPAN & PENDAHULUAN (SE 30/2025) ---
+            "pembersihan_lapangan": {
+                "desc": "1 m2 Pembersihan Lapangan dan Perataan",
+                "bahan": {}, # Murni tenaga kerja
+                "upah": {"Pekerja": 0.050, "Mandor": 0.005}
+            },
+            "pasang_bouwplank": {
+                "desc": "1 m' Pengukuran dan Pemasangan Bouwplank",
+                "bahan": {"Kayu Kelas III (m3)": 0.012, "Paku (kg)": 0.020, "Papan Kayu Bekisting (m3)": 0.007},
+                "upah": {"Pekerja": 0.100, "Tukang": 0.100, "Kepala Tukang": 0.010, "Mandor": 0.005}
+            },
+            "sewa_papan_nama": {
+                "desc": "1 Ls Pembuatan Papan Nama Proyek (Standar Dinas)",
+                "bahan": {"Papan Nama Proyek (Ls)": 1.0},
+                "upah": {}
+            },
             # --- BETON ---
             "beton_k175": {
                 "desc": "Beton K-175 (fc 14.5 MPa)",
@@ -133,3 +149,4 @@ class AHSP_Engine:
             total_upah += koef * h_upah
             
         return total_bahan + total_upah
+
