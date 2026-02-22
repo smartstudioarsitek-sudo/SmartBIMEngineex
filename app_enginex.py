@@ -103,6 +103,7 @@ sys.modules['libs_export'] = libs_export
 sys.modules['libs_bim_importer'] = libs_bim_importer
 sys.modules['libs_loader'] = libs_loader         # Register Loader Baru
 sys.modules['libs_auto_chain'] = libs_auto_chain # Register Chain Baru
+sys.modules['libs_price_engine'] = libs_price_engine # <--- TAMBAHAN BARU
 
 if has_geotek:
     sys.modules['libs_geoteknik'] = libs_geoteknik
@@ -1220,13 +1221,14 @@ with st.sidebar:
         st.info("💡 Upload file .ifc di menu atas untuk mengaktifkan ekstraksi.")
 
 
-    # 3. TOMBOL DOWNLOAD EXCEL & LOKASI
+    # ========================================================
+    # 3. TOMBOL DOWNLOAD EXCEL & PILIHAN LOKASI (BPS IKK)
+    # ========================================================
     df_boq_aktual = st.session_state.get('real_boq_data', None)
     
     st.markdown("### 🌍 Pengaturan Lokasi Proyek")
-    # User bisa ganti lokasi, harga material akan otomatis berubah mengikuti IKK BPS!
     pilihan_provinsi = st.selectbox(
-        "Pilih Provinsi (Untuk Kalkulasi Indeks Kemahalan Konstruksi):", 
+        "Pilih Provinsi (Kalkulasi Indeks Kemahalan Konstruksi BPS):", 
         ["Lampung", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "Jawa Timur", "Bali", "Sumatera Selatan", "Kalimantan Barat", "Sulawesi Selatan", "Papua", "Papua Pegunungan"], 
         index=0
     )
@@ -1237,26 +1239,19 @@ with st.sidebar:
         st.caption("🔴 Status: Data Kosong / Dummy.")
 
     try:
-        # ========================================================
-        # [UPGRADE] INISIALISASI MESIN HARGA BPS-IKK
-        # ========================================================
-        import sys
-        if 'libs_price_engine' not in sys.modules:
-            from modules.cost import libs_price_engine
-                
+        # Panggil Engine dari sys.modules yang sudah didaftarkan di atas
         with st.spinner(f"🔄 Menarik Indeks Kemahalan BPS untuk {pilihan_provinsi}..."):
             if 'price_engine' not in st.session_state:
                 st.session_state.price_engine = sys.modules['libs_price_engine'].PriceEngine3Tier()
         
-        # PENGAMAN: Tombol hanya nyala jika data sudah di-Setujui di HITL
+        # PENGAMAN: Tombol hanya nyala jika data sudah ada
         if df_boq_aktual is not None and not df_boq_aktual.empty:
             
-            # [PENTING] Kirim pilihan_provinsi ke mesin export
-            excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(
+            excel_bytes = sys.modules['libs_export'].Export_Engine().generate_7tab_rab_excel(
                 nama_proyek, 
                 df_boq_aktual, 
                 price_engine=st.session_state.price_engine,
-                lokasi_proyek=pilihan_provinsi # <--- INJEKSI LOKASI
+                lokasi_proyek=pilihan_provinsi 
             )
             
             st.download_button(
@@ -1312,6 +1307,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
