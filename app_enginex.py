@@ -600,12 +600,22 @@ if selected_menu == "🤖 AI Assistant":
                     chat = model.start_chat(history=chat_hist)
                     response = chat.send_message(full_prompt)
 
-                    # --- [UPGRADE: HITL] JARING PENANGKAP AI-QS VISION ---
+                    # --- [UPGRADE: HITL] JARING PENANGKAP AI-QS VISION (ANTI-GAGAL) ---
                     import json
-                    boq_match = re.search(r'```json\n(.*?"Kategori".*?)\n```', response.text, re.DOTALL | re.IGNORECASE)
-                    if boq_match:
+                    json_str = None
+                    
+                    # Skenario 1: AI memberikan blok ```json ... ``` atau ``` ... ```
+                    boq_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response.text, re.DOTALL | re.IGNORECASE)
+                    if boq_match and '"Kategori"' in boq_match.group(1):
+                        json_str = boq_match.group(1)
+                    else:
+                        # Skenario 2 (Fallback): AI super patuh, HANYA memberikan array [ { ... } ]
+                        arr_match = re.search(r'(\[\s*\{.*"Kategori".*?\}\s*\])', response.text, re.DOTALL | re.IGNORECASE)
+                        if arr_match:
+                            json_str = arr_match.group(1)
+
+                    if json_str:
                         try:
-                            json_str = boq_match.group(1)
                             boq_list = json.loads(json_str)
                             if isinstance(boq_list, list) and len(boq_list) > 0 and "Kategori" in boq_list[0]:
                                 df_ai = pd.DataFrame(boq_list)
@@ -613,31 +623,8 @@ if selected_menu == "🤖 AI Assistant":
                                 st.session_state['draft_boq_data'] = df_ai
                                 st.success(f"🎯 [AI-QS VISION] Menemukan {len(boq_list)} item pekerjaan. Menunggu Validasi (HITL)...")
                         except Exception as e:
-                            st.warning(f"AI mencoba membuat tabel BOQ, tapi format JSON meleset: {e}")
-                            
-                    parts = re.split(r"(```python.*?```)", response.text, flags=re.DOTALL)
-                    for part in parts:
-                        if part.startswith("```python"):
-                            code_content = part.replace("```python", "").replace("```", "").strip()
-                            with st.expander("🛠️ Detail Teknis"):
-                                st.code(code_content, language='python')
-                            execute_generated_code(code_content)
-                        else:
-                            st.markdown(part)
+                            st.warning(f"⚠️ AI berhasil membuat BOQ, tapi format JSON-nya sedikit meleset. Detail: {e}")
                     
-                    db.simpan_chat(nama_proyek, target_expert, "assistant", response.text)
-                    
-                    # Export Button (Gov Standard)
-                    st.markdown("---")
-                    try:
-                        pdf_bytes = libs_pdf.create_pdf(response.text, title="CHAT LOG REPORT")
-                    except:
-                        pdf_bytes = create_pdf(response.text)
-                        
-                    if pdf_bytes: st.download_button("📄 Download Laporan (SIMBG Ready)", pdf_bytes, "Laporan_Teknis.pdf")
-                    
-                except Exception as e:
-                    st.error(f"Error: {e}")
 
     # --- RENDER TABEL VALIDASI HITL (Di Luar Try-Except & Chat Bubble) ---
     if 'draft_boq_data' in st.session_state and not st.session_state['draft_boq_data'].empty:
@@ -1261,6 +1248,7 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Gagal menyiapkan Excel: {e}")
    
+
 
 
 
