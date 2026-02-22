@@ -130,27 +130,62 @@ class Export_Engine:
         last_row_basic = row_bp - 1
 
         # =======================================================
-        # TAB 4: AHSP (MENGGUNAKAN VLOOKUP CERDAS)
+        # TAB 4: AHSP (DINAMIS MENCETAK SELURUH BUKU RESEP)
         # =======================================================
+        ws_ahsp.set_column('A:A', 15)
         ws_ahsp.set_column('B:B', 35)
+        ws_ahsp.set_column('C:D', 12)
+        ws_ahsp.set_column('E:F', 18)
         ws_ahsp.write('A1', 'ANALISA HARGA SATUAN PEKERJAAN (AHSP)', fmt_title)
-        ws_ahsp.write('A2', 'Item: 1 m3 Pengecoran Beton K-300')
-        for col, h in enumerate(['Kategori', 'Uraian', 'Koefisien', 'Satuan', 'Harga Dasar', 'Subtotal']): 
-            ws_ahsp.write(3, col, h, fmt_header)
         
-        ws_ahsp.write('A5', 'Bahan', fmt_border); ws_ahsp.write('B5', 'Semen', fmt_border)
-        ws_ahsp.write('C5', 413.0, fmt_border); ws_ahsp.write('D5', 'kg', fmt_border)
-        ws_ahsp.write_formula('E5', f'=IFERROR(VLOOKUP("*Semen*","\'7. Basic Price\'!C4:E{last_row_basic+1}", 3, FALSE), 1500)', fmt_currency)
-        ws_ahsp.write_formula('F5', "=C5*E5", fmt_currency)
+        row_ahsp = 3
         
-        ws_ahsp.write('A6', 'Upah', fmt_border); ws_ahsp.write('B6', 'Pekerja', fmt_border)
-        ws_ahsp.write('C6', 1.65, fmt_border); ws_ahsp.write('D6', 'OH', fmt_border)
-        ws_ahsp.write_formula('E6', f'=IFERROR(VLOOKUP("*Pekerja*","\'7. Basic Price\'!C4:E{last_row_basic+1}", 3, FALSE), 150000)', fmt_currency)
-        ws_ahsp.write_formula('F6', "=C6*E6", fmt_currency)
-        
-        ws_ahsp.write('E7', 'Total Harga Satuan', fmt_header)
-        ws_ahsp.write_formula('F7', "=SUM(F5:F6)", fmt_currency_bold)
-        
+        # Iterasi seluruh resep yang ada di mesin AHSP
+        for kode_ahsp, resep in mesin_ahsp.koefisien.items():
+            # Judul Pekerjaan
+            ws_ahsp.write(row_ahsp, 0, f"Item Pekerjaan: {resep.get('desc', kode_ahsp)}", workbook.add_format({'bold': True, 'font_color': '#1E3A8A'}))
+            row_ahsp += 1
+            
+            # Header Tabel AHSP
+            for col, h in enumerate(['Kategori', 'Uraian', 'Koefisien', 'Satuan', 'Harga Dasar', 'Subtotal']): 
+                ws_ahsp.write(row_ahsp, col, h, fmt_header)
+            row_ahsp += 1
+            
+            start_row = row_ahsp + 1
+            
+            # 1. Tulis Baris Bahan
+            for bahan, qty in resep.get("bahan", {}).items():
+                nama_b = bahan.split("(")[0].strip() if "(" in bahan else bahan
+                sat = bahan.split("(")[1].replace(")","").strip() if "(" in bahan else "Ls"
+                ws_ahsp.write(row_ahsp, 0, 'Bahan', fmt_border)
+                ws_ahsp.write(row_ahsp, 1, nama_b, fmt_border)
+                ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
+                ws_ahsp.write(row_ahsp, 3, sat, fmt_border)
+                # Vlookup ke Tab 7
+                ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{nama_b}*","\'7. Basic Price\'!C:E", 3, FALSE), 0)', fmt_currency)
+                ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
+                row_ahsp += 1
+                
+            # 2. Tulis Baris Upah
+            for upah, qty in resep.get("upah", {}).items():
+                ws_ahsp.write(row_ahsp, 0, 'Upah', fmt_border)
+                ws_ahsp.write(row_ahsp, 1, upah, fmt_border)
+                ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
+                ws_ahsp.write(row_ahsp, 3, 'OH', fmt_border)
+                ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{upah}*","\'7. Basic Price\'!C:E", 3, FALSE), 0)', fmt_currency)
+                ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
+                row_ahsp += 1
+                
+            # Total Harga Satuan Pekerjaan
+            ws_ahsp.write(row_ahsp, 4, 'Total Harga Satuan', fmt_header)
+            # Proteksi error jika analisa kosong
+            if row_ahsp >= start_row:
+                ws_ahsp.write_formula(row_ahsp, 5, f"=SUM(F{start_row}:F{row_ahsp})", fmt_currency_bold)
+            else:
+                ws_ahsp.write(row_ahsp, 5, 0, fmt_currency_bold)
+                
+            row_ahsp += 3 # Jarak antar tabel analisa
+               
         # =======================================================
         # TAB 3 & 2: INJEKSI DATA ASLI IFC (DINAMIS)
         # =======================================================
@@ -299,6 +334,7 @@ class Export_Engine:
         workbook.close()
         return output.getvalue()
     
+
 
 
 
