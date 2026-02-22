@@ -1,7 +1,7 @@
-# modules/utils/libs_export.py
 import pandas as pd
 from io import BytesIO
 import xlsxwriter
+import sys
 
 class Export_Engine:
     def __init__(self):
@@ -21,9 +21,7 @@ class Export_Engine:
         dxf += "0\nENDSEC\n0\nEOF"
         return dxf
 
-
     def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None, price_engine=None, lokasi_proyek="Lampung"):
-
         
         # --- [INJEKSI RUMUS BPJS PP 44/2015] ---
         def hitung_bpjs_berjenjang(nilai_kontrak_tanpa_ppn):
@@ -61,31 +59,21 @@ class Export_Engine:
         ws_bp = workbook.add_worksheet('7. Basic Price')
 
         # =======================================================
-        # TAB 7: BASIC PRICE (TERINTEGRASI 3-TIER ENGINE - AUDIT READY)
+        # [PENTING] MENARIK DATA RESEP DARI AHSP ENGINE
         # =======================================================
-        ws_bp.write('A1', 'DAFTAR HARGA DASAR MATERIAL, UPAH, DAN ALAT', fmt_title)
-        
-        headers_bp = ['No', 'Kategori', 'Nama Material / Upah', 'Satuan', 'Harga Satuan (Rp)', 'Sumber Data (Validasi Auditor)']
-        for col, h in enumerate(headers_bp): ws_bp.write(2, col, h, fmt_header)
-        
-        ws_bp.set_column('C:C', 35)
-        ws_bp.set_column('E:E', 20)
-        ws_bp.set_column('F:F', 90) # Dibuat sangat lebar agar URL Scraping muat
-
-        # --- LOGIKA EKSTRAKSI MATERIAL OTOMATIS DARI AHSP ---
-        import sys
         kebutuhan_unik = {} 
+        resep_ahsp_aktif = {} # Menyimpan resep untuk digambar di Tab 4
+        
         try:
-            # Ambil modul AHSP yang sudah menyala di memori aplikasi
             mod_ahsp = sys.modules.get('libs_ahsp')
             if mod_ahsp:
-                # Cari otomatis Class apapun yang menyimpan buku resep 'koefisien'
                 for item_name in dir(mod_ahsp):
                     item = getattr(mod_ahsp, item_name)
-                    if isinstance(item, type): # Jika dia adalah Class
+                    if isinstance(item, type): 
                         try:
                             instance = item()
-                            if hasattr(instance, 'koefisien'): # Ketemu Otaknya!
+                            if hasattr(instance, 'koefisien'): 
+                                resep_ahsp_aktif = instance.koefisien # Simpan resepnya!
                                 for key, resep in instance.koefisien.items():
                                     for nama_bahan, qty in resep.get("bahan", {}).items():
                                         if "(" in nama_bahan and ")" in nama_bahan:
@@ -98,22 +86,32 @@ class Export_Engine:
                                     
                                     for nama_upah, qty in resep.get("upah", {}).items():
                                         kebutuhan_unik[nama_upah] = ("Upah", "OH")
-                                break # Berhenti mencari kalau sudah ketemu
+                                break 
                         except:
                             pass
         except Exception as e:
-            pass # Aman, tidak akan crash meskipun gagal
-                       
+            pass 
+
+        # =======================================================
+        # TAB 7: BASIC PRICE (TERINTEGRASI BPS IKK)
+        # =======================================================
+        ws_bp.write('A1', f'DAFTAR HARGA DASAR MATERIAL & UPAH (IKK {lokasi_proyek.upper()})', fmt_title)
+        
+        headers_bp = ['No', 'Kategori', 'Nama Material / Upah', 'Satuan', 'Harga Satuan (Rp)', 'Sumber Data (Validasi Auditor)']
+        for col, h in enumerate(headers_bp): ws_bp.write(2, col, h, fmt_header)
+        
+        ws_bp.set_column('C:C', 35)
+        ws_bp.set_column('E:E', 20)
+        ws_bp.set_column('F:F', 90)
+                
         row_bp = 3
         idx = 1
         for nama_item, (kategori, satuan) in kebutuhan_unik.items():
             harga_angka = 0
             sumber_teks = "Manual Input"
             
-            # PANGGIL MESIN PENCARI HARGA!
             if price_engine:
                 harga_angka, sumber_teks = price_engine.get_best_price(nama_item, lokasi=lokasi_proyek)
-             
                 
             ws_bp.write(row_bp, 0, idx, fmt_border)
             ws_bp.write(row_bp, 1, kategori, fmt_border)
@@ -142,52 +140,47 @@ class Export_Engine:
         
         row_ahsp = 3
         
-        # Iterasi seluruh resep yang ada di mesin AHSP
-        for kode_ahsp, resep in mesin_ahsp.koefisien.items():
-            # Judul Pekerjaan
-            ws_ahsp.write(row_ahsp, 0, f"Item Pekerjaan: {resep.get('desc', kode_ahsp)}", workbook.add_format({'bold': True, 'font_color': '#1E3A8A'}))
-            row_ahsp += 1
-            
-            # Header Tabel AHSP
-            for col, h in enumerate(['Kategori', 'Uraian', 'Koefisien', 'Satuan', 'Harga Dasar', 'Subtotal']): 
-                ws_ahsp.write(row_ahsp, col, h, fmt_header)
-            row_ahsp += 1
-            
-            start_row = row_ahsp + 1
-            
-            # 1. Tulis Baris Bahan
-            for bahan, qty in resep.get("bahan", {}).items():
-                nama_b = bahan.split("(")[0].strip() if "(" in bahan else bahan
-                sat = bahan.split("(")[1].replace(")","").strip() if "(" in bahan else "Ls"
-                ws_ahsp.write(row_ahsp, 0, 'Bahan', fmt_border)
-                ws_ahsp.write(row_ahsp, 1, nama_b, fmt_border)
-                ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
-                ws_ahsp.write(row_ahsp, 3, sat, fmt_border)
-                # Vlookup ke Tab 7
-                ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{nama_b}*","\'7. Basic Price\'!C:E", 3, FALSE), 0)', fmt_currency)
-                ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
+        if not resep_ahsp_aktif:
+            ws_ahsp.write(row_ahsp, 0, "Buku Resep AHSP Kosong / Gagal Dimuat", fmt_header)
+        else:
+            for kode_ahsp, resep in resep_ahsp_aktif.items():
+                ws_ahsp.write(row_ahsp, 0, f"Item: {resep.get('desc', kode_ahsp)}", workbook.add_format({'bold': True, 'font_color': '#1E3A8A'}))
                 row_ahsp += 1
                 
-            # 2. Tulis Baris Upah
-            for upah, qty in resep.get("upah", {}).items():
-                ws_ahsp.write(row_ahsp, 0, 'Upah', fmt_border)
-                ws_ahsp.write(row_ahsp, 1, upah, fmt_border)
-                ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
-                ws_ahsp.write(row_ahsp, 3, 'OH', fmt_border)
-                ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{upah}*","\'7. Basic Price\'!C:E", 3, FALSE), 0)', fmt_currency)
-                ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
+                for col, h in enumerate(['Kategori', 'Uraian', 'Koefisien', 'Satuan', 'Harga Dasar', 'Subtotal']): 
+                    ws_ahsp.write(row_ahsp, col, h, fmt_header)
                 row_ahsp += 1
                 
-            # Total Harga Satuan Pekerjaan
-            ws_ahsp.write(row_ahsp, 4, 'Total Harga Satuan', fmt_header)
-            # Proteksi error jika analisa kosong
-            if row_ahsp >= start_row:
-                ws_ahsp.write_formula(row_ahsp, 5, f"=SUM(F{start_row}:F{row_ahsp})", fmt_currency_bold)
-            else:
-                ws_ahsp.write(row_ahsp, 5, 0, fmt_currency_bold)
+                start_row = row_ahsp + 1
                 
-            row_ahsp += 3 # Jarak antar tabel analisa
-               
+                for bahan, qty in resep.get("bahan", {}).items():
+                    nama_b = bahan.split("(")[0].strip() if "(" in bahan else bahan
+                    sat = bahan.split("(")[1].replace(")","").strip() if "(" in bahan else "Ls"
+                    ws_ahsp.write(row_ahsp, 0, 'Bahan', fmt_border)
+                    ws_ahsp.write(row_ahsp, 1, nama_b, fmt_border)
+                    ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
+                    ws_ahsp.write(row_ahsp, 3, sat, fmt_border)
+                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{nama_b}*","\'7. Basic Price\'!C:E", 3, FALSE), 0)', fmt_currency)
+                    ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
+                    row_ahsp += 1
+                    
+                for upah, qty in resep.get("upah", {}).items():
+                    ws_ahsp.write(row_ahsp, 0, 'Upah', fmt_border)
+                    ws_ahsp.write(row_ahsp, 1, upah, fmt_border)
+                    ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
+                    ws_ahsp.write(row_ahsp, 3, 'OH', fmt_border)
+                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{upah}*","\'7. Basic Price\'!C:E", 3, FALSE), 0)', fmt_currency)
+                    ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
+                    row_ahsp += 1
+                    
+                ws_ahsp.write(row_ahsp, 4, 'Total Harga Satuan', fmt_header)
+                if row_ahsp >= start_row:
+                    ws_ahsp.write_formula(row_ahsp, 5, f"=SUM(F{start_row}:F{row_ahsp})", fmt_currency_bold)
+                else:
+                    ws_ahsp.write(row_ahsp, 5, 0, fmt_currency_bold)
+                    
+                row_ahsp += 3 
+
         # =======================================================
         # TAB 3 & 2: INJEKSI DATA ASLI IFC (DINAMIS)
         # =======================================================
@@ -207,17 +200,16 @@ class Export_Engine:
         for index, row in df_boq.iterrows():
             row_excel = index + 3 
             
-            # Tab 3
             ws_boq.write(row_excel, 0, index + 1, fmt_border)
             ws_boq.write(row_excel, 1, str(row['Kategori']), fmt_border)
             ws_boq.write(row_excel, 2, str(row['Nama']), fmt_border)
             ws_boq.write(row_excel, 3, float(row['Volume']), fmt_border)
             
-            # Tab 2
             ws_rab.write(row_excel, 0, index + 1, fmt_border)
-            ws_rab.write(row_excel, 1, f"Pengecoran {row['Nama']}", fmt_border)
+            ws_rab.write(row_excel, 1, f"Pekerjaan {row['Nama']}", fmt_border)
             ws_rab.write_formula(row_excel, 2, f"='3. Backup BOQ'!D{row_excel+1}", fmt_border)
             ws_rab.write(row_excel, 3, 'm3', fmt_border)
+            # Default ke AHSP baris 7 jika tidak ketemu yang pas
             ws_rab.write_formula(row_excel, 4, "='4. AHSP S2 30 2025'!F7", fmt_currency)
             ws_rab.write_formula(row_excel, 5, f"=C{row_excel+1}*E{row_excel+1}", fmt_currency)
             baris_terakhir_rab = row_excel
@@ -233,7 +225,7 @@ class Export_Engine:
         for col, h in enumerate(['No', 'Divisi Pekerjaan', 'Total Harga (Rp)']): ws_rekap.write(2, col, h, fmt_header)
         
         ws_rekap.write('A4', 1, fmt_border)
-        ws_rekap.write('B4', 'Pekerjaan Struktur', fmt_border)
+        ws_rekap.write('B4', 'Pekerjaan Struktur Utama', fmt_border)
         ws_rekap.write_formula('C4', f"='2. RAB'!F{baris_terakhir_rab + 2}", fmt_currency)
         
         ws_rekap.write('B6', 'A. TOTAL BIAYA FISIK', fmt_header)
@@ -335,14 +327,3 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
-    
-
-
-
-
-
-
-
-
-
-
