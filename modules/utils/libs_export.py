@@ -23,6 +23,66 @@ class Export_Engine:
 
     def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None, df_basic_price=None):
         """
+        # =======================================================
+        # TAB 7: BASIC PRICE (TERINTEGRASI 3-TIER ENGINE - AUDIT READY)
+        # =======================================================
+        ws_bp = workbook.add_worksheet('7. Basic Price')
+        ws_bp.write('A1', 'DAFTAR HARGA DASAR MATERIAL, UPAH, DAN ALAT', fmt_title)
+        
+        headers_bp = ['No', 'Kategori', 'Nama Material / Upah', 'Satuan', 'Harga Satuan (Rp)', 'Sumber Data (Validasi Auditor)']
+        for col, h in enumerate(headers_bp): ws_bp.write(2, col, h, fmt_header)
+        
+        ws_bp.set_column('C:C', 35)
+        ws_bp.set_column('E:E', 20)
+        ws_bp.set_column('F:F', 90) # Dibuat sangat lebar agar URL Scraping muat
+        
+        # --- LOGIKA EKSTRAKSI MATERIAL OTOMATIS DARI AHSP ---
+        from modules.cost.libs_ahsp import AHSPEngine
+        mesin_ahsp = AHSPEngine()
+        kebutuhan_unik = {} 
+        
+        # Mesin akan membongkar seluruh buku resep untuk mencari bahan apa saja yang dipakai
+        for key, resep in mesin_ahsp.koefisien.items():
+            # Ekstrak Bahan
+            for nama_bahan, qty in resep.get("bahan", {}).items():
+                if "(" in nama_bahan and ")" in nama_bahan:
+                    nama_bersih = nama_bahan.split("(")[0].strip()
+                    satuan = nama_bahan.split("(")[1].replace(")", "").strip()
+                else:
+                    nama_bersih = nama_bahan
+                    satuan = "Ls/Unit"
+                kebutuhan_unik[nama_bersih] = ("Bahan", satuan)
+            
+            # Ekstrak Upah
+            for nama_upah, qty in resep.get("upah", {}).items():
+                kebutuhan_unik[nama_upah] = ("Upah", "OH")
+                
+        # --- PENCETAKAN HARGA KE EXCEL DENGAN 3-TIER ENGINE ---
+        row_bp = 3
+        idx = 1
+        for nama_item, (kategori, satuan) in kebutuhan_unik.items():
+            harga_angka = 0
+            sumber_teks = "Manual Input"
+            
+            # TEMBAK KE API / ENGINE!
+            if price_engine:
+                harga_angka, sumber_teks = price_engine.get_best_price(nama_item, lokasi="Lampung")
+                
+            ws_bp.write(row_bp, 0, idx, fmt_border)
+            ws_bp.write(row_bp, 1, kategori, fmt_border)
+            ws_bp.write(row_bp, 2, nama_item, fmt_border)
+            ws_bp.write(row_bp, 3, satuan, fmt_border)
+            ws_bp.write(row_bp, 4, harga_angka, fmt_currency)
+            
+            # Highlight khusus jika harga berasal dari Marketplace (Web Scraping)
+            if "Toko Online" in sumber_teks:
+                ws_bp.write(row_bp, 5, sumber_teks, workbook.add_format({'border': 1, 'font_color': '#1D4ED8'})) # Warna Biru
+            else:
+                ws_bp.write(row_bp, 5, sumber_teks, fmt_border)
+            
+            row_bp += 1
+            idx += 1
+            
         Auto-Chain Excel Generator terintegrasi dengan data IFC & BPS API (DuckDB).
         """
         output = BytesIO()
@@ -262,6 +322,7 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
 
 
