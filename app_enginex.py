@@ -1231,7 +1231,7 @@ with st.sidebar:
         else:
             st.caption("🔴 Status: Data Kosong / Dummy.")
 
-        try:
+    try:
         # ========================================================
         # [UPGRADE] INISIALISASI MESIN HARGA 3-TIER (ESSH/BPS/WEB)
         # ========================================================
@@ -1273,6 +1273,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
