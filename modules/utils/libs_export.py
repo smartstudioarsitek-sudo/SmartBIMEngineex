@@ -70,25 +70,39 @@ class Export_Engine:
         ws_bp.set_column('C:C', 35)
         ws_bp.set_column('E:E', 20)
         ws_bp.set_column('F:F', 90) # Dibuat sangat lebar agar URL Scraping muat
-        
+
         # --- LOGIKA EKSTRAKSI MATERIAL OTOMATIS DARI AHSP ---
-        from modules.cost.libs_ahsp import AHSPEngine
-        mesin_ahsp = AHSPEngine()
+        import sys
         kebutuhan_unik = {} 
-        
-        for key, resep in mesin_ahsp.koefisien.items():
-            for nama_bahan, qty in resep.get("bahan", {}).items():
-                if "(" in nama_bahan and ")" in nama_bahan:
-                    nama_bersih = nama_bahan.split("(")[0].strip()
-                    satuan = nama_bahan.split("(")[1].replace(")", "").strip()
-                else:
-                    nama_bersih = nama_bahan
-                    satuan = "Ls/Unit"
-                kebutuhan_unik[nama_bersih] = ("Bahan", satuan)
-            
-            for nama_upah, qty in resep.get("upah", {}).items():
-                kebutuhan_unik[nama_upah] = ("Upah", "OH")
-                
+        try:
+            # Ambil modul AHSP yang sudah menyala di memori aplikasi
+            mod_ahsp = sys.modules.get('libs_ahsp')
+            if mod_ahsp:
+                # Cari otomatis Class apapun yang menyimpan buku resep 'koefisien'
+                for item_name in dir(mod_ahsp):
+                    item = getattr(mod_ahsp, item_name)
+                    if isinstance(item, type): # Jika dia adalah Class
+                        try:
+                            instance = item()
+                            if hasattr(instance, 'koefisien'): # Ketemu Otaknya!
+                                for key, resep in instance.koefisien.items():
+                                    for nama_bahan, qty in resep.get("bahan", {}).items():
+                                        if "(" in nama_bahan and ")" in nama_bahan:
+                                            nama_bersih = nama_bahan.split("(")[0].strip()
+                                            satuan = nama_bahan.split("(")[1].replace(")", "").strip()
+                                        else:
+                                            nama_bersih = nama_bahan
+                                            satuan = "Ls/Unit"
+                                        kebutuhan_unik[nama_bersih] = ("Bahan", satuan)
+                                    
+                                    for nama_upah, qty in resep.get("upah", {}).items():
+                                        kebutuhan_unik[nama_upah] = ("Upah", "OH")
+                                break # Berhenti mencari kalau sudah ketemu
+                        except:
+                            pass
+        except Exception as e:
+            pass # Aman, tidak akan crash meskipun gagal
+                       
         row_bp = 3
         idx = 1
         for nama_item, (kategori, satuan) in kebutuhan_unik.items():
@@ -285,6 +299,7 @@ class Export_Engine:
         workbook.close()
         return output.getvalue()
     
+
 
 
 
