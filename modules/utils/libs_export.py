@@ -166,38 +166,61 @@ class Export_Engine:
         ws_rekap.write_formula('C8', "=C6 + C7", fmt_currency_bold)
 
         # =======================================================
-        # TAB 5: SMKK (Sistem Manajemen Keselamatan Konstruksi)
+        # TAB 5: SMKK (STANDAR 9 KOMPONEN SE PUPR 30/2025)
         # =======================================================
-        ws_smkk.set_column('B:B', 45)
-        ws_smkk.write('A1', 'RENCANA BIAYA PENERAPAN SMKK (K3)', fmt_title)
+        ws_smkk.set_column('B:B', 50)
+        ws_smkk.write('A1', 'RENCANA BIAYA PENERAPAN SISTEM MANAJEMEN KESELAMATAN KONSTRUKSI (SMKK)', fmt_title)
         
-        headers_smkk = ['No', 'Uraian Pekerjaan K3', 'Volume', 'Satuan', 'Harga Satuan (Rp)', 'Total Harga (Rp)']
+        headers_smkk = ['No', 'Uraian Pekerjaan', 'Satuan', 'Volume', 'Harga Satuan (Rp)', 'Total Harga (Rp)']
         for col, h in enumerate(headers_smkk): ws_smkk.write(2, col, h, fmt_header)
         
-        # Daftar Item Standar SMKK PUPR
+        # Standar 9 Komponen K3 PUPR
         smkk_items = [
-            ("Penyiapan RKK (Rencana Keselamatan Konstruksi)", 1, "Set", 500000),
-            ("Topi Pelindung (Safety Helmet)", 20, "Bh", 65000),
-            ("Rompi Keselamatan (Safety Vest)", 20, "Bh", 45000),
-            ("Sepatu Keselamatan (Safety Shoes)", 20, "Psg", 250000),
-            ("Rambu Peringatan / Barikade", 5, "Set", 150000),
-            ("BPJS Ketenagakerjaan & Kesehatan", 1, "Ls", 2500000)
+            ("1. Penyiapan RKK, RKPPL, RMLLP, dan RMPK", "", "", "", ""),
+            ("   a. Pembuatan Dokumen RKK", "Set", 1, 500000, 500000),
+            ("2. Sosialisasi, Promosi, dan Pelatihan", "", "", "", ""),
+            ("   a. Spanduk (Banner) & Papan Informasi K3", "Lbr", 2, 150000, 300000),
+            ("3. Alat Pelindung Kerja (APK) dan APD", "", "", "", ""),
+            ("   a. Topi Pelindung (Safety Helmet)", "Bh", 10, 65000, 650000),
+            ("   b. Rompi Keselamatan (Safety Vest)", "Bh", 10, 45000, 450000),
+            ("   c. Sepatu Keselamatan (Safety Shoes)", "Psg", 10, 250000, 2500000),
+            ("4. Asuransi dan Perizinan", "", "", "", ""),
+            ("   a. BPJS Ketenagakerjaan (Sektor Jasa Konstruksi)", "Ls", 1, 2000000, 2000000),
+            ("5. Personel K3 Konstruksi", "", "", "", ""),
+            ("   a. Petugas Keselamatan Konstruksi", "OB", 1, 3500000, 3500000),
+            ("6. Fasilitas Sarana, Prasarana, dan Alat Kesehatan", "", "", "", ""),
+            ("   a. Peralatan P3K (Kotak P3K Lengkap)", "Ls", 1, 300000, 300000),
+            ("7. Rambu-Rambu dan Barikade", "", "", "", ""),
+            ("   a. Rambu Petunjuk & Peringatan", "Bh", 4, 100000, 400000),
+            ("   b. Pita Pengaman (Safety Line)", "Rol", 2, 75000, 150000),
+            ("8. Konsultasi dengan Ahli Keselamatan", "Ls", 0, 0, 0),
+            ("9. Kegiatan Pengendalian Risiko", "", "", "", ""),
+            ("   a. Alat Pemadam Api Ringan (APAR) 3 Kg", "Bh", 1, 450000, 450000)
         ]
         
         row_smkk = 3
-        for idx, (item, vol, sat, hrg) in enumerate(smkk_items):
-            ws_smkk.write(row_smkk, 0, idx + 1, fmt_border)
-            ws_smkk.write(row_smkk, 1, item, fmt_border)
-            ws_smkk.write(row_smkk, 2, vol, fmt_border)
-            ws_smkk.write(row_smkk, 3, sat, fmt_border)
-            ws_smkk.write(row_smkk, 4, hrg, fmt_currency)
-            # Rumus Excel: Volume x Harga Satuan
-            ws_smkk.write_formula(row_smkk, 5, f"=C{row_smkk+1}*E{row_smkk+1}", fmt_currency)
+        idx_utama = 1
+        for item in smkk_items:
+            # Jika baris adalah Judul Komponen (Hanya ada Uraian)
+            if item[1] == "":
+                ws_smkk.write(row_smkk, 0, "", fmt_border)
+                ws_smkk.write(row_smkk, 1, item[0], workbook.add_format({'bold': True, 'border': 1, 'bg_color': '#E5E7EB'}))
+                ws_smkk.write(row_smkk, 2, "", fmt_border)
+                ws_smkk.write(row_smkk, 3, "", fmt_border)
+                ws_smkk.write(row_smkk, 4, "", fmt_border)
+                ws_smkk.write(row_smkk, 5, "", fmt_border)
+            else:
+                ws_smkk.write(row_smkk, 0, "", fmt_border)
+                ws_smkk.write(row_smkk, 1, item[0], fmt_border) # Uraian
+                ws_smkk.write(row_smkk, 2, item[1], fmt_border) # Satuan
+                ws_smkk.write(row_smkk, 3, item[2], fmt_border) # Volume
+                ws_smkk.write(row_smkk, 4, item[3], fmt_currency) # Harga Satuan
+                ws_smkk.write_formula(row_smkk, 5, f"=D{row_smkk+1}*E{row_smkk+1}", fmt_currency) # Total
             row_smkk += 1
             
         ws_smkk.write(row_smkk, 1, 'TOTAL BIAYA SMKK', fmt_header)
         ws_smkk.write_formula(row_smkk, 5, f"=SUM(F4:F{row_smkk})", fmt_currency_bold)
-
+        
         # =======================================================
         # TAB 6: TKDN (Tingkat Komponen Dalam Negeri)
         # =======================================================
@@ -239,6 +262,7 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
 
 
