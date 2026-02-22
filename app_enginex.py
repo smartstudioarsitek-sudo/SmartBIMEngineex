@@ -599,21 +599,13 @@ if selected_menu == "🤖 AI Assistant":
                     # ---------------------------------------------------------               
                     chat = model.start_chat(history=chat_hist)
                     response = chat.send_message(full_prompt)
-                    
-                    # --- [UPGRADE: HITL] JARING PENANGKAP AI-QS VISION (ANTI-GAGAL) ---
-                    import json
-                    json_str = None
-                    
-                    boq_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', response.text, re.DOTALL | re.IGNORECASE)
-                    if boq_match and '"Kategori"' in boq_match.group(1):
-                        json_str = boq_match.group(1)
-                    else:
-                        arr_match = re.search(r'(\[\s*\{.*"Kategori".*?\}\s*\])', response.text, re.DOTALL | re.IGNORECASE)
-                        if arr_match:
-                            json_str = arr_match.group(1)
 
-                    if json_str:
+                    # --- [UPGRADE: HITL] JARING PENANGKAP AI-QS VISION ---
+                    import json
+                    boq_match = re.search(r'```json\n(.*?"Kategori".*?)\n```', response.text, re.DOTALL | re.IGNORECASE)
+                    if boq_match:
                         try:
+                            json_str = boq_match.group(1)
                             boq_list = json.loads(json_str)
                             if isinstance(boq_list, list) and len(boq_list) > 0 and "Kategori" in boq_list[0]:
                                 df_ai = pd.DataFrame(boq_list)
@@ -621,8 +613,8 @@ if selected_menu == "🤖 AI Assistant":
                                 st.session_state['draft_boq_data'] = df_ai
                                 st.success(f"🎯 [AI-QS VISION] Menemukan {len(boq_list)} item pekerjaan. Menunggu Validasi (HITL)...")
                         except Exception as e:
-                            st.warning(f"⚠️ AI berhasil membuat BOQ, tapi format JSON-nya sedikit meleset. Detail: {e}")
-
+                            st.warning(f"AI mencoba membuat tabel BOQ, tapi format JSON meleset: {e}")
+                            
                     parts = re.split(r"(```python.*?```)", response.text, flags=re.DOTALL)
                     for part in parts:
                         if part.startswith("```python"):
@@ -644,30 +636,28 @@ if selected_menu == "🤖 AI Assistant":
                         
                     if pdf_bytes: st.download_button("📄 Download Laporan (SIMBG Ready)", pdf_bytes, "Laporan_Teknis.pdf")
                     
-                # ---> INI DIA PENUTUP TRY YANG TADI TERHAPUS KAK <---
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-        # --- RENDER TABEL VALIDASI HITL (Di Luar Try-Except & Chat Bubble) ---
-        if 'draft_boq_data' in st.session_state and not st.session_state['draft_boq_data'].empty:
-            st.markdown("### 🕵️ Validasi Ekstraksi AI (Human-in-the-Loop)")
-            st.info("⚠️ Silakan periksa hasil ekstraksi Vision LLM. Anda dapat mengedit data secara manual sebelum masuk ke RAB.")
-            
-            edited_df = st.data_editor(
-                st.session_state['draft_boq_data'],
-                num_rows="dynamic",
-                use_container_width=True,
-                key="hitl_editor"
-            )
-            if st.button("✅ Setujui & Masukkan ke Memori RAB", type="primary"):
-                # Menyelaraskan memori agar terbaca di Tab Laporan 5D
-                st.session_state['boq_data'] = edited_df
-                st.session_state['real_boq_data'] = edited_df
-                st.session_state['draft_boq_data'] = pd.DataFrame()
-                st.success("Data divalidasi dan terkunci untuk ekspor 7-Tab Excel!")
-                st.rerun()
-       
-                      
+    # --- RENDER TABEL VALIDASI HITL (Di Luar Try-Except & Chat Bubble) ---
+    if 'draft_boq_data' in st.session_state and not st.session_state['draft_boq_data'].empty:
+        st.markdown("### 🕵️ Validasi Ekstraksi AI (Human-in-the-Loop)")
+        st.info("⚠️ Silakan periksa hasil ekstraksi Vision LLM. Anda dapat mengedit data secara manual sebelum masuk ke RAB.")
+        
+        edited_df = st.data_editor(
+            st.session_state['draft_boq_data'],
+            num_rows="dynamic",
+            use_container_width=True,
+            key="hitl_editor"
+        )
+        
+        if st.button("✅ Setujui & Masukkan ke Memori RAB", type="primary"):
+            st.session_state['real_boq_data'] = edited_df
+            st.session_state['draft_boq_data'] = pd.DataFrame()
+            st.success("Data divalidasi dan terkunci untuk ekspor 7-Tab Excel!")
+            st.rerun()
+
+  
                     
     # ==========================================
     # MODUL AUTO-CHAIN GENERATOR (INTEGRATED)
@@ -1232,33 +1222,34 @@ with st.sidebar:
         st.info("💡 Upload file .ifc di menu atas untuk mengaktifkan ekstraksi.")
 
 
-    
-    # ========================================================
-    # 3. TOMBOL DOWNLOAD EXCEL (SPASI SUDAH DILURUSKAN)
-    # ========================================================
-    df_boq_aktual = st.session_state.get('real_boq_data', None)
-    
-    # Indikator Visual agar Kakak tahu apakah data asli sudah siap
-    if df_boq_aktual is not None and not df_boq_aktual.empty:
-        st.caption(f"🟢 Ready: **{len(df_boq_aktual)} baris** data asli siap di-Export.")
-    else:
-        st.caption("🔴 Status: Data Kosong / Menunggu Validasi (HITL).")
-
-    try:
-        # [BARU] Inisialisasi DuckDB & Tarik Data BPS secara asinkron
-        df_harga_bps = None
-        if 'libs_bps' in sys.modules:
-            with st.spinner("🔄 Sinkronisasi BPS/ESSH ke Memori DuckDB..."):
-                try:
-                    if 'bps_engine' not in st.session_state:
-                        st.session_state.bps_engine = sys.modules['libs_bps'].BPS_DuckDB_Engine("TOKEN_BPS_123")
-                    df_harga_bps = st.session_state.bps_engine.get_regional_prices("Lampung")
-                except Exception as e:
-                    st.warning(f"Koneksi BPS Timeout: {e}")
+    # 3. TOMBOL DOWNLOAD EXCEL
+        df_boq_aktual = st.session_state.get('real_boq_data', None)
         
-        # PENGAMAN: Tombol hanya nyala jika data sudah di-Setujui di HITL
+        # Indikator Visual agar Kakak tahu apakah data asli sudah siap
         if df_boq_aktual is not None and not df_boq_aktual.empty:
+            st.caption(f"🟢 Ready: **{len(df_boq_aktual)} baris** data asli dari BIM.")
+        else:
+            st.caption("🔴 Status: Data Kosong / Dummy.")
+
+        try:
+            # [BARU] Inisialisasi DuckDB & Tarik Data BPS secara asinkron (simulasi)
+            df_harga_bps = None
+            if 'libs_bps' in sys.modules:
+                with st.spinner("🔄 Sinkronisasi BPS/ESSH ke Memori DuckDB..."):
+                    try:
+                        # Inisiasi engine dan panggil data (Misal region Lampung)
+                        if 'bps_engine' not in st.session_state:
+                            # Gunakan dummy token untuk safety
+                            st.session_state.bps_engine = sys.modules['libs_bps'].BPS_DuckDB_Engine("TOKEN_BPS_123")
+                        
+                        # Tarik data (Akan super cepat jika sudah di-cache DuckDB)
+                        df_harga_bps = st.session_state.bps_engine.get_regional_prices("Lampung")
+                    except Exception as e:
+                        st.warning(f"Koneksi BPS Timeout: {e}. Menggunakan harga standar.")
+            
+            # Kirim df_harga_bps ke engine Export
             excel_bytes = libs_export.Export_Engine().generate_7tab_rab_excel(nama_proyek, df_boq_aktual, df_basic_price=df_harga_bps)
+            
             st.download_button(
                 label="📥 2. Download Excel RAB (7 Tab + BPS)",
                 data=excel_bytes,
@@ -1267,17 +1258,9 @@ with st.sidebar:
                 type="primary",
                 use_container_width=True
             )
-        else:
-            # Tombol abu-abu (mati) kalau datanya belum divalidasi
-            st.button("📥 2. Download Excel RAB (Kunci Data Dulu!)", disabled=True, use_container_width=True)
-            
-    except Exception as e:
-        st.error(f"Gagal menyiapkan Excel: {e}")
-        
+        except Exception as e:
+            st.error(f"Gagal menyiapkan Excel: {e}")
    
-
-
-
 
 
 
