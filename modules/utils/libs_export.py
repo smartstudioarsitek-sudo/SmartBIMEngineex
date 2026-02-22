@@ -62,7 +62,7 @@ class Export_Engine:
         # [PENTING] MENARIK DATA RESEP DARI AHSP ENGINE
         # =======================================================
         kebutuhan_unik = {} 
-        resep_ahsp_aktif = {} # Menyimpan resep untuk digambar di Tab 4
+        resep_ahsp_aktif = {} 
         
         try:
             mod_ahsp = sys.modules.get('libs_ahsp')
@@ -73,7 +73,7 @@ class Export_Engine:
                         try:
                             instance = item()
                             if hasattr(instance, 'koefisien'): 
-                                resep_ahsp_aktif = instance.koefisien # Simpan resepnya!
+                                resep_ahsp_aktif = instance.koefisien 
                                 for key, resep in instance.koefisien.items():
                                     for nama_bahan, qty in resep.get("bahan", {}).items():
                                         if "(" in nama_bahan and ")" in nama_bahan:
@@ -126,11 +126,9 @@ class Export_Engine:
             
             row_bp += 1
             idx += 1
-            
-        last_row_basic = row_bp - 1
 
         # =======================================================
-        # TAB 4: AHSP (DINAMIS MENCETAK SELURUH BUKU RESEP)
+        # TAB 4: AHSP (DILENGKAPI TABEL REKAPITULASI UNTUK VLOOKUP)
         # =======================================================
         ws_ahsp.set_column('A:A', 15)
         ws_ahsp.set_column('B:B', 35)
@@ -138,13 +136,23 @@ class Export_Engine:
         ws_ahsp.set_column('E:F', 18)
         ws_ahsp.write('A1', 'ANALISA HARGA SATUAN PEKERJAAN (AHSP)', fmt_title)
         
+        # --- [FITUR BARU] TABEL REKAPITULASI AHSP DI SEBELAH KANAN ---
+        ws_ahsp.write('H1', 'REKAPITULASI HARGA SATUAN AHSP', fmt_title)
+        ws_ahsp.set_column('H:H', 50)
+        ws_ahsp.set_column('I:I', 10)
+        ws_ahsp.set_column('J:J', 20)
+        for col, h in enumerate(['Nama Pekerjaan / AHSP', 'Satuan', 'Harga Satuan (Rp)']):
+            ws_ahsp.write(2, col+7, h, fmt_header)
+        
         row_ahsp = 3
+        row_rekap = 3
         
         if not resep_ahsp_aktif:
             ws_ahsp.write(row_ahsp, 0, "Buku Resep AHSP Kosong / Gagal Dimuat", fmt_header)
         else:
             for kode_ahsp, resep in resep_ahsp_aktif.items():
-                ws_ahsp.write(row_ahsp, 0, f"Item: {resep.get('desc', kode_ahsp)}", workbook.add_format({'bold': True, 'font_color': '#1E3A8A'}))
+                nama_ahsp = resep.get('desc', kode_ahsp)
+                ws_ahsp.write(row_ahsp, 0, f"Item: {nama_ahsp}", workbook.add_format({'bold': True, 'font_color': '#1E3A8A'}))
                 row_ahsp += 1
                 
                 for col, h in enumerate(['Kategori', 'Uraian', 'Koefisien', 'Satuan', 'Harga Dasar', 'Subtotal']): 
@@ -179,18 +187,27 @@ class Export_Engine:
                 else:
                     ws_ahsp.write(row_ahsp, 5, 0, fmt_currency_bold)
                     
+                # --- INJEKSI KE TABEL REKAP VLOOKUP ---
+                ws_ahsp.write(row_rekap, 7, nama_ahsp, fmt_border)
+                ws_ahsp.write(row_rekap, 8, "Ls/m3", fmt_border)
+                ws_ahsp.write_formula(row_rekap, 9, f"=F{row_ahsp+1}", fmt_currency)
+                row_rekap += 1
+                    
                 row_ahsp += 3 
 
         # =======================================================
-        # TAB 3 & 2: INJEKSI DATA ASLI IFC (DINAMIS)
+        # TAB 3 & 2: INJEKSI DATA ASLI IFC DENGAN VLOOKUP KE AHSP
         # =======================================================
         ws_boq.set_column('B:C', 30)
         ws_boq.write('A1', 'BACKUP BILL OF QUANTITIES (BOQ) DARI BIM IFC', fmt_title)
         for col, h in enumerate(['No', 'Kategori IFC', 'Nama Elemen', 'Volume (m3)']): ws_boq.write(2, col, h, fmt_header)
 
         ws_rab.set_column('B:B', 40)
+        ws_rab.set_column('E:E', 45) # Kolom Kuning Baru
         ws_rab.write('A1', f'RENCANA ANGGARAN BIAYA (RAB) - {project_name.upper()}', fmt_title)
-        for col, h in enumerate(['No', 'Elemen Struktur', 'Volume', 'Satuan', 'Harga Satuan (Rp)', 'Total Harga (Rp)']): ws_rab.write(2, col, h, fmt_header)
+        
+        headers_rab = ['No', 'Elemen Struktur', 'Volume', 'Satuan', 'Link Referensi AHSP (Pilih/Ketik)', 'Harga Satuan (Rp)', 'Total Harga (Rp)']
+        for col, h in enumerate(headers_rab): ws_rab.write(2, col, h, fmt_header)
 
         if df_boq is None or df_boq.empty:
             df_boq = pd.DataFrame([{"Kategori": "IfcColumn", "Nama": "Kolom K1 (Upload IFC untuk data asli)", "Volume": 64.0}])
@@ -199,23 +216,39 @@ class Export_Engine:
 
         for index, row in df_boq.iterrows():
             row_excel = index + 3 
+            nama_elemen = str(row['Nama'])
+            
+            # AI-QS mencoba menebak pasangan AHSP yang tepat
+            tebakan_ahsp = "- Ketik/Paste Nama AHSP dari Tab 4 Di Sini -"
+            for kode_ahsp, resep in resep_ahsp_aktif.items():
+                desc = resep.get('desc', kode_ahsp).lower()
+                if ("beton" in nama_elemen.lower() and "beton" in desc) or \
+                   ("besi" in nama_elemen.lower() and "besi" in desc) or \
+                   ("pasangan" in nama_elemen.lower() and "pasangan" in desc):
+                    tebakan_ahsp = resep.get('desc', kode_ahsp)
+                    break
             
             ws_boq.write(row_excel, 0, index + 1, fmt_border)
             ws_boq.write(row_excel, 1, str(row['Kategori']), fmt_border)
-            ws_boq.write(row_excel, 2, str(row['Nama']), fmt_border)
+            ws_boq.write(row_excel, 2, nama_elemen, fmt_border)
             ws_boq.write(row_excel, 3, float(row['Volume']), fmt_border)
             
             ws_rab.write(row_excel, 0, index + 1, fmt_border)
-            ws_rab.write(row_excel, 1, f"Pekerjaan {row['Nama']}", fmt_border)
+            ws_rab.write(row_excel, 1, f"Pekerjaan {nama_elemen}", fmt_border)
             ws_rab.write_formula(row_excel, 2, f"='3. Backup BOQ'!D{row_excel+1}", fmt_border)
             ws_rab.write(row_excel, 3, 'm3', fmt_border)
-            # Default ke AHSP baris 7 jika tidak ketemu yang pas
-            ws_rab.write_formula(row_excel, 4, "='4. AHSP S2 30 2025'!F7", fmt_currency)
-            ws_rab.write_formula(row_excel, 5, f"=C{row_excel+1}*E{row_excel+1}", fmt_currency)
+            
+            # Kolom Referensi AHSP (Kuning - Editable)
+            fmt_input = workbook.add_format({'border': 1, 'bg_color': '#FEF9C3', 'font_color': '#B45309'})
+            ws_rab.write(row_excel, 4, tebakan_ahsp, fmt_input)
+            
+            # VLOOKUP Cerdas ke Tabel Rekap di Tab 4
+            ws_rab.write_formula(row_excel, 5, f"=IFERROR(VLOOKUP(E{row_excel+1},'4. AHSP S2 30 2025'!H:J, 3, FALSE), 0)", fmt_currency)
+            ws_rab.write_formula(row_excel, 6, f"=C{row_excel+1}*F{row_excel+1}", fmt_currency)
             baris_terakhir_rab = row_excel
 
-        ws_rab.write(baris_terakhir_rab + 1, 4, 'TOTAL BIAYA STRUKTUR', fmt_header)
-        ws_rab.write_formula(baris_terakhir_rab + 1, 5, f"=SUM(F4:F{baris_terakhir_rab+1})", fmt_currency_bold)
+        ws_rab.write(baris_terakhir_rab + 1, 5, 'TOTAL BIAYA STRUKTUR', fmt_header)
+        ws_rab.write_formula(baris_terakhir_rab + 1, 6, f"=SUM(G4:G{baris_terakhir_rab+1})", fmt_currency_bold)
 
         # =======================================================
         # TAB 1: REKAPITULASI (Termasuk PPN)
@@ -226,7 +259,7 @@ class Export_Engine:
         
         ws_rekap.write('A4', 1, fmt_border)
         ws_rekap.write('B4', 'Pekerjaan Struktur Utama', fmt_border)
-        ws_rekap.write_formula('C4', f"='2. RAB'!F{baris_terakhir_rab + 2}", fmt_currency)
+        ws_rekap.write_formula('C4', f"='2. RAB'!G{baris_terakhir_rab + 2}", fmt_currency)
         
         ws_rekap.write('B6', 'A. TOTAL BIAYA FISIK', fmt_header)
         ws_rekap.write_formula('C6', "=SUM(C4:C4)", fmt_currency_bold)
@@ -306,7 +339,7 @@ class Export_Engine:
         
         ws_tkdn.write('A4', 1, fmt_border)
         ws_tkdn.write('B4', 'Bahan / Material Struktur', fmt_border)
-        ws_tkdn.write_formula('E4', f"='2. RAB'!F{baris_terakhir_rab + 2}", fmt_currency) 
+        ws_tkdn.write_formula('E4', f"='2. RAB'!G{baris_terakhir_rab + 2}", fmt_currency) 
         ws_tkdn.write_formula('C4', "=E4 * 0.85", fmt_currency) 
         ws_tkdn.write_formula('D4', "=E4 * 0.15", fmt_currency) 
         
