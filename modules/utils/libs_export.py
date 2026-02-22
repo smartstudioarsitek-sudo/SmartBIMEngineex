@@ -21,7 +21,8 @@ class Export_Engine:
         dxf += "0\nENDSEC\n0\nEOF"
         return dxf
 
-    def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None, df_basic_price=None):
+   
+    def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None, df_price_engine=None):
         """
         # =======================================================
         # TAB 7: BASIC PRICE (TERINTEGRASI 3-TIER ENGINE - AUDIT READY)
@@ -322,6 +323,7 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
 
 
