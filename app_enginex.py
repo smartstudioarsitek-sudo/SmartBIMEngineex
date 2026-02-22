@@ -1230,7 +1230,14 @@ with st.sidebar:
             st.caption(f"🟢 Ready: **{len(df_boq_aktual)} baris** data asli dari BIM.")
         else:
             st.caption("🔴 Status: Data Kosong / Dummy.")
-
+    
+    st.markdown("### 🌍 Pengaturan Lokasi Proyek")
+    # User bisa ganti lokasi, harga material akan otomatis berubah mengikuti IKK BPS!
+    pilihan_provinsi = st.selectbox(
+        "Pilih Provinsi (Untuk Kalkulasi Indeks Kemahalan Konstruksi):", 
+        ["Lampung", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "Jawa Timur", "Bali", "Sumatera Selatan", "Kalimantan Barat", "Sulawesi Selatan", "Papua", "Papua Pegunungan"], 
+        index=0
+    )
     try:
         # ========================================================
         # [UPGRADE] INISIALISASI MESIN HARGA 3-TIER (ESSH/BPS/WEB)
@@ -1273,6 +1280,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
