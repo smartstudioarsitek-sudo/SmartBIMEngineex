@@ -5,22 +5,50 @@ class AHSP_Engine:
         # Database Koefisien AHSP (SNI/Permen PUPR)
         # Diperluas agar AI tidak bingung
         self.koefisien = {
-            # --- PERSIAPAN & PENDAHULUAN (SE 30/2025) ---
-            "pembersihan_lapangan": {
-                "desc": "1 m2 Pembersihan Lapangan dan Perataan",
-                "bahan": {}, # Murni tenaga kerja
-                "upah": {"Pekerja": 0.050, "Mandor": 0.005}
+            # ======================================================
+            # DIVISI 1: PERSIAPAN & PEMBERSIHAN (AUDITED SE 30 & EE LOKAL)
+            # ======================================================
+            "papan_nama_proyek": {
+                "desc": "[A.1.1.4.b] Pembuatan 1 Buah Papan Nama Proyek (0.6x0.8m)",
+                "bahan": {"Multiplek 9 mm (Lbr)": 0.18, "Kayu Kaso 5/7 (m3)": 0.011, "Paku (Kg)": 0.10, "Cat Minyak (Kg)": 0.20},
+                "upah": {"Pekerja": 0.750, "Tukang": 0.750, "Kepala Tukang": 0.100, "Mandor": 0.075}
             },
-            "pasang_bouwplank": {
-                "desc": "1 m' Pengukuran dan Pemasangan Bouwplank",
+            "direksi_keet": {
+                "desc": "[A.1.1.4.a] Pembuatan 1 m2 Direksi Keet (Atap Asbes, Dinding Triplek)",
+                "bahan": {"Kayu Kaso 5/7 (m3)": 0.35, "Triplek 4 mm (Lbr)": 1.0, "Asbes Gelombang (Lbr)": 1.0, "Paku (Kg)": 0.45},
+                "upah": {"Pekerja": 1.200, "Tukang": 0.400, "Kepala Tukang": 0.040, "Mandor": 0.120}
+            },
+            "pembersihan_striping": {
+                "desc": "[T.01.a] 1 m2 Pembersihan dan Striping/Kosrekan Permukaan Tanah",
+                "bahan": {}, 
+                "upah": {"Pekerja": 0.060, "Mandor": 0.006}
+            },
+            "tebas_tebang": {
+                "desc": "[T.01.b] 1 m2 Tebas Tebang Tanaman (Diameter < 15 cm)",
+                "bahan": {"Minyak Tanah (Ltr)": 0.010},
+                "upah": {"Pekerja": 0.075, "Mandor": 0.0075}
+            },
+            "pengukuran_bouwplank": {
+                "desc": "[A.1.1.4.c] 1 m' Pengukuran dan Pemasangan Bouwplank",
                 "bahan": {"Kayu Kelas III (m3)": 0.012, "Paku (kg)": 0.020, "Papan Kayu Bekisting (m3)": 0.007},
                 "upah": {"Pekerja": 0.100, "Tukang": 0.100, "Kepala Tukang": 0.010, "Mandor": 0.005}
             },
-            "sewa_papan_nama": {
-                "desc": "1 Ls Pembuatan Papan Nama Proyek (Standar Dinas)",
-                "bahan": {"Papan Nama Proyek (Ls)": 1.0},
+            "mobilisasi_alat_bor": {
+                "desc": "[CUSTOM-EE] 1 Ls Mobilisasi dan Demobilisasi Alat Berat (Rig Bor/Truk 3T)",
+                "bahan": {"Biaya Angkut Truk 3T (Unit/Rit)": 1.5}, # 1 Datang + 0.5 Pulang
                 "upah": {}
             },
+            "pengujian_mutu": {
+                "desc": "[CUSTOM-EE] 1 Ls Pengujian Mutu Bahan (Lab)",
+                "bahan": {"Uji Lab Beton K-300 (Titik)": 1.0, "Uji Tarik Besi U-42/U-24 (Titik)": 1.0},
+                "upah": {}
+            },
+            "pelaporan_dokumentasi": {
+                "desc": "[CUSTOM-EE] 1 Ls Biaya Pelaporan, Asbuilt Drawing, dan Dokumentasi",
+                "bahan": {"Cetak & Jilid Laporan/Asbuilt (Set)": 10.0, "Foto Dokumentasi & Flashdisk (Set)": 1.0},
+                "upah": {}
+            },
+            
             # --- BETON ---
             "beton_k175": {
                 "desc": "Beton K-175 (fc 14.5 MPa)",
@@ -149,4 +177,5 @@ class AHSP_Engine:
             total_upah += koef * h_upah
             
         return total_bahan + total_upah
+
 
