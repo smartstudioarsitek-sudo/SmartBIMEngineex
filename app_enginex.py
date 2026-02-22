@@ -55,7 +55,7 @@ try:
         pass
     
     from modules.water import libs_hidrologi, libs_irigasi, libs_jiat, libs_bendung
-    from modules.cost import libs_ahsp, libs_rab_engine, libs_optimizer, libs_research
+    from modules.cost import libs_ahsp, libs_rab_engine, libs_optimizer, libs_research, libs_price_engine
     from modules.arch import libs_arch, libs_zoning, libs_green
     
     # C. Utility Modules (TERMASUK YANG BARU)
@@ -1307,6 +1307,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
