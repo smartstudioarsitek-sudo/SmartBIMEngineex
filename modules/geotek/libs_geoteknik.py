@@ -224,3 +224,85 @@ class Geotech_Engine:
             "Safety_Factor_FS": round(FS, 3),
             "Status_Keamanan": status_lereng
         }, fig
+    # ==============================================================================
+    # INSTRUMENTASI DAM SAFETY (PIEZOMETER & INCLINOMETER)
+    # ==============================================================================
+    def simulasi_dam_safety_dashboard(self, kedalaman_lubang_m=20, hari_pengamatan=30):
+        """
+        Simulasi pembacaan instrumen keamanan bendungan (Dam Safety)
+        meliputi Piezometer (Tekanan Air Pori) dan Inclinometer (Pergerakan Lateral).
+        """
+        import pandas as pd
+        import numpy as np
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+        from datetime import datetime, timedelta
+
+        # 1. GENERATE DUMMY DATA: PIEZOMETER (Time-Series Tekanan Air)
+        dates = [datetime.now() - timedelta(days=i) for i in range(hari_pengamatan)]
+        dates.reverse() # Urutkan dari terlama ke terbaru
+        
+        # Simulasi tekanan air pori naik karena curah hujan tinggi
+        base_pwp = 45.0 # kPa
+        trend = np.linspace(0, 15.0, hari_pengamatan)
+        noise = np.random.normal(0, 2.0, hari_pengamatan)
+        pwp_values = base_pwp + trend + noise
+        threshold_pwp = 60.0 # Batas waspada kPa (Redline)
+
+        df_piezo = pd.DataFrame({'Tanggal': dates, 'PWP_kPa': pwp_values})
+        status_piezo = "🔴 SIAGA (Tekanan Pori Meningkat Tajam)" if pwp_values[-1] >= threshold_pwp else "🟢 AMAN NORMAL"
+
+        # 2. GENERATE DUMMY DATA: INCLINOMETER (Depth-Profile Pergerakan)
+        depths = np.linspace(0, kedalaman_lubang_m, 21)
+        # Simulasi pergerakan lateral (mm) memuncak di kedalaman bidang gelincir (misal di kedalaman 10m)
+        slip_depth = 10.0
+        displacement = 15.0 * np.exp(-0.1 * (depths - slip_depth)**2)
+        noise_disp = np.random.normal(0, 0.5, len(depths))
+        displacement += noise_disp
+        
+        # Di dasar (depth max), pergerakan harus 0 (asumsi pipa tertanam kuat di batuan keras)
+        displacement[-1] = 0.0
+
+        df_inclino = pd.DataFrame({'Kedalaman_m': depths, 'Displacement_mm': displacement})
+        max_disp = df_inclino['Displacement_mm'].max()
+        threshold_disp = 20.0 # Batas pergerakan waspada (mm)
+        status_inclino = "🔴 WASPADA (Pergerakan Terdeteksi)" if max_disp >= threshold_disp else "🟢 DEFORMASI WAJAR"
+
+        # 3. VISUALISASI DASHBOARD (Plotly Subplots Kiri & Kanan)
+        fig = make_subplots(rows=1, cols=2, 
+                            subplot_titles=("<b>Piezometer</b> (Tekanan Air Pori)", 
+                                            "<b>Inclinometer</b> (Deformasi Lateral)"))
+
+        # Plot Kiri: Piezometer (X=Waktu, Y=PWP)
+        fig.add_trace(go.Scatter(x=df_piezo['Tanggal'], y=df_piezo['PWP_kPa'], 
+                                 mode='lines+markers', name='PWP Aktual', line=dict(color='dodgerblue')), row=1, col=1)
+        fig.add_hline(y=threshold_pwp, line_dash="dash", line_color="red", 
+                      annotation_text="Batas Siaga", row=1, col=1)
+        
+        # Plot Kanan: Inclinometer (X=Pergerakan, Y=Kedalaman)
+        fig.add_trace(go.Scatter(x=df_inclino['Displacement_mm'], y=df_inclino['Kedalaman_m'], 
+                                 mode='lines+markers', name='Displacement', line=dict(color='darkorange', width=3)), row=1, col=2)
+        fig.add_hline(y=slip_depth, line_dash="dot", line_color="gray", 
+                      annotation_text="Indikasi Bidang Gelincir", row=1, col=2)
+
+        # Update Layout Axis
+        fig.update_xaxes(title_text="Tanggal Pemantauan", row=1, col=1)
+        fig.update_yaxes(title_text="Tekanan Air Pori (kPa)", row=1, col=1)
+        
+        fig.update_xaxes(title_text="Pergerakan Lateral (mm)", row=1, col=2)
+        # Sumbu Y untuk Inclinometer WAJIB di-reverse agar 0m (permukaan) ada di bagian atas
+        fig.update_yaxes(title_text="Kedalaman (m)", autorange="reversed", row=1, col=2) 
+
+        fig.update_layout(title_text="<b>🖥️ Dashboard Real-Time Keamanan Bendungan (Dam Safety)</b>",
+                          height=500, showlegend=False, plot_bgcolor='whitesmoke')
+
+        hasil_analisis = {
+            "Pengamatan_Terakhir": df_piezo['Tanggal'].iloc[-1].strftime("%Y-%m-%d"),
+            "Piezometer_PWP_kPa": round(pwp_values[-1], 2),
+            "Status_Piezometer": status_piezo,
+            "Inclinometer_Pergerakan_Max_mm": round(max_disp, 2),
+            "Lokasi_Kritis_Kedalaman_m": round(df_inclino.loc[df_inclino['Displacement_mm'].idxmax(), 'Kedalaman_m'], 1),
+            "Status_Inclinometer": status_inclino
+        }
+
+        return hasil_analisis, fig
