@@ -491,7 +491,8 @@ if selected_menu == "🤖 AI Assistant":
                             full_prompt[0] += f"\n\n[FILE PDF: {f.name}]\n{txt}"
                         
                     # 3. HANDLING SPECIAL FILES (CAD/GIS)
-                    elif f.name.lower().endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip')):
+                    elif f.name.lower().endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip', '.tif', '.tiff', '.dem')):
+                    
                         with st.spinner(f"Menganalisis struktur file {f.name}..."):
                             try:
                                 text_data, img_data, _ = libs_loader.process_special_file(f)
@@ -1274,6 +1275,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
