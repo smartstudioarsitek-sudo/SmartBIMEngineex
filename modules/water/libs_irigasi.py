@@ -182,3 +182,143 @@ class Irrigation_Engine:
             "IR_mm_hari": round(ir_mm_hari, 2),
             "Kebutuhan_Air_Lps_per_Ha": round(ir_lps_ha, 3)
         }
+    # =========================================
+    # 4. NOMENKLATUR & SKEMA JARINGAN (KP-01)
+    # =========================================
+    def generate_skema_jaringan_kp01(self, nama_daerah_irigasi, data_sekunder):
+        """
+        Membuat Nomenklatur dan Skema Jaringan Irigasi sesuai Standar KP-01.
+        - nama_daerah_irigasi: String (misal: "Way Sekampung")
+        - data_sekunder: List of Dict berisi detail saluran sekunder
+        """
+        import networkx as nx
+        import plotly.graph_objects as go
+        import pandas as pd
+        
+        G = nx.DiGraph()
+        tabel_nomenklatur = []
+        
+        # 1. Bendung & Intake Primer
+        # Singkatan KP-01: Ambil huruf depan (Way Sekampung -> WS)
+        kode_bendung = "".join([kata[0].upper() for kata in nama_daerah_irigasi.split() if kata])
+        node_bendung = f"Bendung {nama_daerah_irigasi}\n(B.{kode_bendung})"
+        G.add_node(node_bendung, type='bendung', level=0)
+        
+        node_primer = f"Sal. Primer {nama_daerah_irigasi}"
+        G.add_node(node_primer, type='primer', level=1)
+        G.add_edge(node_bendung, node_primer)
+        
+        # 2. Bangunan Bagi & Saluran Sekunder
+        for i, sekunder in enumerate(data_sekunder):
+            # Bangunan Bagi di Saluran Primer
+            kode_bagi = f"B.{kode_bendung}.{i+1}"
+            G.add_node(kode_bagi, type='bangunan_bagi', level=2)
+            G.add_edge(node_primer, kode_bagi)
+            
+            # Saluran Sekunder
+            nama_sekunder = sekunder['nama']
+            # Kode sekunder KP-01: Ambil 3 huruf pertama (Natar -> NAT)
+            kode_sekunder = nama_sekunder[:3].upper() 
+            node_sekunder = f"Sal. Sekunder {nama_sekunder}"
+            G.add_node(node_sekunder, type='sekunder', level=3)
+            G.add_edge(kode_bagi, node_sekunder)
+            
+            tabel_nomenklatur.append({
+                "Tingkat": "Sekunder",
+                "Bangunan / Saluran": f"Saluran {nama_sekunder}",
+                "Kode Nomenklatur": kode_bagi,
+                "Fungsi KP-01": "Bangunan Bagi Primer ke Sekunder"
+            })
+            
+            # 3. Petak Tersier & Boks Sadap
+            jml_tersier = sekunder['jumlah_tersier']
+            for j in range(jml_tersier):
+                # Bangunan Sadap (Tersier)
+                kode_sadap = f"B.{kode_sekunder}.{j+1}"
+                G.add_node(kode_sadap, type='bangunan_sadap', level=4)
+                G.add_edge(node_sekunder, kode_sadap)
+                
+                # Nomenklatur Petak Tersier (Kiri/Kanan)
+                posisi = "Ki" if j % 2 == 0 else "Ka"
+                kode_petak = f"{kode_sekunder}.{j+1} {posisi}"
+                node_petak = f"Petak Tersier\n({kode_petak})"
+                G.add_node(node_petak, type='petak_tersier', level=5)
+                G.add_edge(kode_sadap, node_petak)
+                
+                tabel_nomenklatur.append({
+                    "Tingkat": "Tersier",
+                    "Bangunan / Saluran": f"Petak {kode_petak}",
+                    "Kode Nomenklatur": kode_sadap,
+                    "Fungsi KP-01": f"Boks Sadap untuk Petak {posisi} (Areal Tersier)"
+                })
+                
+        # ---------------------------------------------------------
+        # VISUALISASI NETWORK TREE MENGGUNAKAN PLOTLY
+        # ---------------------------------------------------------
+        # Menentukan posisi X dan Y menggunakan layout multipartite hierarki
+        for node, data in G.nodes(data=True):
+            data['subset'] = data['level']
+            
+        pos = nx.multipartite_layout(G, subset_key="subset", align="horizontal")
+        
+        edge_x = []
+        edge_y = []
+        for edge in G.edges():
+            x0, y0 = pos[edge[0]]
+            x1, y1 = pos[edge[1]]
+            # Tukar X dan Y agar grafiknya mengalir vertikal (dari atas ke bawah)
+            edge_x.extend([y0, y1, None])
+            edge_y.extend([x0, x1, None])
+
+        edge_trace = go.Scatter(
+            x=edge_x, y=edge_y, 
+            line=dict(width=2, color='#94a3b8'),
+            hoverinfo='none', mode='lines'
+        )
+
+        node_x = []
+        node_y = []
+        node_text = []
+        node_color = []
+        
+        color_map = {
+            'bendung': '#ef4444',         # Merah
+            'primer': '#3b82f6',          # Biru Tua
+            'bangunan_bagi': '#f59e0b',   # Kuning/Orange
+            'sekunder': '#0ea5e9',        # Biru Muda
+            'bangunan_sadap': '#8b5cf6',  # Ungu
+            'petak_tersier': '#22c55e'    # Hijau
+        }
+
+        for node in G.nodes():
+            x, y = pos[node]
+            node_x.append(y) # Tukar posisi
+            node_y.append(x)
+            node_text.append(node)
+            node_color.append(color_map.get(G.nodes[node]['type'], '#000'))
+
+        node_trace = go.Scatter(
+            x=node_x, y=node_y,
+            mode='markers+text',
+            text=node_text,
+            textposition="bottom center",
+            hoverinfo='text',
+            marker=dict(showscale=False, color=node_color, size=25, line_width=2, line_color='white')
+        )
+
+        fig = go.Figure(data=[edge_trace, node_trace],
+                     layout=go.Layout(
+                        title='<b>Skema Jaringan Irigasi & Nomenklatur (Standar KP-01)</b>',
+                        titlefont_size=18,
+                        showlegend=False,
+                        hovermode='closest',
+                        margin=dict(b=40,l=20,r=20,t=60),
+                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                        # Autorange reversed agar Bendung berada di atas
+                        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, autorange="reversed"),
+                        plot_bgcolor='white'
+                    )
+        )
+        
+        df_nomenklatur = pd.DataFrame(tabel_nomenklatur)
+        return fig, df_nomenklatur
