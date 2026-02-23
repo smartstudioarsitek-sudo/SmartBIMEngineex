@@ -37,6 +37,8 @@ beautifulsoup4
 selectolax
 requests
 rasterio
+networkx plotly pandas
+
 
 
 
