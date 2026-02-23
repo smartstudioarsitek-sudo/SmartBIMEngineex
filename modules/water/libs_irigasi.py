@@ -145,3 +145,40 @@ class Irrigation_Engine:
         dxf += dxf_text(0, -0.5, f"b = {b:.2f}m", 0.2, "TEXT")
         dxf += "0\nENDSEC\n0\nEOF"
         return dxf
+    # =========================================
+    # KEBUTUHAN AIR TANAMAN (KP-01)
+    # =========================================
+    def hitung_kebutuhan_air_irigasi(self, eto, kc, curah_hujan_efektif, perkolasi=2.0, wlr=0.0, efisiensi_irigasi=0.65):
+        """
+        Menghitung Kebutuhan Bersih Air di Sawah (NFR) dan Kebutuhan Pengambilan (IR).
+        Semua satuan input dalam mm/hari.
+        - eto: Evapotranspirasi referensi (dari Penman)
+        - kc: Koefisien tanaman (Crop Coefficient)
+        - perkolasi: Kehilangan air ke bawah tanah (mm/hari, standar 2-3 untuk lempung)
+        - wlr: Water Layer Replacement (Penggantian lapisan air, untuk padi)
+        - efisiensi_irigasi: 65% (0.65) standar untuk saluran terbuka tahanan tanah
+        """
+        # Evapotranspirasi Tanaman (ETc)
+        etc = eto * kc
+        
+        # Kebutuhan Air di Sawah (Net Field Requirement - NFR)
+        # NFR = ETc + Perkolasi + WLR - Hujan Efektif
+        nfr = etc + perkolasi + wlr - curah_hujan_efektif
+        
+        # Jika hujan lebih besar dari kebutuhan, NFR = 0 (tidak perlu irigasi)
+        nfr = max(0.0, nfr)
+        
+        # Kebutuhan Air Irigasi di Intake (Irrigation Requirement - IR)
+        # IR = NFR / Efisiensi (mm/hari)
+        ir_mm_hari = nfr / efisiensi_irigasi
+        
+        # Konversi ke Liter/detik/Hektar (L/s/ha)
+        # 1 mm/hari = 10 m3/ha/hari = 10 / 86400 m3/s/ha = 0.1157 L/s/ha
+        ir_lps_ha = ir_mm_hari * 0.1157
+        
+        return {
+            "ETc_mm_hari": round(etc, 2),
+            "NFR_mm_hari": round(nfr, 2),
+            "IR_mm_hari": round(ir_mm_hari, 2),
+            "Kebutuhan_Air_Lps_per_Ha": round(ir_lps_ha, 3)
+        }
