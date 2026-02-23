@@ -130,7 +130,6 @@ if has_legal:
     sys.modules['libs_legal'] = libs_legal
 if has_4d:
     sys.modules['libs_4d'] = libs_4d
-
 if has_geotek:
     sys.modules['libs_geoteknik'] = libs_geoteknik
     sys.modules['libs_pondasi'] = libs_pondasi
@@ -1308,6 +1307,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
