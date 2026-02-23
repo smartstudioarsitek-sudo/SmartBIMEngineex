@@ -88,3 +88,139 @@ class Geotech_Engine:
             "Q_allow_kN": round(Q_allow, 2),
             "Q_ultimate_kN": round(Q_ult, 2)
         }
+    # ==============================================================================
+    # ANALISIS STABILITAS LERENG BENDUNGAN TANAH (BISHOP SIMPLIFIED)
+    # ==============================================================================
+    def analisis_stabilitas_bishop(self, tinggi_lereng, kemiringan_derajat, c, phi, gamma, n_slices=20):
+        """
+        Menghitung Faktor Keamanan (FS) lereng bendungan tanah urugan 
+        menggunakan Metode Bishop Sederhana (Simplified Bishop Method).
+        Terintegrasi dengan rendering visualisasi bidang gelincir kritis.
+        """
+        import numpy as np
+        import plotly.graph_objects as go
+        
+        beta = np.radians(kemiringan_derajat)
+        phi_rad = np.radians(phi)
+        
+        # 1. Definisikan Geometri Lereng (Asumsi keruntuhan pada Toe / Kaki Lereng)
+        L_crest = tinggi_lereng / np.tan(beta)
+        
+        # Asumsi Titik Pusat Lingkaran Kelongsoran (Trial Center)
+        Xc = L_crest * 0.3
+        Yc = tinggi_lereng * 1.6
+        
+        # Radius lingkaran (harus melewati toe di koordinat 0,0)
+        R = np.sqrt(Xc**2 + Yc**2)
+        
+        # Titik perpotongan lingkaran dengan permukaan atas (Crest)
+        X_exit = Xc + np.sqrt(R**2 - (Yc - tinggi_lereng)**2)
+        
+        # 2. Pembuatan Irisan (Slices)
+        x_edges = np.linspace(0, X_exit, n_slices + 1)
+        x_centers = (x_edges[:-1] + x_edges[1:]) / 2
+        b_width = x_edges[1:] - x_edges[:-1]
+        
+        W_list = []
+        alpha_list = []
+        
+        for i, x in enumerate(x_centers):
+            # Elevasi Permukaan Tanah (Y_surf)
+            if x <= L_crest:
+                Y_surf = x * np.tan(beta)
+            else:
+                Y_surf = tinggi_lereng
+                
+            # Elevasi Bidang Gelincir (Y_slip)
+            Y_slip = Yc - np.sqrt(R**2 - (x - Xc)**2)
+            
+            # Tinggi irisan rata-rata
+            h_slice = max(0, Y_surf - Y_slip)
+            
+            # Berat irisan (W) = h * b * gamma
+            W = h_slice * b_width[i] * gamma
+            W_list.append(W)
+            
+            # Sudut bidang gelincir pada irisan tersebut (alpha)
+            sin_alpha = (x - Xc) / R
+            alpha_list.append(np.arcsin(sin_alpha))
+            
+        W_arr = np.array(W_list)
+        alpha_arr = np.array(alpha_list)
+        b_arr = np.array(b_width)
+        
+        # 3. Iterasi Perhitungan Nilai FS (Bishop Equation)
+        # Karena FS ada di kedua sisi persamaan, kita butuh iterasi konvergen
+        FS = 1.5 # Tebakan awal
+        tolerance = 0.001
+        
+        for _ in range(50):
+            # Hitung m_alpha = cos(alpha) + (sin(alpha)*tan(phi)) / FS
+            m_alpha = np.cos(alpha_arr) + (np.sin(alpha_arr) * np.tan(phi_rad)) / FS
+            
+            # Pembilang: Sum [ (c*b + W*tan(phi)) / m_alpha ]
+            pembilang = np.sum((c * b_arr + W_arr * np.tan(phi_rad)) / m_alpha)
+            
+            # Penyebut: Sum [ W * sin(alpha) ]
+            penyebut = np.sum(W_arr * np.sin(alpha_arr))
+            
+            FS_new = pembilang / penyebut if penyebut > 0 else 99.0
+            
+            if abs(FS_new - FS) < tolerance:
+                FS = FS_new
+                break
+            FS = FS_new
+
+        status_lereng = "✅ AMAN" if FS >= 1.5 else "❌ BAHAYA (Butuh Perkuatan/Berm)"
+
+        # 4. Visualisasi Geometri & Irisan menggunakan Plotly
+        fig = go.Figure()
+
+        # Gambar Permukaan Lereng
+        fig.add_trace(go.Scatter(
+            x=[0, L_crest, X_exit + 5], 
+            y=[0, tinggi_lereng, tinggi_lereng],
+            mode='lines', line=dict(color='green', width=3),
+            name='Permukaan Lereng', fill='tozeroy', fillcolor='rgba(34, 139, 34, 0.2)'
+        ))
+
+        # Gambar Bidang Gelincir (Lingkaran)
+        theta = np.linspace(np.arcsin((0 - Xc)/R), np.arcsin((X_exit - Xc)/R), 100)
+        x_arc = Xc + R * np.sin(theta)
+        y_arc = Yc - R * np.cos(theta)
+        
+        fig.add_trace(go.Scatter(
+            x=x_arc, y=y_arc,
+            mode='lines', line=dict(color='red', width=2, dash='dash'),
+            name='Bidang Gelincir Kritis', fill='tonexty', fillcolor='rgba(255, 0, 0, 0.1)'
+        ))
+
+        # Gambar Garis-Garis Irisan (Slices)
+        for x_ed in x_edges:
+            if x_ed <= L_crest:
+                y_s = x_ed * np.tan(beta)
+            else:
+                y_s = tinggi_lereng
+            y_sl = Yc - np.sqrt(R**2 - (x_ed - Xc)**2)
+            fig.add_trace(go.Scatter(
+                x=[x_ed, x_ed], y=[y_sl, y_s],
+                mode='lines', line=dict(color='gray', width=1), showlegend=False
+            ))
+
+        fig.update_layout(
+            title=f"Analisis Stabilitas Lereng Bendungan Urugan (Metode Bishop)<br>Safety Factor (FS) = <b>{FS:.3f}</b>",
+            xaxis_title="Jarak Horizontal (m)", yaxis_title="Elevasi (m)",
+            plot_bgcolor='aliceblue',
+            yaxis=dict(scaleanchor="x", scaleratio=1), # Mengunci aspek rasio 1:1 agar lingkaran tidak lonjong
+            showlegend=True
+        )
+
+        return {
+            "Tinggi_Lereng_m": tinggi_lereng,
+            "Sudut_Lereng_Derajat": kemiringan_derajat,
+            "Kohesi_c_kPa": c,
+            "Sudut_Geser_Phi_Derajat": phi,
+            "Berat_Volume_Gamma_kN_m3": gamma,
+            "Safety_Factor_FS": round(FS, 3),
+            "Status_Keamanan": status_lereng
+        }, fig
