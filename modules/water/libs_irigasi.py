@@ -308,17 +308,19 @@ class Irrigation_Engine:
 
         fig = go.Figure(data=[edge_trace, node_trace],
                      layout=go.Layout(
-                        title='<b>Skema Jaringan Irigasi & Nomenklatur (Standar KP-01)</b>',
-                        titlefont_size=18,
+                        title=dict(
+                            text='<b>Skema Jaringan Irigasi & Nomenklatur (Standar KP-01)</b>',
+                            font=dict(size=18)
+                        ),
                         showlegend=False,
                         hovermode='closest',
                         margin=dict(b=40,l=20,r=20,t=60),
                         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                        # Autorange reversed agar Bendung berada di atas
                         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, autorange="reversed"),
                         plot_bgcolor='white'
                     )
         )
-        
+       
         df_nomenklatur = pd.DataFrame(tabel_nomenklatur)
         return fig, df_nomenklatur
+
