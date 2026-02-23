@@ -1,63 +1,52 @@
+# === Core & Data ===
 streamlit
 pandas
+numpy
+scipy
+
+# === Visualization ===
 plotly
-xlsxwriter
-openpyxl
 matplotlib
-folium
-streamlit-folium
+rich
+tabulate
+
+# === AI Engine ===
 google-generativeai>=0.7.0
+
+# === Document & Export ===
 Pillow
 PyPDF2
+PyMuPDF
 python-docx
 python-pptx
-watchdog
-xlrd
-numpy
-google-generativeai
-scipy
+pdfplumber
 fpdf
+xlsxwriter
+openpyxl
+xlrd
+
+# === Engineering, BIM & CAD ===
+networkx
 ifcopenshell
 ezdxf
-PyMuPDF
-geopy
-pytesseract
-opencv-python-headless
-rich
 OpenSeesPy
+
+# === GIS & Topography ===
 geopandas
 shapely
 fiona
+rasterio
 gpxpy
-pdfplumber
-tabulate
+geopy
+folium
+streamlit-folium
+
+# === Web & Utilities ===
+pytesseract
+opencv-python-headless
 duckdb
 pyarrow
 beautifulsoup4
 selectolax
 requests
-rasterio
-networkx plotly pandas
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+watchdog
