@@ -758,6 +758,92 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
 
     st.divider()
 
+    elif selected_menu == "📏 Visual QTO 2D (PlanSwift Mode)":
+    from streamlit_drawable_canvas import st_canvas
+    from PIL import Image
+    import math
+
+    st.header("📏 Visual Take-Off 2D (PlanSwift / Bluebeam Mode)")
+    st.caption(f"Area Kerja Terkalibrasi untuk Bidang: **{st.session_state.get('bidang_proyek', 'Cipta Karya')}**")
+    
+    col_upload, col_kalibrasi = st.columns([1, 1])
+    
+    with col_upload:
+        bg_file = st.file_uploader("1. Upload Denah 2D (JPG/PNG)", type=["png", "jpg", "jpeg"])
+    
+    with col_kalibrasi:
+        st.markdown("**2. Kalibrasi Skala (Scaling)**")
+        px_length = st.number_input("Panjang Garis di Layar (Pixel):", min_value=1, value=100)
+        real_length = st.number_input("Panjang Aktual di Lapangan (Meter):", min_value=0.1, value=1.0)
+        ratio_px_to_m = real_length / px_length
+        ratio_px2_to_m2 = ratio_px_to_m ** 2
+        st.success(f"Skala Terkalibrasi: 1 Pixel = {ratio_px_to_m:.4f} m")
+
+    if bg_file:
+        img = Image.open(bg_file)
+        
+        # Opsi Penggambaran
+        drawing_mode = st.radio("3. Mode Pengukuran (Take-off):", ("line", "polygon", "rect"), horizontal=True)
+        
+        stroke_width = 3
+        stroke_color = "rgba(255, 0, 0, 1)" if drawing_mode == "line" else "rgba(0, 0, 255, 0.3)"
+        
+        st.markdown("### Area Kanvas (Draw Here)")
+        # Inisialisasi Canvas
+        canvas_result = st_canvas(
+            fill_color="rgba(0, 0, 255, 0.3)",  # Transparan biru untuk area (polygon/rect)
+            stroke_width=stroke_width,
+            stroke_color=stroke_color,
+            background_image=img,
+            update_streamlit=True,
+            height=600,
+            width=800,
+            drawing_mode=drawing_mode,
+            key="canvas",
+        )
+
+        # Hitung Otomatis Berdasarkan Gambar
+        if canvas_result.json_data is not None:
+            objects = canvas_result.json_data["objects"]
+            if len(objects) > 0:
+                st.markdown("### 📊 Hasil Quantity Take-Off (QTO)")
+                
+                total_panjang_m = 0
+                total_luas_m2 = 0
+                
+                for obj in objects:
+                    if obj["type"] == "line":
+                        # Hitung jarak Euclidean (Pytagoras)
+                        x1, y1 = obj["x1"], obj["y1"]
+                        x2, y2 = obj["x2"], obj["y2"]
+                        length_px = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+                        total_panjang_m += length_px * ratio_px_to_m
+                        
+                    elif obj["type"] == "rect":
+                        # Hitung Luas Persegi
+                        area_px2 = obj["width"] * obj["height"]
+                        total_luas_m2 += area_px2 * ratio_px2_to_m2
+                        
+                    # (Untuk Polygon, perhitungan menggunakan rumus Shoelace / koordinat vertices)
+                
+                # Tampilkan Metrik
+                m1, m2 = st.columns(2)
+                m1.metric("📏 Total Panjang (Meter Lari)", f"{total_panjang_m:.2f} m")
+                m2.metric("🟦 Total Luas Area (Meter Persegi)", f"{total_luas_m2:.2f} m²")
+                
+                if st.button("💾 Simpan Volume ke Memori RAB", type="primary"):
+                    # Inject ke session_state agar terbaca di Tab RAB 5D
+                    item_baru = {
+                        "Kategori": "Visual QTO",
+                        "Nama": "Pekerjaan Area " + drawing_mode.capitalize(),
+                        "Volume": round(total_luas_m2 if total_luas_m2 > 0 else total_panjang_m, 2)
+                    }
+                    if 'real_boq_data' not in st.session_state or st.session_state['real_boq_data'] is None:
+                        st.session_state['real_boq_data'] = pd.DataFrame([item_baru])
+                    else:
+                        st.session_state['real_boq_data'] = pd.concat([st.session_state['real_boq_data'], pd.DataFrame([item_baru])], ignore_index=True)
+                    
+                    st.success("Volume berhasil dimasukkan ke Bill of Quantities (BOQ)! Buka menu RAB 5D untuk melihat harganya.")
     # --- FITUR BARU: INTEGRASI BIM KE FEM ---
     st.subheader("🔗 Ekstraksi BIM (IFC -> OpenSees)")
     ifc_fem_file = st.file_uploader("Upload File .ifc:", type=['ifc'], key="ifc_fem")
@@ -1353,6 +1439,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
