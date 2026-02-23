@@ -9,6 +9,8 @@ plotly
 matplotlib
 rich
 tabulate
+drawable
+canvas
 
 # === AI Engine ===
 google-generativeai>=0.7.0
@@ -50,3 +52,4 @@ beautifulsoup4
 selectolax
 requests
 watchdog
+
