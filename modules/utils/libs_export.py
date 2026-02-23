@@ -75,6 +75,8 @@ class Export_Engine:
                             if hasattr(instance, 'koefisien'): 
                                 resep_ahsp_aktif = instance.koefisien 
                                 for key, resep in instance.koefisien.items():
+                                    
+                                    # 1. Tarik Bahan
                                     for nama_bahan, qty in resep.get("bahan", {}).items():
                                         if "(" in nama_bahan and ")" in nama_bahan:
                                             nama_bersih = nama_bahan.split("(")[0].strip()
@@ -84,8 +86,19 @@ class Export_Engine:
                                             satuan = "Ls/Unit"
                                         kebutuhan_unik[nama_bersih] = ("Bahan", satuan)
                                     
+                                    # 2. Tarik Upah
                                     for nama_upah, qty in resep.get("upah", {}).items():
                                         kebutuhan_unik[nama_upah] = ("Upah", "OH")
+                                        
+                                    # 3. Tarik Alat Berat
+                                    for nama_alat, qty in resep.get("alat", {}).items():
+                                        if "(" in nama_alat and ")" in nama_alat:
+                                            nama_bersih = nama_alat.split("(")[0].strip()
+                                            satuan = nama_alat.split("(")[1].replace(")", "").strip()
+                                        else:
+                                            nama_bersih = nama_alat
+                                            satuan = "Jam"
+                                        kebutuhan_unik[nama_bersih] = ("Alat", satuan)
                                 break 
                         except:
                             pass
@@ -112,7 +125,7 @@ class Export_Engine:
             
             if price_engine:
                 harga_angka, sumber_teks = price_engine.get_best_price(nama_item, lokasi=lokasi_proyek)
-                
+            
             ws_bp.write(row_bp, 0, idx, fmt_border)
             ws_bp.write(row_bp, 1, kategori, fmt_border)
             ws_bp.write(row_bp, 2, nama_item, fmt_border)
@@ -161,6 +174,9 @@ class Export_Engine:
                 
                 start_row = row_ahsp + 1
                 
+                # --- BUG FIX: HAPUS TANDA KUTIP GANDA PADA REFERENSI SHEET ---
+                
+                # Loop Bahan
                 for bahan, qty in resep.get("bahan", {}).items():
                     nama_b = bahan.split("(")[0].strip() if "(" in bahan else bahan
                     sat = bahan.split("(")[1].replace(")","").strip() if "(" in bahan else "Ls"
@@ -168,16 +184,29 @@ class Export_Engine:
                     ws_ahsp.write(row_ahsp, 1, nama_b, fmt_border)
                     ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
                     ws_ahsp.write(row_ahsp, 3, sat, fmt_border)
-                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{nama_b}*","\'7. Basic Price\'!C:E", 3, FALSE), 0)', fmt_currency)
+                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{nama_b}*",\'7. Basic Price\'!C:E, 3, FALSE), 0)', fmt_currency)
                     ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
                     row_ahsp += 1
                     
+                # Loop Upah
                 for upah, qty in resep.get("upah", {}).items():
                     ws_ahsp.write(row_ahsp, 0, 'Upah', fmt_border)
                     ws_ahsp.write(row_ahsp, 1, upah, fmt_border)
                     ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
                     ws_ahsp.write(row_ahsp, 3, 'OH', fmt_border)
-                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{upah}*","\'7. Basic Price\'!C:E", 3, FALSE), 0)', fmt_currency)
+                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{upah}*",\'7. Basic Price\'!C:E, 3, FALSE), 0)', fmt_currency)
+                    ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
+                    row_ahsp += 1
+                    
+                # Loop Alat (BARU)
+                for alat, qty in resep.get("alat", {}).items():
+                    nama_a = alat.split("(")[0].strip() if "(" in alat else alat
+                    sat = alat.split("(")[1].replace(")","").strip() if "(" in alat else "Jam"
+                    ws_ahsp.write(row_ahsp, 0, 'Alat', fmt_border)
+                    ws_ahsp.write(row_ahsp, 1, nama_a, fmt_border)
+                    ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
+                    ws_ahsp.write(row_ahsp, 3, sat, fmt_border)
+                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{nama_a}*",\'7. Basic Price\'!C:E, 3, FALSE), 0)', fmt_currency)
                     ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
                     row_ahsp += 1
                     
@@ -192,7 +221,7 @@ class Export_Engine:
                 ws_ahsp.write(row_rekap, 8, "Ls/m3", fmt_border)
                 ws_ahsp.write_formula(row_rekap, 9, f"=F{row_ahsp+1}", fmt_currency)
                 row_rekap += 1
-                    
+                
                 row_ahsp += 3 
 
         # =======================================================
