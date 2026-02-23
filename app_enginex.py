@@ -414,7 +414,7 @@ with st.sidebar:
     # 3. NAVIGASI MENU
     selected_menu = st.radio(
         "Pilih Modul:", 
-        ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur", "🌊 Analisis Hidrologi", "📑 Laporan RAB 5D"],
+        ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur", "🌊 Analisis Hidrologi", "📑 Laporan RAB 5D", "⚙️ Admin: Ekstraksi AHSP"],
         label_visibility="collapsed"
     )
     # [BUG FIX: TAMBAHKAN BARIS INI] Pengaman agar aplikasi tidak crash saat pindah tab
@@ -1137,7 +1137,7 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.plotly_chart(fig_pump, use_container_width=True)
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
-Admin: Ekstraksi AHSP (PDF to Excel)
+# --- MODE ADMIN: EKSTRAKSI AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
     st.header("⚙️ Ekstraksi PDF PUPR ke Database Excel")
     st.info("Menu khusus Admin. Cukup lakukan ini 1x setiap kali ada pembaruan Surat Edaran PUPR.")
@@ -1345,6 +1345,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
