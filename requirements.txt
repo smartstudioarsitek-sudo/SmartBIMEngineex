@@ -36,6 +36,7 @@ pyarrow
 beautifulsoup4
 selectolax
 requests
+rasterio
 
 
 
