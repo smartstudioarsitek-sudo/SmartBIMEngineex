@@ -316,7 +316,7 @@ def execute_generated_code(code_str, file_ifc_path=None):
         local_vars.update(library_kits)
 
         if has_4d:
-        library_kits['libs_4d'] = libs_4d
+            library_kits['libs_4d'] = libs_4d
         
         if file_ifc_path: 
             local_vars["file_ifc_user"] = file_ifc_path
@@ -1307,6 +1307,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
