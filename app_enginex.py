@@ -62,6 +62,12 @@ try:
     from modules.utils import libs_pdf, libs_export, libs_bim_importer
     from modules.utils import libs_loader      # <--- [BARU] Universal File Reader (DXF/GIS)
     from modules.utils import libs_auto_chain  # <--- [BARU] Generator Laporan Panjang
+    # [BARU] Modul MEP
+    try:
+        from modules.mep import libs_mep
+        has_mep = True
+    except ImportError:
+        has_mep = False
     
     # Optional Modules (Geoteknik)
     try: 
@@ -104,6 +110,9 @@ sys.modules['libs_bim_importer'] = libs_bim_importer
 sys.modules['libs_loader'] = libs_loader         # Register Loader Baru
 sys.modules['libs_auto_chain'] = libs_auto_chain # Register Chain Baru
 sys.modules['libs_price_engine'] = libs_price_engine # <--- TAMBAHAN BARU
+# [BARU] Register MEP
+if has_mep:
+    sys.modules['libs_mep'] = libs_mep
 
 if has_geotek:
     sys.modules['libs_geoteknik'] = libs_geoteknik
@@ -283,6 +292,9 @@ def execute_generated_code(code_str, file_ifc_path=None):
         if has_geotek:
             library_kits['libs_geoteknik'] = libs_geoteknik
             library_kits['libs_pondasi'] = libs_pondasi
+        # [BARU] Suntikkan MEP ke dalam environment AI
+        if has_mep:
+            library_kits['libs_mep'] = libs_mep
             
         local_vars.update(library_kits)
         
@@ -1275,6 +1287,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
