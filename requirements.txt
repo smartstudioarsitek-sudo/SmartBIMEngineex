@@ -9,8 +9,6 @@ plotly
 matplotlib
 rich
 tabulate
-drawable
-canvas
 
 # === AI Engine ===
 google-generativeai>=0.7.0
@@ -34,9 +32,10 @@ ezdxf
 OpenSeesPy
 
 # === GIS & Topography ===
-geopandas
+# (Urutan ini penting agar fiona dan rasterio tidak bentrok)
 shapely
 fiona
+geopandas
 rasterio
 gpxpy
 geopy
@@ -53,3 +52,5 @@ selectolax
 requests
 watchdog
 
+# === UI Components ===
+streamlit-drawable-canvas
