@@ -411,10 +411,18 @@ with st.sidebar:
     render_project_file_manager()
 
     st.divider()
+
+    # [FITUR BARU SE 30/2025] PILIHAN BIDANG PROYEK
+    st.session_state.bidang_proyek = st.selectbox(
+        "Kategori Bidang Proyek (SE 30/2025):",
+        ["Cipta Karya", "Bina Marga", "Sumber Daya Air"],
+        help="Sangat krusial! Mempengaruhi koefisien pekerja & alat berat di perhitungan AHSP."
+    )
+    st.divider()
     # 3. NAVIGASI MENU
     selected_menu = st.radio(
         "Pilih Modul:", 
-        ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur", "🌊 Analisis Hidrologi", "📑 Laporan RAB 5D", "⚙️ Admin: Ekstraksi AHSP"],
+        ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur", "🌊 Analisis Hidrologi", "📏 Visual QTO 2D (PlanSwift Mode)", "📑 Laporan RAB 5D", "⚙️ Admin: Ekstraksi AHSP"],
         label_visibility="collapsed"
     )
     # [BUG FIX: TAMBAHKAN BARIS INI] Pengaman agar aplikasi tidak crash saat pindah tab
@@ -1345,6 +1353,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
