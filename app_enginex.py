@@ -69,6 +69,13 @@ try:
     except ImportError:
         has_mep = False
     
+    # [BARU] Modul Legal & Kontrak
+    try:
+        from modules.legal import libs_legal
+        has_legal = True
+    except ImportError:
+        has_legal = False
+    
     # Optional Modules (Geoteknik)
     try: 
         from modules.geotek import libs_geoteknik, libs_pondasi
@@ -113,7 +120,8 @@ sys.modules['libs_price_engine'] = libs_price_engine # <--- TAMBAHAN BARU
 # [BARU] Register MEP
 if has_mep:
     sys.modules['libs_mep'] = libs_mep
-
+if has_legal:
+    sys.modules['libs_legal'] = libs_legal
 if has_geotek:
     sys.modules['libs_geoteknik'] = libs_geoteknik
     sys.modules['libs_pondasi'] = libs_pondasi
@@ -295,7 +303,8 @@ def execute_generated_code(code_str, file_ifc_path=None):
         # [BARU] Suntikkan MEP ke dalam environment AI
         if has_mep:
             library_kits['libs_mep'] = libs_mep
-            
+        if has_legal:
+            library_kits['libs_legal'] = libs_legal    
         local_vars.update(library_kits)
         
         if file_ifc_path: 
@@ -1287,6 +1296,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
