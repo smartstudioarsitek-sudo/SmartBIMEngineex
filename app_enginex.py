@@ -76,6 +76,12 @@ try:
     except ImportError:
         has_legal = False
     
+    try:
+        from modules.schedule import libs_4d
+        has_4d = True
+    except ImportError:
+        has_4d = False
+    
     # Optional Modules (Geoteknik)
     try: 
         from modules.geotek import libs_geoteknik, libs_pondasi
@@ -122,6 +128,9 @@ if has_mep:
     sys.modules['libs_mep'] = libs_mep
 if has_legal:
     sys.modules['libs_legal'] = libs_legal
+if has_4d:
+    sys.modules['libs_4d'] = libs_4d
+
 if has_geotek:
     sys.modules['libs_geoteknik'] = libs_geoteknik
     sys.modules['libs_pondasi'] = libs_pondasi
@@ -306,6 +315,9 @@ def execute_generated_code(code_str, file_ifc_path=None):
         if has_legal:
             library_kits['libs_legal'] = libs_legal    
         local_vars.update(library_kits)
+
+        if has_4d:
+        library_kits['libs_4d'] = libs_4d
         
         if file_ifc_path: 
             local_vars["file_ifc_user"] = file_ifc_path
@@ -1296,6 +1308,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
