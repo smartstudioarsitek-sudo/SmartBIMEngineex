@@ -1,3 +1,9 @@
+# ==============================================================================
+# 📄 NAMA FILE: libs_loader.py
+# 📍 LOKASI: modules/utils/libs_loader.py
+# 🛠️ FUNGSI: Universal File Reader (DXF, CAD, & GIS)
+# ==============================================================================
+
 import streamlit as st
 import pandas as pd
 import geopandas as gpd
@@ -18,7 +24,6 @@ try:
 except ImportError:
     HAS_QGIS = False
 
-    
 def process_special_file(uploaded_file):
     """
     Fungsi Universal untuk membaca file CAD & GIS.
@@ -33,7 +38,7 @@ def process_special_file(uploaded_file):
         # --- 1. HANDLING DXF (CAD) ---
         if filename.endswith(".dxf"):
             
-            # FIX: Gunakan .read() dari memori (StringIO) agar tidak crash di Streamlit Cloud
+            # Gunakan .read() dari memori (StringIO) agar aman di Streamlit
             stream = io.StringIO(uploaded_file.getvalue().decode('utf-8', errors='ignore'))
             doc = ezdxf.read(stream)
             msp = doc.modelspace()
@@ -65,39 +70,49 @@ def process_special_file(uploaded_file):
             image_buf.seek(0)
             plt.close(fig)
 
-        # --- 2. HANDLING GIS (GEOJSON, KML) dengan QGIS ---
+        # --- 2. HANDLING GIS (GEOJSON, KML, KMZ) DENGAN QGIS ---
         elif filename.endswith(('.geojson', '.kml', '.kmz')):
             if not HAS_QGIS:
                 text_info = "⚠️ File spasial terdeteksi, tetapi Mesin QGIS belum aktif di server/lokal."
             else:
-                # QGIS butuh file fisik di hardisk (tidak bisa baca langsung dari memory byte Streamlit)
-                # Jadi kita buat temp file (sama seperti trik IFC Anda)
+                # QGIS butuh file fisik di hardisk (tidak bisa baca langsung dari memori byte Streamlit)
+                # Jadi kita buat file temporary (sementara)
                 ekstensi = f".{filename.split('.')[-1]}"
                 with tempfile.NamedTemporaryFile(delete=False, suffix=ekstensi) as tmp:
                     tmp.write(uploaded_file.getvalue())
                     tmp_path = tmp.name
                 
-                # Panggil Mesin QGIS secara rahasia
-                gis = GIS_Engine()
-                hasil = gis.analisis_luas_geojson(tmp_path)
-                gis.shutdown() # Matikan mesin agar RAM lega
-                
-                # Format output agar dibaca oleh LLM AI (The GEMS Grandmaster)
-                text_info = f"**Analisis Spasial Otomatis (via QGIS):**\n"
-                text_info += f"- Nama File: {filename}\n"
-                
-                if "error" not in hasil:
-                    text_info += f"- Total Luas Area: **{hasil['Total_Luas_m2']} m2** ({hasil['Total_Luas_Ha']} Hektar)\n"
-                    text_info += "- Status: Area batas lahan berhasil dihitung.\n"
-                    text_info += "\n*Instruksi untuk AI: Gunakan luas ini untuk menghitung RAB Pembersihan Lahan (Striping/Land Clearing) jika diminta oleh user.*"
-                else:
-                    text_info += f"- Error: {hasil['error']}"
+                try:
+                    # Panggil Mesin QGIS secara rahasia
+                    gis = GIS_Engine()
+                    hasil = gis.analisis_luas_geojson(tmp_path)
+                    
+                    # [BUG FIX 1]: TIDAK ADA gis.shutdown() DI SINI.
+                    # Membiarkan QGIS tetap menyala di latar belakang agar upload file 
+                    # kedua, ketiga, dst tidak mengalami crash.
+                    
+                    # Format output agar dibaca oleh LLM AI (The GEMS Grandmaster)
+                    text_info = f"**Analisis Spasial Otomatis (via QGIS):**\n"
+                    text_info += f"- Nama File: {filename}\n"
+                    
+                    if "error" not in hasil:
+                        text_info += f"- Total Luas Area: **{hasil['Total_Luas_m2']} m2** ({hasil['Total_Luas_Ha']} Hektar)\n"
+                        text_info += "- Status: Area batas lahan berhasil dihitung.\n"
+                        text_info += "\n*Instruksi untuk AI: Gunakan luas ini secara presisi (jangan dikarang) untuk menghitung RAB Pembersihan Lahan (Striping/Land Clearing) jika diminta oleh user.*"
+                    else:
+                        text_info += f"- Error: {hasil['error']}"
+                        
+                finally:
+                    # [BUG FIX 2]: PENGHAPUSAN FILE TEMPORARY.
+                    # Blok 'finally' memastikan file temp akan selalu dihapus dari hardisk 
+                    # walaupun proses QGIS sukses maupun error, sehingga penyimpanan tidak penuh.
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
 
-        # --- 3. HANDLING LAINNYA ---
+        # --- 3. HANDLING FORMAT LAINNYA ---
         else:
             text_info = f"Data {filename} diterima sebagai referensi."
-       
-           
+            
     except Exception as e:
         return f"Gagal membaca struktur file: {str(e)}", None, None
 
