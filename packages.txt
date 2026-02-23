@@ -5,8 +5,6 @@ tcl8.6
 tk8.6
 tesseract-ocr
 libgl1
-libodbc2
-libodbcinst2
 unixodbc-dev
 gdal-bin
 libgdal-dev
