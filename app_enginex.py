@@ -438,12 +438,10 @@ with st.sidebar:
         "Pilih Modul Aplikasi:", 
         [
             "🤖 AI Assistant", 
-            "📏 Visual QTO 2D (PlanSwift Mode)", 
-            "📑 Laporan RAB 5D", 
+            "📏 Visual QTO 2D (PlanSwift Mode)",           
             "🌪️ Analisis Gempa (FEM)", 
             "🏗️ Audit Struktur", 
-            "🌊 Analisis Hidrologi", 
-            "⚙️ Admin: Ekstraksi AHSP"
+            "🌊 Analisis Hidrologi",             
         ],
         label_visibility="collapsed"
     )
@@ -902,6 +900,7 @@ elif selected_menu == "📏 Visual QTO 2D (PlanSwift Mode)":
                         st.session_state['real_boq_data'] = pd.concat([st.session_state['real_boq_data'], pd.DataFrame([item_baru])], ignore_index=True)
                     
                     st.success("Volume berhasil dimasukkan ke Bill of Quantities (BOQ)! Buka menu RAB 5D untuk melihat harganya.")
+    
     # --- FITUR BARU: INTEGRASI BIM KE FEM ---
     st.subheader("🔗 Ekstraksi BIM (IFC -> OpenSees)")
     ifc_fem_file = st.file_uploader("Upload File .ifc:", type=['ifc'], key="ifc_fem")
@@ -1289,101 +1288,8 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     st.plotly_chart(fig_pump, use_container_width=True)
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
-# --- MODE ADMIN: EKSTRAKSI AHSP ---
-elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
-    st.header("⚙️ Ekstraksi PDF PUPR ke Database Excel")
-    st.info("Menu khusus Admin. Cukup lakukan ini 1x setiap kali ada pembaruan Surat Edaran PUPR.")
-    
-    file_pdf_pupr = st.file_uploader("Upload Lampiran PDF AHSP PUPR:", type=["pdf"])
-    
-    if file_pdf_pupr and st.button("🚀 Ekstrak via AI & Buat Database", type="primary"):
-        with st.spinner("Mengekstrak tabel dari PDF... (Ini mungkin memakan waktu beberapa menit)"):
-            from modules.utils import pdf_extractor
-            
-            # 1. Ekstrak teks/tabel kotor menggunakan pdfplumber
-            raw_text = pdf_extractor.extract_text_from_pdf(file_pdf_pupr)
-            
-            # 2. (Simulasi) AI merapikan teks kotor menjadi format tabel terstruktur
-            # Dalam skenario nyata, Kakak bisa menggunakan Gemini prompt khusus tabel di sini.
-            # Untuk sekarang, kita buatkan struktur Excel dummy yang siap dipakai.
-            
-            df_template = pd.DataFrame([
-                {"Bidang": "SDA", "Kode_AHSP": "T.01.a", "Deskripsi": "1 m3 Galian Tanah Biasa", "Kategori": "Upah", "Nama_Komponen": "Pekerja", "Satuan": "OH", "Koefisien": 0.526},
-                {"Bidang": "SDA", "Kode_AHSP": "T.01.a", "Deskripsi": "1 m3 Galian Tanah Biasa", "Kategori": "Upah", "Nama_Komponen": "Mandor", "Satuan": "OH", "Koefisien": 0.052},
-            ])
-            
-            # 3. Simpan menjadi file Excel fisik di server/folder lokal
-            file_path = "Database_AHSP.xlsx"
-            df_template.to_excel(file_path, index=False)
-            
-            st.success(f"✅ Ekstraksi selesai! File {file_path} berhasil dibuat di sistem.")
-            st.dataframe(df_template)
 
-# --- E. MODE LAPORAN RAB 5D ---
-elif selected_menu == "📑 Laporan RAB 5D":
-    st.header("📑 Laporan Eksekutif RAB 5D (Dokumen Lelang)")
-    st.caption("Generator Dokumen Rencana Anggaran Biaya standar Kementerian PUPR")
 
-    # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
-    st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
-    step1, step2, step3 = st.columns(3)
-    step4, step5, step6 = st.columns(3)
-
-    with step1:
-        with st.expander("1. Pendahuluan & Lingkup", expanded=True):
-            st.write("Berisi latar belakang proyek, deskripsi BIM, dan metodologi otomatis.")
-    with step2:
-        with st.expander("2. Asumsi Dasar & AHSP", expanded=True):
-            st.write("Menetapkan dasar harga material, upah kerja, dan referensi AHSP.")
-    with step3:
-        with st.expander("3. Bill of Quantities (BOQ)", expanded=True):
-            st.write("Rekapitulasi total volume pekerjaan dari ekstraksi BIM/AI-QS.")
-    with step4:
-        with st.expander("4. Integrasi SMKK & K3", expanded=True):
-            st.write("Perhitungan biaya Keselamatan Konstruksi sesuai risiko proyek.")
-    with step5:
-        with st.expander("5. Analisis TKDN (Lokal)", expanded=True):
-            st.write("Proporsi penggunaan material dalam negeri vs luar negeri.")
-    with step6:
-        with st.expander("6. Rekapitulasi & Grand Total", expanded=True):
-            st.write("Ringkasan final, PPN 11%, dan Grand Total Biaya Fisik.")
-
-    st.markdown("---")
-    
-    # 1. Kumpulkan teks laporan (Bisa dikembangkan nanti agar dinamis sesuai klik User)
-    laporan_gabungan = f"""
-    # DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
-    **PROYEK: {nama_proyek.upper()}**
-
-    ## BAB 1. PENDAHULUAN
-    Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex yang terintegrasi dengan standar ekstraksi kuantitas (QTO) berbasis algoritma analitik geometri, serta mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
-
-    ## BAB 2. ASUMSI DASAR & HARGA MATERIAL
-    Perhitungan harga satuan pekerjaan didasarkan pada integrasi harga pasar (Basic Price) yang ditarik secara dinamis dari sistem ESSH PUPR Provinsi dan Badan Pusat Statistik (BPS).
-
-    ## BAB 3. BILL OF QUANTITIES (BOQ)
-    Kuantitas material diekstrak langsung dari model 3D (BIM) maupun 2D CAD/PDF dengan tingkat presisi tinggi (Human-in-the-Loop verified).
-    
-    ## BAB 4. KESELAMATAN KONSTRUKSI (SMKK)
-    Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen standar PUPR untuk memitigasi risiko kecelakaan kerja di lapangan.
-    
-    ## BAB 5. REKAPITULASI BIAYA
-    Total estimasi biaya konstruksi fisik dapat dilihat pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang menyertai laporan ini, sudah termasuk perhitungan PPN 11%.
-    """
-
-    # 2. Render tombol Download yang sesungguhnya
-    try:
-        # Menggunakan engine PDF internal kita
-        pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {nama_proyek}")
-        
-        st.download_button(
-            label="📄 1. Download Laporan RAB (PDF)",
-            data=pdf_bytes,
-            file_name=f"Laporan_RAB_{nama_proyek.replace(' ', '_')}.pdf",
-            mime="application/pdf",
-            type="primary",
-            use_container_width=True
-        )
         
         # --- TOMBOL EXCEL DIPINDAH KESINI ---
         df_boq_aktual = st.session_state.get('real_boq_data', None)
@@ -1523,6 +1429,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
