@@ -757,8 +757,8 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
             st.info(f"📊 **Parameter Desain:**\n\n**SDS = {hasil_gempa['SDS']:.3f} g**\n\n**SD1 = {hasil_gempa['SD1']:.3f} g**")
 
     st.divider()
-
-    elif selected_menu == "📏 Visual QTO 2D (PlanSwift Mode)":
+# --- MODE VISUAL QTO 2D ---
+elif selected_menu == "📏 Visual QTO 2D (PlanSwift Mode)":
     from streamlit_drawable_canvas import st_canvas
     from PIL import Image
     import math
@@ -1439,6 +1439,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
