@@ -1,84 +1,51 @@
-import os
-import sys
+# ==============================================================================
+# 📄 NAMA FILE: libs_gis.py
+# 📍 LOKASI: modules/utils/libs_gis.py
+# 🛠️ FUNGSI: Mesin Spasial Mandiri berbasis GeoPandas (Pengganti QGIS Desktop)
+# ==============================================================================
 
-# ==============================================================================
-# 1. SETUP ENVIRONMENT QGIS (HEADLESS MODE)
-# ==============================================================================
-QGIS_ROOT = r"C:\Program Files\QGIS 3.40.14"
+import geopandas as gpd
+import fiona
 
-# Suntikkan path agar tidak error DLL C++
-os.environ['PATH'] = f"{QGIS_ROOT}\\bin;{QGIS_ROOT}\\apps\\qgis\\bin;{os.environ['PATH']}"
-os.environ['PROJ_LIB'] = f"{QGIS_ROOT}\\share\\proj"
-os.environ['GDAL_DATA'] = f"{QGIS_ROOT}\\share\\gdal"
+# Mengaktifkan dukungan untuk membaca file KML dan KMZ di Fiona/GeoPandas
+fiona.drvsupport.supported_drivers['KML'] = 'rw'
+fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
 
-# Tambahkan path Python QGIS
-qgis_python_path = f"{QGIS_ROOT}\\apps\\qgis\\python"
-if qgis_python_path not in sys.path:
-    sys.path.insert(0, qgis_python_path)
-    sys.path.insert(0, f"{qgis_python_path}\\plugins")
-
-# ==============================================================================
-# 2. INISIALISASI MESIN QGIS
-# ==============================================================================
-try:
-    from qgis.core import QgsApplication, QgsVectorLayer, QgsDistanceArea
-    
-    # False = Tanpa Antarmuka Grafis (Headless)
-    QgsApplication.setPrefixPath(f"{QGIS_ROOT}\\apps\\qgis", True)
-    qgs = QgsApplication([], False)
-    qgs.initQgis()
-    
-    MESIN_QGIS_SIAP = True
-except Exception as e:
-    MESIN_QGIS_SIAP = False
-    pesan_error = str(e)
-
-# ==============================================================================
-# 3. CLASS ENGINE GIS
-# ==============================================================================
 class GIS_Engine:
     def __init__(self):
-        self.engine_ready = MESIN_QGIS_SIAP
+        # Karena kita pakai GeoPandas, mesin selalu siap tanpa perlu inisialisasi berat
+        self.engine_ready = True
 
     def analisis_luas_geojson(self, file_path):
         """
-        Membaca file GeoJSON/KML dan menghitung luas area total dalam METER PERSEGI.
+        Membaca file GeoJSON, KML, atau KMZ dan menghitung luas area total.
+        Otomatis mengubah proyeksi ke sistem Metrik (Meter Persegi).
         """
-        if not self.engine_ready:
-            return {"error": f"❌ QGIS Engine gagal dimuat: {pesan_error}"}
+        try:
+            # 1. Baca file spasial (otomatis mendeteksi GeoJSON / KML)
+            gdf = gpd.read_file(file_path)
+            
+            # 2. Cek apakah file kosong
+            if gdf.empty:
+                return {"error": "❌ File spasial kosong atau tidak berisi poligon lahan."}
 
-        # Mesin QGIS membaca file vektor
-        layer = QgsVectorLayer(file_path, "Area_Proyek", "ogr")
-        
-        if not layer.isValid():
-            return {"error": "❌ File spasial tidak valid atau format tidak didukung."}
+            # 3. Konversi Proyeksi (SANGAT PENTING)
+            # File dari Google Earth biasanya bersatuan Derajat (EPSG:4326).
+            # Kita konversi ke Web Mercator (EPSG:3857) agar satuannya menjadi Meter.
+            gdf_metric = gdf.to_crs(epsg=3857)
 
-        # --- FIX BUG: ALAT UKUR AREA (METER PERSEGI) ---
-        # Membuat alat ukur jarak/area dengan mempertimbangkan kelengkungan bumi
-        ukur_area = QgsDistanceArea()
-        ukur_area.setEllipsoid('WGS84') # Standar GPS/Google Earth
-        ukur_area.setSourceCrs(layer.crs(), layer.transformContext())
+            # 4. Hitung Total Luas (Meter Persegi)
+            total_luas_m2 = gdf_metric.geometry.area.sum()
 
-        total_luas_m2 = 0.0
-        
-        # Iterasi setiap poligon dan hitung luas fisiknya
-        for feature in layer.getFeatures():
-            geom = feature.geometry()
-            # Hitung menggunakan alat ukur ellipsoid agar satuannya meter persegi
-            luas_poligon = ukur_area.measureArea(geom) 
-            total_luas_m2 += luas_poligon
-
-        return {
-            "Total_Luas_m2": round(total_luas_m2, 2),
-            "Total_Luas_Ha": round(total_luas_m2 / 10000, 2),
-            "Status": "✅ Dihitung presisi dengan QgsDistanceArea (Elipsoid WGS84)"
-        }
+            return {
+                "Total_Luas_m2": round(total_luas_m2, 2),
+                "Total_Luas_Ha": round(total_luas_m2 / 10000, 2),
+                "Status": "✅ Dihitung presisi dengan GeoPandas (Metric Projection)"
+            }
+            
+        except Exception as e:
+            return {"error": f"❌ Gagal memproses file spasial: {str(e)}"}
 
     def shutdown(self):
-        """
-        Fungsi untuk mematikan mesin.
-        Catatan: Jangan dipanggil di Streamlit agar mesin tetap standby.
-        Hanya gunakan jika menjalankan skrip ini secara stand-alone (via terminal).
-        """
-        if self.engine_ready:
-            qgs.exitQgis()
+        """Fungsi dummy agar kompatibel dengan pemanggilan di libs_loader.py"""
+        pass
