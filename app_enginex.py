@@ -81,6 +81,11 @@ try:
         has_4d = True
     except ImportError:
         has_4d = False
+    try:
+        from modules.transport import libs_transport
+        has_transport = True
+    except ImportError:
+        has_transport = False
     
     # Optional Modules (Geoteknik)
     try: 
@@ -130,6 +135,8 @@ if has_legal:
     sys.modules['libs_legal'] = libs_legal
 if has_4d:
     sys.modules['libs_4d'] = libs_4d
+if has_transport:
+    sys.modules['libs_transport'] = libs_transport
 if has_geotek:
     sys.modules['libs_geoteknik'] = libs_geoteknik
     sys.modules['libs_pondasi'] = libs_pondasi
@@ -317,7 +324,8 @@ def execute_generated_code(code_str, file_ifc_path=None):
 
         if has_4d:
             library_kits['libs_4d'] = libs_4d
-        
+        if has_transport:
+            library_kits['libs_transport'] = libs_transport
         if file_ifc_path: 
             local_vars["file_ifc_user"] = file_ifc_path
         
@@ -1307,6 +1315,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
