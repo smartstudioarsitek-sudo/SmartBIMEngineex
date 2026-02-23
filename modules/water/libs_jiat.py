@@ -122,3 +122,36 @@ class JIAT_Engine:
         })
         
         return df_curve, H_target_sys
+    # =========================================
+    # KALKULATOR POMPA TENAGA SURYA (PATS)
+    # =========================================
+    def rancang_pats(self, power_pompa_kw, jam_operasi_harian=6, psh_lokasi=4.5, kapasitas_panel_wp=550):
+        """
+        Merancang sistem Pompa Air Tenaga Surya (PATS) Direct-Drive (Tanpa Baterai).
+        - power_pompa_kw: Daya pompa hasil perhitungan head & debit (kW)
+        - jam_operasi_harian: Jam operasi target per hari
+        - psh_lokasi: Peak Sun Hours (Rata-rata insolasi matahari harian, misal 4.5 jam untuk Jawa)
+        - kapasitas_panel_wp: Kapasitas per lembar panel surya (Watt-Peak, misal 550 Wp)
+        """
+        # 1. Kebutuhan Energi Harian (Wh)
+        energi_harian_wh = (power_pompa_kw * 1000) * jam_operasi_harian
+        
+        # 2. Total Kapasitas PV Array yang dibutuhkan (Wp)
+        # Memperhitungkan derating factor (rugi-rugi kabel, debu, suhu) sekitar 0.75
+        derating_factor = 0.75
+        pv_array_wp = energi_harian_wh / (psh_lokasi * derating_factor)
+        
+        # 3. Jumlah Lembar Panel Surya
+        jumlah_panel = math.ceil(pv_array_wp / kapasitas_panel_wp)
+        
+        # 4. Sizing Solar Pump Inverter (VFD)
+        # Inverter harus lebih besar min 25% dari daya pompa untuk menangani tarikan awal (surge/inrush current)
+        kapasitas_inverter_kw = power_pompa_kw * 1.25
+        
+        return {
+            "Kebutuhan_Energi_Harian_Wh": round(energi_harian_wh, 2),
+            "Total_Kapasitas_PV_Dibutuhkan_Wp": round(pv_array_wp, 2),
+            "Rekomendasi_Jumlah_Panel": jumlah_panel,
+            "Spesifikasi_Panel": f"{jumlah_panel} lembar x {kapasitas_panel_wp} Wp",
+            "Kapasitas_Min_Inverter_kW": round(kapasitas_inverter_kw, 2)
+        }
