@@ -373,7 +373,7 @@ def create_pdf(text_content):
     return pdf.output(dest='S').encode('latin-1')
 
 # ==========================================
-# 6. SIDEBAR & SETUP (UPGRADED)
+# 6. SIDEBAR & SETUP (UPGRADED & STRUCTURED)
 # ==========================================
 if 'backend' not in st.session_state: 
     st.session_state.backend = EnginexBackend()
@@ -381,14 +381,17 @@ if 'processed_files' not in st.session_state:
     st.session_state.processed_files = set()
 if 'current_expert_active' not in st.session_state: 
     st.session_state.current_expert_active = "👑 The GEMS Grandmaster"
+if 'nama_proyek' not in st.session_state:
+    st.session_state.nama_proyek = "Proyek_Aktif" # Default nama proyek
 
 db = st.session_state.backend
+uploaded_files = None # Inisialisasi awal
 
 with st.sidebar:
     st.markdown("### 🛡️ ENGINEX GOV.VER")
     st.caption("Edisi Kepatuhan Audit Fase 2")
     
-    # 1. KEAMANAN API KEY (AUTO-DETECT)
+    # --- LEVEL 1: SISTEM & KEAMANAN ---
     api_key = get_api_key()
     if api_key:
         st.success("🔒 API Key Terdeteksi (Secure Mode)")
@@ -407,73 +410,128 @@ with st.sidebar:
 
     st.divider()
     
-    # 2. [BARU] FILE PROJECT MANAGER (Save/Load)
-    render_project_file_manager()
+    # --- LEVEL 2: MANAJEMEN DATA & PROYEK (GLOBAL) ---
+    st.markdown("### 📂 Data & Proyek (ISO 19650)")
+    
+    # Fitur Buka/Buat Proyek sekarang GLOBAL (Tidak disembunyikan di AI Assistant)
+    projects = db.daftar_proyek()
+    mode = st.radio("Sistem File:", ["Buka Proyek", "Buat Baru"], horizontal=True, label_visibility="collapsed")
+    
+    if mode == "Buat Baru":
+        new_proj_name = st.text_input("Nama Proyek:", "GEDUNG-PEMDA-2025")
+        if st.button("Buat & Inisiasi CDE", use_container_width=True):
+            logs = init_project_cde(new_proj_name)
+            st.session_state.nama_proyek = new_proj_name
+            st.success("CDE Terbentuk!")
+        else:
+            st.session_state.nama_proyek = new_proj_name
+    else:
+        st.session_state.nama_proyek = st.selectbox("Pilih Proyek Aktif:", projects) if projects else "Default Project"
+        
+    render_project_file_manager() # Tombol Save/Load JSON
 
     st.divider()
 
-    # [FITUR BARU SE 30/2025] PILIHAN BIDANG PROYEK
-    st.session_state.bidang_proyek = st.selectbox(
-        "Kategori Bidang Proyek (SE 30/2025):",
-        ["Cipta Karya", "Bina Marga", "Sumber Daya Air"],
-        help="Sangat krusial! Mempengaruhi koefisien pekerja & alat berat di perhitungan AHSP."
-    )
-    st.divider()
-    # 3. NAVIGASI MENU
+    # --- LEVEL 3: NAVIGASI MENU UTAMA ---
+    st.markdown("### 🧭 Navigasi Modul")
     selected_menu = st.radio(
-        "Pilih Modul:", 
-        ["🤖 AI Assistant", "🌪️ Analisis Gempa (FEM)", "🏗️ Audit Struktur", "🌊 Analisis Hidrologi", "📏 Visual QTO 2D (PlanSwift Mode)", "📑 Laporan RAB 5D", "⚙️ Admin: Ekstraksi AHSP"],
+        "Pilih Modul Aplikasi:", 
+        [
+            "🤖 AI Assistant", 
+            "📏 Visual QTO 2D (PlanSwift Mode)", 
+            "📑 Laporan RAB 5D", 
+            "🌪️ Analisis Gempa (FEM)", 
+            "🏗️ Audit Struktur", 
+            "🌊 Analisis Hidrologi", 
+            "⚙️ Admin: Ekstraksi AHSP"
+        ],
         label_visibility="collapsed"
     )
-    # [BUG FIX: TAMBAHKAN BARIS INI] Pengaman agar aplikasi tidak crash saat pindah tab
-    uploaded_files = None   
-    nama_proyek = "Proyek_Aktif"  # <--- [TAMBAHKAN BARIS INI]
+    
+    # Tarik variabel nama_proyek dari session state agar bisa dipakai di main area
+    nama_proyek = st.session_state.nama_proyek
+    
     st.divider()
 
+    # --- LEVEL 4: MENU KONTEKSTUAL (Berubah sesuai Menu Utama yang dipilih) ---
+    
+    # KONDISI A: JIKA DI MENU AI ASSISTANT
     if selected_menu == "🤖 AI Assistant":
-        # 4. MANAJEMEN PROYEK (CDE STANDARD)
-        st.markdown("### 📂 Proyek (ISO 19650)")
-        
-        projects = db.daftar_proyek()
-        mode = st.radio("Mode:", ["Buka Proyek", "Buat Baru"], horizontal=True, label_visibility="collapsed")
-        
-        if mode == "Buat Baru":
-            new_proj_name = st.text_input("Nama Proyek:", "GEDUNG-PEMDA-2025")
-            if st.button("Buat & Inisiasi CDE"):
-                logs = init_project_cde(new_proj_name)
-                nama_proyek = new_proj_name
-                st.success("Proyek & Folder CDE Terbentuk!")
-                with st.expander("Lihat Log Sistem"):
-                    for l in logs: st.write(l)
-            else:
-                nama_proyek = new_proj_name
-        else:
-            nama_proyek = st.selectbox("Pilih Proyek:", projects) if projects else "Default Project"
-            
-        # 5. PERSONA
-        st.markdown("### 🎭 Persona")
+        st.markdown("### 🎭 Pengaturan AI")
         use_auto_pilot = st.checkbox("🤖 Auto-Pilot", value=True)
         if not use_auto_pilot:
             st.session_state.current_expert_active = st.selectbox("Pilih Ahli:", get_persona_list())
             
-        # 6. UPLOAD (Updated for Universal Loader)
         st.markdown("### 📎 Upload Data")
         uploaded_files = st.file_uploader(
-            "Upload File (CAD, GIS, PDF, Excel)",
-            # Menambahkan support ekstensi baru (dxf, dwg, shp via zip, kml, dll)
+            "Upload File (CAD, GIS, PDF, Excel, IFC)",
             type=["png","jpg","jpeg","pdf","xlsx","docx","ifc","py", 
                   "dxf", "dwg", "geojson", "kml", "kmz", "gpx", "zip", 
                   "tif", "tiff", "dem"],
-            
             accept_multiple_files=True,
             label_visibility="collapsed"
         )
-        
-        if st.button("🧹 Reset Chat"):
+        if st.button("🧹 Reset Chat", use_container_width=True):
             db.clear_chat(nama_proyek, st.session_state.current_expert_active)
             st.rerun()
-       
+
+    # KONDISI B: JIKA DI MENU VISUAL QTO ATAU RAB
+    elif selected_menu in ["📏 Visual QTO 2D (PlanSwift Mode)", "📑 Laporan RAB 5D"]:
+        st.markdown("### ⚙️ Pengaturan Estimasi Biaya")
         
+        # Pilihan Bidang (SE 30/2025) HANYA muncul di menu yang butuh hitung RAB
+        st.session_state.bidang_proyek = st.selectbox(
+            "Kategori Bidang Proyek (SE 30/2025):",
+            ["Cipta Karya", "Bina Marga", "Sumber Daya Air"],
+            help="Sangat krusial! Mempengaruhi koefisien pekerja & alat berat di perhitungan AHSP."
+        )
+        
+        # Pilihan Lokasi BPS HANYA muncul di sini
+        st.session_state.lokasi_bps = st.selectbox(
+            "Lokasi (Indeks BPS):", 
+            ["Lampung", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "Jawa Timur", "Bali", "Sumatera Selatan", "Kalimantan Barat", "Sulawesi Selatan", "Papua", "Papua Pegunungan"], 
+            index=0
+        )
+        
+        st.markdown("### 📊 Export 5D BIM (IFC)")
+        ifc_file_target = st.file_uploader("Upload File .ifc Khusus RAB:", type=['ifc'], key="ifc_rab")
+        
+        if ifc_file_target:
+            if st.button("🔄 Ekstrak Volume IFC", use_container_width=True, type="secondary"):
+                with st.spinner("Menarik data 3D menjadi Volume..."):
+                    import tempfile
+                    try:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+                            tmp.write(ifc_file_target.getvalue())
+                            tmp_path = tmp.name
+
+                        engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
+                        if engine_ifc.valid:
+                            elements = engine_ifc.model.by_type("IfcProduct")
+                            data_boq_asli = []
+                            for el in elements:
+                                if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
+                                    vol = engine_ifc.get_element_quantity(el)
+                                    vol_final = round(vol, 3) if vol and vol > 0 else 1.0
+                                    nama_el = el.Name if el.Name else f"Elemen_{el.GlobalId[:5]}"
+                                    data_boq_asli.append({
+                                        "Kategori": el.is_a(),
+                                        "Nama": nama_el,
+                                        "Volume": vol_final
+                                    })
+                            if len(data_boq_asli) > 0:
+                                st.session_state['real_boq_data'] = pd.DataFrame(data_boq_asli)
+                                st.success(f"✅ {len(data_boq_asli)} Elemen Tersimpan.")
+                            else:
+                                st.error("⚠️ IFC terbaca, tapi elemen fisik kosong.")
+                        else:
+                            st.error("❌ File IFC Rusak.")
+                    except Exception as e:
+                        st.error(f"❌ Gagal Ekstrak: {e}")
+
+        # Tombol Download Excel RAB dipindah ke main area (di dalam logika elif "📑 Laporan RAB 5D") 
+        # agar tidak tumpang tindih di sidebar.
+
 # ==========================================
 # 7. LOGIKA TAMPILAN UTAMA
 # ==========================================
@@ -1319,16 +1377,42 @@ elif selected_menu == "📑 Laporan RAB 5D":
         pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {nama_proyek}")
         
         st.download_button(
-            label="📥 Download Full Laporan RAB (PDF)",
+            label="📄 1. Download Laporan RAB (PDF)",
             data=pdf_bytes,
             file_name=f"Laporan_RAB_{nama_proyek.replace(' ', '_')}.pdf",
             mime="application/pdf",
             type="primary",
             use_container_width=True
         )
+        
+        # --- TOMBOL EXCEL DIPINDAH KESINI ---
+        df_boq_aktual = st.session_state.get('real_boq_data', None)
+        lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
+        
+        if df_boq_aktual is not None and not df_boq_aktual.empty:
+            st.success(f"🟢 Data BOQ Siap ({len(df_boq_aktual)} baris) untuk Lokasi: {lokasi_proyek}")
+            with st.spinner("Memproses Excel..."):
+                if 'price_engine' not in st.session_state:
+                    st.session_state.price_engine = sys.modules['libs_price_engine'].PriceEngine3Tier()
+                
+                excel_bytes = sys.modules['libs_export'].Export_Engine().generate_7tab_rab_excel(
+                    nama_proyek, df_boq_aktual, price_engine=st.session_state.price_engine, lokasi_proyek=lokasi_proyek 
+                )
+                st.download_button(
+                    label="📊 2. Download Excel RAB 7-Tab (Harga Auto-BPS)",
+                    data=excel_bytes,
+                    file_name=f"RAB_{lokasi_proyek}_{nama_proyek.replace(' ', '_')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True
+                )
+        else:
+            st.warning("⚠️ Data Kosong. Ekstrak IFC di Sidebar atau gunakan Visual QTO terlebih dahulu untuk mengaktifkan tombol Excel.")
+            st.button("📊 2. Download Excel RAB", disabled=True, use_container_width=True)
+
     except Exception as e:
-        st.error(f"⚠️ Gagal merender PDF: {e}")
-    
+        st.error(f"⚠️ Gagal merender dokumen: {e}")
+       
     
 # ==========================================
 # 8. EXPORT 5D BIM (SAFE MODE)
@@ -1439,6 +1523,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
