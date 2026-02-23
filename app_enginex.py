@@ -527,8 +527,7 @@ with st.sidebar:
                     except Exception as e:
                         st.error(f"❌ Gagal Ekstrak: {e}")
 
-        # Tombol Download Excel RAB dipindah ke main area (di dalam logika elif "📑 Laporan RAB 5D") 
-        # agar tidak tumpang tindih di sidebar.
+
 
 # ==========================================
 # 7. LOGIKA TAMPILAN UTAMA
@@ -1429,6 +1428,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
