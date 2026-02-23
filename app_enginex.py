@@ -414,7 +414,9 @@ with st.sidebar:
             "Upload File (CAD, GIS, PDF, Excel)",
             # Menambahkan support ekstensi baru (dxf, dwg, shp via zip, kml, dll)
             type=["png","jpg","jpeg","pdf","xlsx","docx","ifc","py", 
-                  "dxf", "dwg", "geojson", "kml", "kmz", "gpx", "zip"], 
+                  "dxf", "dwg", "geojson", "kml", "kmz", "gpx", "zip", 
+                  "tif", "tiff", "dem"],
+            
             accept_multiple_files=True,
             label_visibility="collapsed"
         )
@@ -1272,6 +1274,7 @@ with st.sidebar:
         st.error(f"Gagal menyiapkan Excel: {e}")
         
    
+
 
 
 
