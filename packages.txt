@@ -5,9 +5,3 @@ tcl8.6
 tk8.6
 tesseract-ocr
 libgl1
-unixodbc-dev
-gdal-bin
-libgdal-dev
-libgeos-dev
-libproj-dev
-libsqlite3-mod-spatialite
