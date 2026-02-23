@@ -1,9 +1,3 @@
-# ==============================================================================
-# 📄 NAMA FILE: libs_loader.py
-# 📍 LOKASI: modules/utils/libs_loader.py
-# 🛠️ FUNGSI: Universal File Reader (DXF, CAD, & GIS)
-# ==============================================================================
-
 import streamlit as st
 import pandas as pd
 import geopandas as gpd
