@@ -1,181 +1,103 @@
 import pandas as pd
+import os
 
 class AHSP_Engine:
-    def __init__(self):
-        # Database Koefisien AHSP (SNI/Permen PUPR)
-        # Diperluas agar AI tidak bingung
-        self.koefisien = {
-            # ======================================================
-            # DIVISI 1: PERSIAPAN & PEMBERSIHAN (AUDITED SE 30 & EE LOKAL)
-            # ======================================================
-            "papan_nama_proyek": {
-                "desc": "[A.1.1.4.b] Pembuatan 1 Buah Papan Nama Proyek (0.6x0.8m)",
-                "bahan": {"Multiplek 9 mm (Lbr)": 0.18, "Kayu Kaso 5/7 (m3)": 0.011, "Paku (Kg)": 0.10, "Cat Minyak (Kg)": 0.20},
-                "upah": {"Pekerja": 0.750, "Tukang": 0.750, "Kepala Tukang": 0.100, "Mandor": 0.075}
-            },
-            "direksi_keet": {
-                "desc": "[A.1.1.4.a] Pembuatan 1 m2 Direksi Keet (Atap Asbes, Dinding Triplek)",
-                "bahan": {"Kayu Kaso 5/7 (m3)": 0.35, "Triplek 4 mm (Lbr)": 1.0, "Asbes Gelombang (Lbr)": 1.0, "Paku (Kg)": 0.45},
-                "upah": {"Pekerja": 1.200, "Tukang": 0.400, "Kepala Tukang": 0.040, "Mandor": 0.120}
-            },
-            "pembersihan_striping": {
-                "desc": "[T.01.a] 1 m2 Pembersihan dan Striping/Kosrekan Permukaan Tanah",
-                "bahan": {}, 
-                "upah": {"Pekerja": 0.060, "Mandor": 0.006}
-            },
-            "tebas_tebang": {
-                "desc": "[T.01.b] 1 m2 Tebas Tebang Tanaman (Diameter < 15 cm)",
-                "bahan": {"Minyak Tanah (Ltr)": 0.010},
-                "upah": {"Pekerja": 0.075, "Mandor": 0.0075}
-            },
-            "pengukuran_bouwplank": {
-                "desc": "[A.1.1.4.c] 1 m' Pengukuran dan Pemasangan Bouwplank",
-                "bahan": {"Kayu Kelas III (m3)": 0.012, "Paku (kg)": 0.020, "Papan Kayu Bekisting (m3)": 0.007},
-                "upah": {"Pekerja": 0.100, "Tukang": 0.100, "Kepala Tukang": 0.010, "Mandor": 0.005}
-            },
-            "mobilisasi_alat_bor": {
-                "desc": "[CUSTOM-EE] 1 Ls Mobilisasi dan Demobilisasi Alat Berat (Rig Bor/Truk 3T)",
-                "bahan": {"Biaya Angkut Truk 3T (Unit/Rit)": 1.5}, # 1 Datang + 0.5 Pulang
-                "upah": {}
-            },
-            "pengujian_mutu": {
-                "desc": "[CUSTOM-EE] 1 Ls Pengujian Mutu Bahan (Lab)",
-                "bahan": {"Uji Lab Beton K-300 (Titik)": 1.0, "Uji Tarik Besi U-42/U-24 (Titik)": 1.0},
-                "upah": {}
-            },
-            "pelaporan_dokumentasi": {
-                "desc": "[CUSTOM-EE] 1 Ls Biaya Pelaporan, Asbuilt Drawing, dan Dokumentasi",
-                "bahan": {"Cetak & Jilid Laporan/Asbuilt (Set)": 10.0, "Foto Dokumentasi & Flashdisk (Set)": 1.0},
-                "upah": {}
-            },
-            
-            # --- BETON ---
-            "beton_k175": {
-                "desc": "Beton K-175 (fc 14.5 MPa)",
-                "bahan": {"Semen (kg)": 326, "Pasir (m3)": 0.52, "Split (m3)": 0.76},
-                "upah": {"Pekerja": 1.65, "Tukang": 0.275, "Mandor": 0.083}
-            },
-            "beton_k225": {
-                "desc": "Beton K-225 (fc 19 MPa)",
-                "bahan": {"Semen (kg)": 371, "Pasir (m3)": 0.498, "Split (m3)": 0.77},
-                "upah": {"Pekerja": 1.65, "Tukang": 0.275, "Mandor": 0.083}
-            },
-            "beton_k250": {
-                "desc": "Beton K-250 (fc 21.7 MPa)",
-                "bahan": {"Semen (kg)": 384, "Pasir (m3)": 0.494, "Split (m3)": 0.77},
-                "upah": {"Pekerja": 1.65, "Tukang": 0.275, "Mandor": 0.083}
-            },
-            "beton_k300": {
-                "desc": "Beton K-300 (fc 25 MPa)",
-                "bahan": {"Semen (kg)": 413, "Pasir (m3)": 0.48, "Split (m3)": 0.77},
-                "upah": {"Pekerja": 1.65, "Tukang": 0.275, "Mandor": 0.083}
-            },
-            "beton_k350": {
-                "desc": "Beton K-350 (fc 29 MPa)",
-                "bahan": {"Semen (kg)": 448, "Pasir (m3)": 0.47, "Split (m3)": 0.76},
-                "upah": {"Pekerja": 1.65, "Tukang": 0.275, "Mandor": 0.083}
-            },
-
-            # --- BESI ---
-            "pembesian_polos": {
-                "desc": "Pembesian 10 kg dengan Besi Polos/Ulir",
-                "bahan": {"Besi Beton (kg)": 10.5, "Kawat Beton (kg)": 0.15},
-                "upah": {"Pekerja": 0.07, "Tukang": 0.07, "Mandor": 0.004}
-            },
-            "bekisting_balok": {
-                "desc": "Pemasangan 1 m2 Bekisting Balok (Kayu)",
-                "bahan": {"Kayu Kelas III (m3)": 0.04, "Paku (kg)": 0.4, "Minyak Bekisting (L)": 0.2},
-                "upah": {"Pekerja": 0.66, "Tukang": 0.33, "Mandor": 0.033}
-            },
-            "bekisting_kolom": {
-                "desc": "Pemasangan 1 m2 Bekisting Kolom",
-                "bahan": {"Kayu Kelas III (m3)": 0.04, "Paku (kg)": 0.4, "Minyak (L)": 0.2, "Plywood 9mm (lbr)": 0.35},
-                "upah": {"Pekerja": 0.66, "Tukang": 0.33, "Mandor": 0.033}
-            },
-
-            # --- PONDASI ---
-            "pasangan_batu_kali": {
-                "desc": "Pasangan Batu Kali 1:4 (Talud)",
-                "bahan": {"Batu Kali (m3)": 1.2, "Semen (kg)": 163, "Pasir (m3)": 0.52},
-                "upah": {"Pekerja": 1.5, "Tukang": 0.75, "Mandor": 0.075}
-            },
-            "bore_pile_k300": {
-                "desc": "Pengecoran Bore Pile K-300",
-                "bahan": {"Beton K300 (m3)": 1.05},
-                "upah": {"Pekerja": 2.0, "Tukang": 0.5, "Mandor": 0.1}
-            },
-
-            # --- ARSITEKTUR ---
-            "pasangan_bata_merah": {
-                "desc": "Pasangan Dinding Bata Merah 1:4",
-                "bahan": {"Bata Merah (bh)": 70, "Semen (kg)": 11.5, "Pasir (m3)": 0.043},
-                "upah": {"Pekerja": 0.3, "Tukang": 0.1, "Mandor": 0.015}
-            },
-            "plesteran": {
-                "desc": "Plesteran 1:4 Tebal 15mm",
-                "bahan": {"Semen (kg)": 6.24, "Pasir (m3)": 0.024},
-                "upah": {"Pekerja": 0.3, "Tukang": 0.15, "Mandor": 0.015}
-            },
-            "acian": {
-                "desc": "Acian Semen",
-                "bahan": {"Semen (kg)": 3.25},
-                "upah": {"Pekerja": 0.2, "Tukang": 0.1, "Mandor": 0.01}
-            },
-            "cat_tembok": {
-                "desc": "Pengecatan Tembok (2 Lapis)",
-                "bahan": {"Cat Tembok (kg)": 0.26, "Plamir (kg)": 0.1},
-                "upah": {"Pekerja": 0.02, "Tukang": 0.063, "Mandor": 0.003}
-            },
-            "pasang_kus_pintu": {
-                "desc": "Pemasangan Kusen Pintu/Jendela",
-                "bahan": {"Angkur (bh)": 4},
-                "upah": {"Pekerja": 0.5, "Tukang": 1.0, "Mandor": 0.05}
-            },
-            "pasang_pipa_pvc": {
-                "desc": "Pasang Pipa PVC AW 3/4 inch",
-                "bahan": {"Pipa PVC (m)": 1.2, "Perlengkapan (ls)": 0.35},
-                "upah": {"Pekerja": 0.036, "Tukang": 0.06, "Mandor": 0.002}
-            }
-        }
-
-    def hitung_hsp(self, kode_analisa, harga_bahan_dasar, harga_upah_dasar):
-        # Fallback Logic: Jika kode tidak ada persis, coba cari yang mirip
-        target_kode = kode_analisa
-        if kode_analisa not in self.koefisien: 
-            # Jika user minta K-275 tapi gak ada, kita kasih K-300 (safety)
-            if "beton" in kode_analisa: target_kode = "beton_k300"
-            elif "bata" in kode_analisa: target_kode = "pasangan_bata_merah"
-            else: return 0 # Nyerah
-            
-        data = self.koefisien[target_kode]
-        total_bahan = 0
-        total_upah = 0
+    def __init__(self, db_path="Database_AHSP.xlsx"):
+        """
+        Engine AHSP Dinamis yang membaca file Excel, bukan Hardcode.
+        """
+        self.db_path = db_path
         
-        for item, koef in data['bahan'].items():
+        # Penampung partisi 3 Bidang
+        self.koefisien_ck = {}
+        self.koefisien_bm = {}
+        self.koefisien_sda = {}
+        
+        # Gabungan untuk fallback fallback parser AI
+        self.koefisien = {} 
+
+        self._load_database_from_excel()
+
+    def _load_database_from_excel(self):
+        """Membaca Excel dan menyusunnya ke dalam memori RAM."""
+        if not os.path.exists(self.db_path):
+            print(f"⚠️ Peringatan: File {self.db_path} tidak ditemukan. Engine AHSP kosong.")
+            return
+            
+        try:
+            # Baca file Excel
+            df = pd.read_excel(self.db_path)
+            
+            # Menyusun ulang baris Excel menjadi Dictionary hierarkis
+            for _, row in df.iterrows():
+                bidang = str(row['Bidang']).strip().upper()
+                kode = str(row['Kode_AHSP']).strip()
+                desc = str(row['Deskripsi']).strip()
+                kategori = str(row['Kategori']).strip().lower() # 'bahan', 'upah', atau 'alat'
+                nama_komp = str(row['Nama_Komponen']).strip()
+                sat = str(row['Satuan']).strip()
+                koef = float(row['Koefisien'])
+                
+                # Arahkan ke partisi dictionary yang tepat
+                target_dict = self.koefisien_ck
+                if "SDA" in bidang: target_dict = self.koefisien_sda
+                elif "BM" in bidang: target_dict = self.koefisien_bm
+
+                # Inisialisasi struktur jika kode AHSP belum ada
+                if kode not in target_dict:
+                    target_dict[kode] = {"desc": desc, "bahan": {}, "upah": {}, "alat": {}}
+                
+                # Masukkan data ke dalam kategori yang tepat
+                if "bahan" in kategori:
+                    target_dict[kode]["bahan"][f"{nama_komp} ({sat})"] = koef
+                elif "upah" in kategori:
+                    target_dict[kode]["upah"][nama_komp] = koef
+                elif "alat" in kategori:
+                    target_dict[kode]["alat"][f"{nama_komp} ({sat})"] = koef
+
+            # Gabungkan untuk keperluan fallback
+            self.koefisien = {**self.koefisien_ck, **self.koefisien_bm, **self.koefisien_sda}
+            
+        except Exception as e:
+            print(f"❌ Gagal memuat database AHSP: {e}")
+
+    def hitung_hsp(self, kode_analisa, harga_bahan_dasar, harga_upah_dasar, bidang="Cipta Karya"):
+        """
+        Menghitung Harga Satuan Pekerjaan dengan mencocokkan data API harga ke koefisien.
+        """
+        # Pilih partisi database sesuai input bidang dari sidebar Streamlit
+        if bidang == "Bina Marga": db_aktif = self.koefisien_bm
+        elif bidang == "Sumber Daya Air": db_aktif = self.koefisien_sda
+        else: db_aktif = self.koefisien_ck
+
+        target_kode = kode_analisa
+        # Fallback pencarian kode mirip
+        if kode_analisa not in db_aktif: 
+            for key in db_aktif.keys():
+                if key.split('_')[0] in kode_analisa:
+                    target_kode = key
+                    break
+            if target_kode not in db_aktif: return 0 
+            
+        data = db_aktif[target_kode]
+        total_biaya = 0
+        
+        # Hitung Bahan
+        for item, koef in data.get('bahan', {}).items():
             key_clean = item.split(" (")[0].lower()
-            h_satuan = 0
-            # Logic pencocokan harga
-            if "semen" in key_clean: h_satuan = harga_bahan_dasar.get('semen', 0)
-            elif "pasir" in key_clean: h_satuan = harga_bahan_dasar.get('pasir', 0)
-            elif "split" in key_clean: h_satuan = harga_bahan_dasar.get('split', 0)
-            elif "kayu" in key_clean: h_satuan = harga_bahan_dasar.get('kayu', 0)
-            elif "besi" in key_clean: h_satuan = harga_bahan_dasar.get('besi', 0)
-            elif "batu kali" in key_clean: h_satuan = harga_bahan_dasar.get('batu kali', 0)
-            elif "beton" in key_clean: h_satuan = harga_bahan_dasar.get('beton k300', 0)
-            elif "bata" in key_clean: h_satuan = harga_bahan_dasar.get('bata merah', 0)
-            elif "cat" in key_clean: h_satuan = harga_bahan_dasar.get('cat tembok', 0)
-            elif "pipa" in key_clean: h_satuan = harga_bahan_dasar.get('pipa pvc', 0)
-            elif "plywood" in key_clean: h_satuan = harga_bahan_dasar.get('plywood', 0)
-            elif "paku" in key_clean: h_satuan = harga_bahan_dasar.get('paku', 0)
-            elif "minyak" in key_clean: h_satuan = harga_bahan_dasar.get('minyak', 0)
+            # Logic pencarian harga termurah dari API/BPS
+            h_satuan = harga_bahan_dasar.get(key_clean, 0) 
+            total_biaya += koef * h_satuan
             
-            total_bahan += koef * h_satuan
-            
-        for item, koef in data['upah'].items():
-            item_lower = item.lower()
-            h_upah = harga_upah_dasar.get(item_lower, 0)
-            total_upah += koef * h_upah
-            
-        return total_bahan + total_upah
+        # Hitung Upah
+        for item, koef in data.get('upah', {}).items():
+            h_upah = harga_upah_dasar.get(item.lower(), 0)
+            total_biaya += koef * h_upah
 
-
+        # Hitung Alat
+        for item, koef in data.get('alat', {}).items():
+            key_clean = item.split(" (")[0].lower()
+            h_alat = harga_bahan_dasar.get(key_clean, 0) # Menggunakan dictionary yang sama dengan bahan
+            total_biaya += koef * h_alat
+            
+        return total_biaya
