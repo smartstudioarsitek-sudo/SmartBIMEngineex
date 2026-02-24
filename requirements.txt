@@ -1,5 +1,5 @@
 # === Core & Data ===
-streamlit
+streamlit==1.35.0
 pandas
 numpy
 scipy
@@ -53,4 +53,5 @@ requests
 watchdog
 
 # === UI Components ===
-streamlit-drawable-canvas
+streamlit-drawable-canvas==0.9.3
+
