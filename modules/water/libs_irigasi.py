@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+from scipy.optimize import fsolve
 
 class Irrigation_Engine:
     
@@ -12,32 +13,37 @@ class Irrigation_Engine:
     # =========================================
     def hitung_dimensi_saluran(self, Q, b_ratio=1.5, m=1.0, S=0.0005, n=0.025):
         """
-        [AUDIT PATCH]: Resolusi Numerik Hidrolika menggunakan fsolve (Mencegah Dead-Loop)
+        [AUDIT PATCH FINAL]: Resolusi Numerik Hidrolika menggunakan fsolve
+        Meninggalkan metode Brute-Force increment 0.05m.
         """
         def persamaan_manning(h):
+            # Mencegah nilai h negatif yang membuat akar imajiner
+            if h <= 0: return 1e6 
+            
             b = h * b_ratio 
             A = (b + m * h) * h
             P = b + 2 * h * math.sqrt(1 + m**2)
-            if P <= 0: return 1e6 # Penalti
             R = A / P
+            # Rumus debit Manning terhitung
             Q_calc = (1/n) * A * (R**(2/3)) * (S**0.5)
+            # Objektif fsolve: membuat selisih ini menjadi 0
             return Q_calc - Q
 
-        # Iterasi fsolve dari scipy jauh lebih presisi dan menghemat resource
-        h_awal = [1.0] # Tebakan awal 1 meter
+        # Iterasi fsolve jauh lebih presisi, efisien memori, dan tanpa loop mati
+        h_awal = [1.0] # Tebakan iterasi awal 1 meter
         h_optimal = fsolve(persamaan_manning, h_awal)[0]
         
         h = round(h_optimal, 3)
         b = h * b_ratio
         
-        # Parameter Final
+        # Hitung ulang parameter hidrolis final
         A = (b + m * h) * h
         V = Q / A if A > 0 else 0
         T = b + 2 * m * h 
         D = A / T if T > 0 else 0
         Fr = V / math.sqrt(9.81 * D) if D > 0 else 0
         
-        # Freeboard
+        # Syarat tinggi jagaan (Freeboard)
         if Q < 0.5: w = 0.20
         elif Q < 10.0: w = 0.30
         elif Q < 50.0: w = 0.60
@@ -55,6 +61,7 @@ class Irrigation_Engine:
             "Hidrolis": {"V": round(V, 2), "Fr": round(Fr, 2), "Area": round(A, 2)},
             "Status": status
         }
+    
     
     # =========================================
     # [FIX UTAMA] FUNGSI PLOTTING GRAFIK
@@ -314,5 +321,6 @@ class Irrigation_Engine:
        
         df_nomenklatur = pd.DataFrame(tabel_nomenklatur)
         return fig, df_nomenklatur
+
 
 
