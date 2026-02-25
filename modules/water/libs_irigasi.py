@@ -304,23 +304,22 @@ class Irrigation_Engine:
             marker=dict(showscale=False, color=node_color, size=25, line_width=2, line_color='white')
         )
 
+        # [PATCH]: Pembaruan Struktur Layout Plotly (Mengatasi Error titlefont)
         fig = go.Figure(data=[edge_trace, node_trace],
                      layout=go.Layout(
                         title=dict(
                             text='<b>Skema Jaringan Irigasi & Nomenklatur (Standar KP-01)</b>',
-                            font=dict(size=18)
+                            font=dict(size=18) # Penulisan font size yang benar di Plotly v5+
                         ),
                         showlegend=False,
                         hovermode='closest',
-                        margin=dict(b=40,l=20,r=20,t=60),
+                        margin=dict(b=40, l=20, r=20, t=60),
                         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, autorange="reversed"),
                         plot_bgcolor='white'
                     )
         )
-       
-        df_nomenklatur = pd.DataFrame(tabel_nomenklatur)
-        return fig, df_nomenklatur
+
 
 
 
