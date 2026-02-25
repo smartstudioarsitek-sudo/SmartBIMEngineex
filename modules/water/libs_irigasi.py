@@ -304,12 +304,13 @@ class Irrigation_Engine:
             marker=dict(showscale=False, color=node_color, size=25, line_width=2, line_color='white')
         )
 
-        # [PATCH]: Pembaruan Struktur Layout Plotly (Mengatasi Error titlefont)
+     
+        # [PATCH FINAL]: Pembaruan Struktur Layout Plotly & RETURN yang terhapus
         fig = go.Figure(data=[edge_trace, node_trace],
                      layout=go.Layout(
                         title=dict(
                             text='<b>Skema Jaringan Irigasi & Nomenklatur (Standar KP-01)</b>',
-                            font=dict(size=18) # Penulisan font size yang benar di Plotly v5+
+                            font=dict(size=18)
                         ),
                         showlegend=False,
                         hovermode='closest',
@@ -319,6 +320,11 @@ class Irrigation_Engine:
                         plot_bgcolor='white'
                     )
         )
+        
+        # --- DUA BARIS INI WAJIB ADA AGAR TIDAK ERROR "NoneType" ---
+        df_nomenklatur = pd.DataFrame(tabel_nomenklatur)
+        return fig, df_nomenklatur
+
 
 
 
