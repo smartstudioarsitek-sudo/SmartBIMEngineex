@@ -511,24 +511,86 @@ with st.sidebar:
 
                         engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
                         if engine_ifc.valid:
-                            elements = engine_ifc.model.by_type("IfcProduct")
-                            data_boq_asli = []
-                            for el in elements:
-                                if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
-                                    vol = engine_ifc.get_element_quantity(el)
-                                    # [AUDIT PATCH]: Menghindari markup volume fiktif
-                                    vol_final = round(vol, 3) if vol and vol > 0 else 0.0                                                          
-                                    nama_el = el.Name if el.Name else f"Elemen_{el.GlobalId[:5]}"
+
+
+# --- PASTE KODE BARU DI SINI ---
+elements = engine_ifc.model.by_type("IfcProduct")
+
+# [AUDIT PATCH]: Daftar Hitam (Blacklist) Aset Visual & Rendering
+blacklist_kata = ['enscape', 'tree', 'plant', 'sofa', 'standing', 'sitting', 'car ', 'people', 'person', 'bush', 'shrub', 'vehicle', 'grass', 'flower']
+
+data_boq_asli = []
+for el in elements:
+    if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
+
+        nama_el = el.Name if el.Name else f"Elemen_{el.GlobalId[:5]}"
+        nama_lower = str(nama_el).lower()
+
+        # 1. FILTERING: Lewati elemen jika namanya mengandung kata di blacklist
+        if any(kata_terlarang in nama_lower for kata_terlarang in blacklist_kata):
+            continue # Abaikan dan lanjut ke elemen berikutnya
+
+        vol = engine_ifc.get_element_quantity(el)
+        vol_final = round(vol, 3) if vol and vol > 0 else 0.0
+
+        # Hanya masukkan elemen yang memiliki volume fisik
+        if vol_final > 0:
+            data_boq_asli.append({
+                "Kategori": el.is_a(),
+                "Nama": nama_el,
+                "Volume": vol_final
+            })
+
+if len(data_boq_asli) > 0:
+    # 2. GROUPING: Merangkum ratusan baris elemen kembar menjadi satu total volume
+    df_raw = pd.DataFrame(data_boq_asli)
+    df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
+
+                                st.session_state['real_boq_data'] = df_grouped
+                                st.success(f"✅ Data berhasil difilter & direkap! (Sisa {len(df_grouped)} item struktural utama).")
+                            else:
+                                st.error("⚠️ IFC terbaca, tapi elemen fisik struktural kosong setelah filter aset rendering.")
+
+                        # --- PASTE KODE BARU DI SINI ---
+                        elements = engine_ifc.model.by_type("IfcProduct")
+
+                        # [AUDIT PATCH]: Daftar Hitam (Blacklist) Aset Visual & Rendering
+                        blacklist_kata = ['enscape', 'tree', 'plant', 'sofa', 'standing', 'sitting', 'car ', 'people', 'person', 'bush', 'shrub', 'vehicle', 'grass', 'flower']
+
+                        data_boq_asli = []
+                        for el in elements:
+                            if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
+
+                                nama_el = el.Name if el.Name else f"Elemen_{el.GlobalId[:5]}"
+                                nama_lower = str(nama_el).lower()
+
+                                # 1. FILTERING: Lewati elemen jika namanya mengandung kata di blacklist
+                                if any(kata_terlarang in nama_lower for kata_terlarang in blacklist_kata):
+                                    continue # Abaikan dan lanjut ke elemen berikutnya
+
+                                vol = engine_ifc.get_element_quantity(el)
+                                vol_final = round(vol, 3) if vol and vol > 0 else 0.0
+
+                                # Hanya masukkan elemen yang memiliki volume fisik
+                                if vol_final > 0:
                                     data_boq_asli.append({
                                         "Kategori": el.is_a(),
                                         "Nama": nama_el,
                                         "Volume": vol_final
                                     })
+
                             if len(data_boq_asli) > 0:
-                                st.session_state['real_boq_data'] = pd.DataFrame(data_boq_asli)
-                                st.success(f"✅ {len(data_boq_asli)} Elemen Tersimpan.")
+                                # 2. GROUPING: Merangkum ratusan baris elemen kembar menjadi satu total volume
+                                df_raw = pd.DataFrame(data_boq_asli)
+                                df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
+
+                                st.session_state['real_boq_data'] = df_grouped
+                                st.success(f"✅ Data berhasil difilter & direkap! (Sisa {len(df_grouped)} item struktural utama).")
                             else:
-                                st.error("⚠️ IFC terbaca, tapi elemen fisik kosong.")
+                                st.error("⚠️ IFC terbaca, tapi elemen fisik struktural kosong setelah filter aset rendering.")
+                           
+
+            
                         else:
                             st.error("❌ File IFC Rusak.")
                     except Exception as e:
@@ -1415,5 +1477,6 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
