@@ -285,7 +285,6 @@ if 'shared_execution_vars' not in st.session_state:
 def execute_generated_code(code_str, file_ifc_path=None):
     try:
         # [AUDIT PATCH]: SECURITY SANDBOX FILTER (DILONGGARKAN)
-        # Memblokir keyword berbahaya tapi tetap mengizinkan pandas/numpy
         forbidden_keywords = ['import os', 'import sys', 'import subprocess', 'open(', 'shutil', 'st.secrets']
         for keyword in forbidden_keywords:
             if keyword in code_str:
@@ -303,9 +302,15 @@ def execute_generated_code(code_str, file_ifc_path=None):
                 except: return 0
             return 0
 
+        # [AUDIT PATCH]: PASTIKAN LIBRARY INI TERBACA OLEH AI
+        import math
+        import networkx as nx
+        import scipy
+
         # Inject library & helper (Environment Terisolasi)
         library_kits = {
             "pd": pd, "np": np, "plt": plt, "st": st, "px": px, "go": go,
+            "math": math, "nx": nx, "scipy": scipy, # <--- TAMBAHAN PENTING
             "parse_rupiah": parse_rupiah,
             "libs_sni": libs_sni, "libs_baja": libs_baja, "libs_bridge": libs_bridge,
             "libs_gempa": libs_gempa, "libs_hidrologi": libs_hidrologi,
@@ -332,8 +337,10 @@ def execute_generated_code(code_str, file_ifc_path=None):
         if has_transport: library_kits['libs_transport'] = libs_transport
         if file_ifc_path: local_vars["file_ifc_user"] = file_ifc_path
         
-        # Eksekusi dalam Sandbox (Izinkan globals agar AI bisa import library aman)
-        exec(code_str, globals(), local_vars)
+        # [PERBAIKAN SCOPE EXEC KRUSIAL] 
+        # local_vars dipasang dua kali untuk menggabungkan scope Globals & Locals 
+        # Ini akan menyelesaikan 100% masalah "name X is not defined"
+        exec(code_str, local_vars, local_vars)
         
         for k, v in local_vars.items():
             if k not in library_kits and not k.startswith('__') and not isinstance(v, types.ModuleType):
@@ -1447,6 +1454,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
