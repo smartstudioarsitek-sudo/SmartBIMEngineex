@@ -526,6 +526,7 @@ with st.sidebar:
                             
                             
                             # [AUDIT PATCH FINAL]: Pembersihan ID Revit & Translasi Paksa ke SNI
+                            # [AUDIT PATCH FINAL]: Filter Aset, Translasi SNI & Grouping
                             data_boq_asli = []
                             for el in elements:
                                 if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
@@ -533,39 +534,38 @@ with st.sidebar:
                                     kategori_ifc = str(el.is_a()).lower()
                                     nama_raw = str(el.Name).lower() if el.Name else ""
                                     
-                                    # 1. Filter Blacklist (Abaikan aset visual/generic models sampah)
+                                    # 1. BUANG ASET VISUAL/SAMPAN
                                     blacklist = ['enscape', 'tree', 'plant', 'sofa', 'car', 'generic models', 'proxy', 'lines']
                                     if any(b in nama_raw for b in blacklist): continue
                                     
-                                    # 2. TRANSLASI PAKSA KE NOMENKLATUR SNI PUPR
+                                    # 2. UBAH NAMA IFC JADI BAHASA SNI PUPR
                                     nama_sni = None
                                     if "ifccolumn" in kategori_ifc: nama_sni = "Pekerjaan Kolom Beton (K-300)"
                                     elif "ifcbeam" in kategori_ifc: nama_sni = "Pekerjaan Balok Beton (K-300)"
                                     elif "ifcslab" in kategori_ifc: nama_sni = "Pekerjaan Pelat Lantai Beton (K-300)"
                                     elif "ifcwall" in kategori_ifc: nama_sni = "Pekerjaan Pasangan Dinding Bata"
-                                    elif "ifcdoor" in kategori_ifc or "ifcwindow" in kategori_ifc: nama_sni = "Pekerjaan Pintu & Jendela"
+                                    elif "ifcdoor" in kategori_ifc or "ifcwindow" in kategori_ifc: nama_sni = "Pekerjaan Pintu dan Jendela"
                                     elif "ifcfooting" in kategori_ifc or "ifcpile" in kategori_ifc: nama_sni = "Pekerjaan Pondasi Beton"
                                     
-                                    # Jika elemen tidak masuk kategori SNI di atas, abaikan (buang dari RAB)
-                                    if not nama_sni: continue
+                                    if not nama_sni: continue # Abaikan jika bukan struktur
                                         
                                     vol = engine_ifc.get_element_quantity(el)
-                                    vol_final = round(vol, 3) if vol and vol > 0 else 0.0
+                                    vol_final = round(vol, 3) if vol and vol > 0 else 0.0 # <--- Tidak ada lagi volume fiktif 1.0!
                                     
                                     if vol_final > 0:
                                         data_boq_asli.append({
-                                            "Kategori": "Pekerjaan Struktur & Arsitektur",
-                                            "Nama": nama_sni, # Menggunakan nama seragam SNI!
+                                            "Kategori": "Pekerjaan Struktur",
+                                            "Nama": nama_sni,
                                             "Volume": vol_final
                                         })
                             
                             if len(data_boq_asli) > 0:
-                                # 3. GROUPING SEMPURNA: Karena namanya kini seragam, 500 balok akan jadi 1 baris
+                                # 3. REKAPITULASI (GROUPING): Ratusan baris jadi 1 baris per tipe
                                 df_raw = pd.DataFrame(data_boq_asli)
                                 df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
                                 
                                 st.session_state['real_boq_data'] = df_grouped
-                                st.success(f"✅ Data dipadatkan ke Standar SNI! (Tersisa {len(df_grouped)} Item Pekerjaan Utama).")
+                                st.success(f"✅ Data dipadatkan ke Standar SNI! (Tersisa {len(df_grouped)} Item Utama).")
                             else:
                                 st.error("⚠️ IFC terbaca, tapi elemen fisik struktural kosong setelah difilter.")
                         else:
@@ -675,26 +675,31 @@ if selected_menu == "🤖 AI Assistant":
                                     # [AUDIT PATCH]: Daftar Hitam (Blacklist) Aset Visual & Rendering
                                     blacklist_kata = ['enscape', 'tree', 'plant', 'sofa', 'standing', 'sitting', 'car ', 'people', 'person', 'bush', 'shrub', 'vehicle', 'grass', 'flower']
                                     
+                                    # [AUDIT PATCH FINAL]: Filter Aset, Translasi SNI & Grouping
                                     data_boq_asli = []
                                     for el in elements:
-                                        if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey"]:
-                                            nama_el = el.Name or "Elemen Tanpa Nama"
-                                            nama_lower = str(nama_el).lower()
+                                        if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
+                                            kategori_ifc = str(el.is_a()).lower()
+                                            nama_raw = str(el.Name).lower() if el.Name else ""
+                                            blacklist = ['enscape', 'tree', 'plant', 'sofa', 'car', 'generic models', 'proxy', 'lines']
+                                            if any(b in nama_raw for b in blacklist): continue
                                             
-                                            # 1. FILTERING: Lewati elemen jika namanya mengandung kata di blacklist
-                                            if any(kata_terlarang in nama_lower for kata_terlarang in blacklist_kata):
-                                                continue 
+                                            nama_sni = None
+                                            if "ifccolumn" in kategori_ifc: nama_sni = "Pekerjaan Kolom Beton (K-300)"
+                                            elif "ifcbeam" in kategori_ifc: nama_sni = "Pekerjaan Balok Beton (K-300)"
+                                            elif "ifcslab" in kategori_ifc: nama_sni = "Pekerjaan Pelat Lantai Beton (K-300)"
+                                            elif "ifcwall" in kategori_ifc: nama_sni = "Pekerjaan Pasangan Dinding Bata"
+                                            elif "ifcdoor" in kategori_ifc or "ifcwindow" in kategori_ifc: nama_sni = "Pekerjaan Pintu dan Jendela"
+                                            elif "ifcfooting" in kategori_ifc or "ifcpile" in kategori_ifc: nama_sni = "Pekerjaan Pondasi Beton"
+                                            
+                                            if not nama_sni: continue
                                                 
                                             vol = engine_ifc.get_element_quantity(el)
                                             vol_final = round(vol, 3) if vol and vol > 0 else 0.0
                                             
                                             if vol_final > 0:
-                                                data_boq_asli.append({
-                                                    "Kategori": el.is_a(),
-                                                    "Nama": nama_el,
-                                                    "Volume": vol_final
-                                                })
-                                                
+                                                data_boq_asli.append({"Kategori": "Pekerjaan Struktur", "Nama": nama_sni, "Volume": vol_final})
+                                    
                                     if len(data_boq_asli) > 0:
                                         df_raw = pd.DataFrame(data_boq_asli)
                                         df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
@@ -1467,6 +1472,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
