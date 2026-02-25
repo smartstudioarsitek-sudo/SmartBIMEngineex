@@ -517,7 +517,7 @@ with st.sidebar:
                                 if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
                                     vol = engine_ifc.get_element_quantity(el)
                                     # [AUDIT PATCH]: Menghindari markup volume fiktif
-                                    vol_final = round(vol, 3) if vol and vol > 0 else 0.0                           
+                                    vol_final = round(vol, 3) if vol and vol > 0 else 0.0                                                          
                                     nama_el = el.Name if el.Name else f"Elemen_{el.GlobalId[:5]}"
                                     data_boq_asli.append({
                                         "Kategori": el.is_a(),
@@ -1415,4 +1415,5 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
