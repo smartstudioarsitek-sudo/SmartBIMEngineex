@@ -78,63 +78,81 @@ class SNIBeton2019:
     @staticmethod
     def generate_interaction_diagram(b, h, fc, fy, ast, cover=40):
         """
-        GENERATOR KURVA INTERAKSI P-M (Untuk Visualisasi Plotly)
-        Menghasilkan titik-titik koordinat (Momen, Aksial) untuk plot zona aman.
-        Menggunakan metode simplifikasi 3 titik kunci + interpolasi kurva.
+        [AUDIT PATCH]: GENERATOR KURVA INTERAKSI P-M BERBASIS FISIKA MURNI
+        Menghitung kapasitas kolom menggunakan prinsip kompatibilitas regangan.
         """
         beta1 = SNIBeton2019.get_beta1(fc)
         Ag = b * h
-        
-        # --- TITIK A: Tekan Murni (Pure Compression) ---
-        Pn0 = 0.85 * fc * (Ag - ast) + fy * ast
-        Pn_max = 0.80 * Pn0
-        phi_c = 0.65 # Compression controlled
-        Point_A = (0, phi_c * Pn_max / 1000) # (M=0, P_max) dalam kN
-        
-        # --- TITIK C: Lentur Murni (Pure Bending) ---
-        # Asumsi tulangan simetris As = As' = Ast/2
-        As = ast / 2
+        As_tot = ast
         d = h - cover
-        # a = (As * fy) / (0.85 * fc * b)
-        a = (As * fy) / (0.85 * fc * b)
-        # Mn = As * fy * (d - a/2)
-        Mn_pure = As * fy * (d - a/2)
-        phi_b = 0.90 # Tension controlled
-        Point_C = (phi_b * Mn_pure / 1000000, 0) # (M_max, P=0) dalam kNm
+        d_prime = cover
         
-        # --- TITIK B: Kondisi Seimbang (Balanced Failure) ---
-        # Aproksimasi sederhana untuk bentuk kurva (Bulging effect)
-        # Pada kondisi balance, Pn kira-kira 1/3 dari Pn0 dan Mn maksimal
-        P_bal_approx = Point_A[1] * 0.4
-        M_bal_approx = Point_C[0] * 1.3 # Momen balance biasanya lebih besar dari pure bending
-        Point_B = (M_bal_approx, P_bal_approx)
+        # Strain compatibility parameters
+        ecu = 0.003
+        Es = 200000.0
+        ey = fy / Es
         
-        # --- GENERATE DATA FOR PLOTTING (Interpolasi Kurva) ---
-        # Membuat kurva halus menghubungkan A -> B -> C
+        M_points = []
+        P_points = []
         
-        # List Koordinat (X=Momen, Y=P_Aksial)
-        # Mulai dari P_max (M=0) turun ke P=0
-        curve_points = {
-            "M_kNm": [0, Point_B[0]*0.5, Point_B[0], Point_C[0], Point_C[0]*0.8, 0],
-            "P_kN":  [Point_A[1], Point_A[1]*0.9, Point_B[1], 0, -Point_A[1]*0.1, 0] # Tarik sedikit ke bawah
-        }
+        # Iterasi dari c = besar (tekan murni) ke c = kecil (tarik murni)
+        c_vals = np.linspace(h * 1.5, 1.0, 50) 
         
-        # Menggunakan logika interpolasi sederhana untuk membuat bentuk "Daun"
-        t = np.linspace(0, np.pi/2, 20)
-        M_plot = Point_B[0] * np.sin(t) + (Point_C[0]-Point_B[0]) * (t/(np.pi/2))**2
-        # Logic sederhana agar tidak error saat plotting, idealnya pakai solver strain compatibility
-        # Untuk keperluan Audit Visual "Cepat", kita gunakan Simplified Envelope:
-        
+        for c in c_vals:
+            a = min(beta1 * c, h)
+            
+            # Regangan baja tulangan (asumsi tulangan simetris 2 sisi)
+            es_tarik = ecu * (d - c) / c
+            es_tekan = ecu * (c - d_prime) / c
+            
+            # Tegangan baja (dibatasi oleh fy)
+            fs_tarik = min(max(es_tarik * Es, -fy), fy)
+            fs_tekan = min(max(es_tekan * Es, -fy), fy)
+            
+            # Gaya dalam
+            Cc = 0.85 * fc * a * b
+            Cs = (fs_tekan - 0.85 * fc) * (As_tot / 2) # Koreksi beton yang terdesak baja
+            Ts = fs_tarik * (As_tot / 2)
+            
+            # Kapasitas Nominal
+            Pn = Cc + Cs - Ts
+            Mn = Cc * (h/2 - a/2) + Cs * (h/2 - d_prime) + Ts * (d - h/2)
+            
+            # Faktor reduksi (phi) - Transisi dari Tekan ke Tarik
+            if es_tarik <= ey: phi = 0.65
+            elif es_tarik >= 0.005: phi = 0.90
+            else: phi = 0.65 + (es_tarik - ey) * (0.25 / (0.005 - ey))
+            
+            # Batasan Pn max (0.80 Pn0 untuk sengkang ikat)
+            Pn0 = 0.85 * fc * (Ag - As_tot) + fy * As_tot
+            Pn_max = 0.80 * Pn0
+            
+            Pn_design = min(phi * Pn, phi * Pn_max)
+            Mn_design = phi * Mn
+            
+            if Pn_design >= 0: # Hanya ambil area tekan dan lentur positif
+                P_points.append(Pn_design / 1000) # ke kN
+                M_points.append(Mn_design / 1000000) # ke kNm
+                
+        # Tambahkan titik 0,0 untuk menutup area grafik
+        M_points.append(0)
+        P_points.append(0)
+
+        # Cari titik kunci untuk laporan
+        Point_A = (0, max(P_points))
+        Point_C = (max(M_points), 0)
+        Point_B = (max(M_points), np.interp(max(M_points), M_points[::-1], P_points[::-1]))
+
         return {
             "Point_A (Tekan)": Point_A,
             "Point_B (Balance)": Point_B,
             "Point_C (Lentur)": Point_C,
             "Plot_Data": pd.DataFrame({
-                "M_Capacity": [0, Point_B[0], Point_C[0], 0],
-                "P_Capacity": [Point_A[1], Point_B[1], 0, 0]
+                "M_Capacity": M_points,
+                "P_Capacity": P_points
             })
         }
-
+    
     @staticmethod
     def analyze_beam_flexure(b, h, fc, fy, As_bottom, Mu_input, cover=40):
         """
