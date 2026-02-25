@@ -78,11 +78,14 @@ class PriceEngine3Tier:
 
     def _search_marketplace_median(self, query):
         """ 
-        [AUDIT PATCH]: Mencegah Fraudulasi Data.
-        Data harga fiktif telah dihapus. Sesuai SE DJBK No. 30/2025, jika data IKK/ESSH tidak tersedia, 
-        sistem mewajibkan input harga secara manual dengan melampirkan referensi faktur pasar.
+        [AUDIT PATCH FINAL]: Penghapusan Logika Harga Fiktif (Fraud Prevention).
+        Sesuai SE DJBK No. 30/2025, dilarang membangkitkan harga secara acak/statis.
+        Jika data ESSH/BPS tidak ada, PPK WAJIB melakukan input manual dengan bukti faktur.
         """
-        harga_median = 0 
-        sumber_teks = "DATA TIDAK DITEMUKAN. Wajib Input Manual berdasarkan Faktur / Survei Pasar Langsung."
+        # Hapus semua logika pembangkitan harga persentase (0.95, 1.10, dll)
+        harga_median = 0.0
+        sumber_teks = "⚠️ DATA TIDAK DITEMUKAN. Wajib Input Manual (Lampirkan Faktur/Survei Pasar Langsung)."
+        
         return harga_median, sumber_teks
+    
     
