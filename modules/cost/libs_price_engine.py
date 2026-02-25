@@ -77,22 +77,12 @@ class PriceEngine3Tier:
         return 0, ""
 
     def _search_marketplace_median(self, query):
-        """ Logika Auditor BPK (Ambil 3 Harga Toko Online, Cari Nilai Tengah) """
-        base_price_estimasi = 50000
-        if "bor" in query and "mesin" in query: base_price_estimasi = 96500
-        if "cassing" in query and "pvc" in query: base_price_estimasi = 365000
-        
-        harga_toko_1 = base_price_estimasi * 0.95 
-        harga_toko_2 = base_price_estimasi * 1.10 
-        harga_toko_3 = base_price_estimasi * 1.02 
-
-        harga_median = statistics.median([harga_toko_1, harga_toko_2, harga_toko_3])
-        
-        link_1 = f"tokopedia.com/search?q={query.replace(' ', '%20')}"
-        link_2 = f"shopee.co.id/search?keyword={query.replace(' ', '%20')}"
-        link_3 = f"bukalapak.com/products?search={query.replace(' ', '%20')}"
-        
-        sumber_teks = (f"Median 3 Toko Online [Diambil Rp {int(harga_median):,}]. "
-                       f"Ref 1: {link_1} | Ref 2: {link_2} | Ref 3: {link_3}")
-        
+        """ 
+        [AUDIT PATCH]: Mencegah Fraudulasi Data.
+        Data harga fiktif telah dihapus. Sesuai SE DJBK No. 30/2025, jika data IKK/ESSH tidak tersedia, 
+        sistem mewajibkan input harga secara manual dengan melampirkan referensi faktur pasar.
+        """
+        harga_median = 0 
+        sumber_teks = "DATA TIDAK DITEMUKAN. Wajib Input Manual berdasarkan Faktur / Survei Pasar Langsung."
         return harga_median, sumber_teks
+    
