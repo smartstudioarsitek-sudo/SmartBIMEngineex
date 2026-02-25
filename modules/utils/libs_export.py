@@ -257,52 +257,36 @@ class Export_Engine:
                     tebakan_ahsp = resep.get('desc', kode_ahsp)
                     break
             ws_rab.write(row_excel, 0, index + 1, fmt_border)
-            ws_rab.write(row_excel, 1, f"Pekerjaan {nama_elemen}", fmt_border)
-
-            # [AUDIT PATCH]: Menulis nilai mutlak (bukan rumus) agar tidak tampil 0 di viewer CSV
-            ws_rab.write(row_excel, 2, float(row['Volume']), fmt_border) 
+            ws_rab.write(row_excel, 1, f"{nama_elemen}", fmt_border)
+            ws_rab.write(row_excel, 2, float(row['Volume']), fmt_border) # <--- PERBAIKAN FATAL: Menulis angka mutlak
             ws_rab.write(row_excel, 3, 'm3', fmt_border)
-
+            
             # Kolom Referensi AHSP (Kuning - Editable)
             fmt_input = workbook.add_format({'border': 1, 'bg_color': '#FEF9C3', 'font_color': '#B45309'})
-
-            # [AUDIT PATCH]: Smart Mapping / Kamus Translasi IFC ke AHSP PUPR
+            
             tebakan_ahsp = "- Ketik/Paste Nama AHSP dari Tab 4 Di Sini -"
-            kategori_ifc = str(row['Kategori']).lower()
             nama_elemen_lower = nama_elemen.lower()
-
+            
             for kode_ahsp, resep in resep_ahsp_aktif.items():
                 desc_ahsp = resep.get('desc', kode_ahsp)
                 desc_lower = desc_ahsp.lower()
-
-                # ATURAN 1: Struktur Beton (Kolom, Balok, Plat) -> Beton K-300 / K-250
-                if any(k in kategori_ifc for k in ['ifccolumn', 'ifcbeam', 'ifcslab', 'ifcfooting', 'ifcpile']):
-                    if "beton" in desc_lower and ("k 300" in desc_lower or "k-300" in desc_lower or "k 250" in desc_lower):
-                        tebakan_ahsp = desc_ahsp
-                        break
-
-                # ATURAN 2: Pekerjaan Dinding (IfcWall / WallStandardCase) -> Pasangan Bata
-                elif 'ifcwall' in kategori_ifc:
-                    if "bata" in desc_lower or "pasangan" in desc_lower or "plester" in desc_lower:
-                        tebakan_ahsp = desc_ahsp
-                        break
-
-                # ATURAN 3: Pekerjaan Pintu & Jendela (IfcDoor, IfcWindow)
-                elif 'ifcdoor' in kategori_ifc or 'ifcwindow' in kategori_ifc:
-                    if "kusen" in desc_lower or "pintu" in desc_lower or "jendela" in desc_lower:
-                        tebakan_ahsp = desc_ahsp
-                        break
-
-                # ATURAN 4: Fallback Pencarian Kata Biasa
-                elif ("beton" in nama_elemen_lower and "beton" in desc_lower) or \
-                     ("besi" in nama_elemen_lower and "besi" in desc_lower):
+                
+                # Pencocokan karena nama elemen sudah baku bahasa SNI
+                if "beton" in nama_elemen_lower and "beton" in desc_lower:
+                    tebakan_ahsp = desc_ahsp
+                    break
+                elif "bata" in nama_elemen_lower and ("bata" in desc_lower or "pasangan" in desc_lower):
+                    tebakan_ahsp = desc_ahsp
+                    break
+                elif ("pintu" in nama_elemen_lower or "jendela" in nama_elemen_lower) and ("pintu" in desc_lower or "jendela" in desc_lower):
                     tebakan_ahsp = desc_ahsp
                     break
 
+            ws_rab.write(row_excel, 4, tebakan_ahsp, fmt_input)
             
-
-        ws_rab.write(baris_terakhir_rab + 1, 5, 'TOTAL BIAYA STRUKTUR', fmt_header)
-        ws_rab.write_formula(baris_terakhir_rab + 1, 6, f"=SUM(G4:G{baris_terakhir_rab+1})", fmt_currency_bold)
+            # VLOOKUP Cerdas ke Tabel Rekap di Tab 4
+            ws_rab.write_formula(row_excel, 5, f"=IFERROR(VLOOKUP(E{row_excel+1},'4. AHSP S2 30 2025'!H:J, 3, FALSE), 0)", fmt_currency)
+            ws_rab.write_formula(row_excel, 6, f"=C{row_excel+1}*F{row_excel+1}", fmt_currency)
 
         # =======================================================
         # TAB 1: REKAPITULASI (Termasuk PPN)
@@ -422,5 +406,6 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
 
