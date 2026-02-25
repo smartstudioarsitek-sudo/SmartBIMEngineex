@@ -20,7 +20,19 @@ class AHSP_Engine:
                 "desc": "[CK-Gedung] Pembuatan 1 Buah Papan Nama Proyek",
                 "bahan": {"Multiplek 9 mm (Lbr)": 0.18, "Kayu Kaso (m3)": 0.011, "Paku (Kg)": 0.10, "Cat Minyak (Kg)": 0.20},
                 "upah": {"Pekerja": 0.750, "Tukang": 0.750, "Mandor": 0.075}
+            },
+            # --- TAMBAHAN BARU AGAR BISA BACA DINDING & JENDELA IFC ---
+            "pasangan_bata": {
+                "desc": "[CK-Arsitektur] 1 m3 Pasangan Bata Merah / Hebel",
+                "bahan": {"Bata Merah (Bh)": 70, "Semen (kg)": 9.68, "Pasir Pasang (m3)": 0.045},
+                "upah": {"Pekerja": 0.3, "Tukang": 0.1, "Mandor": 0.015}
+            },
+            "pintu_jendela": {
+                "desc": "[CK-Arsitektur] 1 Unit Pembuatan Kusen Pintu dan Jendela",
+                "bahan": {"Kayu Kaso (m3)": 0.04, "Paku (Kg)": 0.05, "Cat Minyak (Kg)": 0.5},
+                "upah": {"Pekerja": 0.2, "Tukang": 0.6, "Mandor": 0.01}
             }
+            # ---------------------------------------------------------
         }
 
         # ======================================================
@@ -108,3 +120,4 @@ class AHSP_Engine:
             total_upah += koef * h_upah
             
         return total_bahan + total_upah
+
