@@ -305,8 +305,16 @@ class Export_Engine:
         ws_smkk.set_column('B:B', 60)
         ws_smkk.write('A1', 'RENCANA BIAYA PENERAPAN SISTEM MANAJEMEN KESELAMATAN KONSTRUKSI (SMKK)', fmt_title)
         
-        estimasi_rab_awal = df_boq['Volume'].sum() * 500000 
-        nilai_bpjs_aktual = hitung_bpjs_berjenjang(estimasi_rab_awal)
+        # [AUDIT PATCH FINAL]: Koreksi Paradigma BPJS (Anti-Galat Dimensional)
+        # Jangan pernah menjumlahkan campuran unit Volume fisik. Gunakan kolom Rupiah.
+        if 'Total Harga (Rp)' in df_boq.columns:
+            estimasi_rab_awal = df_boq['Total Harga (Rp)'].sum()
+            nilai_bpjs_aktual = hitung_bpjs_berjenjang(estimasi_rab_awal)
+        else:
+            # Jika harga belum dipetakan secara final di Python, kembalikan 0.
+            # Hal ini memaksa akuntabilitas PPK untuk menautkan sel Excel BPJS ke Total RAB secara manual.
+            nilai_bpjs_aktual = 0.0
+       
 
         headers_smkk = ['No', 'Uraian Pekerjaan', 'Satuan', 'Volume', 'Harga Satuan (Rp)', 'Total Harga (Rp)']
         for col, h in enumerate(headers_smkk): ws_smkk.write(2, col, h, fmt_header)
@@ -389,3 +397,4 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
