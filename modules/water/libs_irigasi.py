@@ -11,32 +11,23 @@ class Irrigation_Engine:
     # 1. LOGIKA HITUNG DIMENSI
     # =========================================
     def hitung_dimensi_saluran(self, Q, b_ratio=1.5, m=1.0, S=0.0005, n=0.025):
-        # Inisialisasi
-        h = 0.1
-        best_diff = float('inf')
-        best_h = 0.1
-        
-        # Iterasi mencari tinggi air (h)
-        while h < 20.0: # Batas iterasi dinaikkan
+        """
+        [AUDIT PATCH]: Resolusi Numerik Hidrolika menggunakan fsolve (Mencegah Dead-Loop)
+        """
+        def persamaan_manning(h):
             b = h * b_ratio 
             A = (b + m * h) * h
             P = b + 2 * h * math.sqrt(1 + m**2)
-            
-            if P > 0:
-                R = A / P
-                Q_calc = (1/n) * A * (R**(2/3)) * (S**0.5)
-                diff = abs(Q_calc - Q)
-                
-                if diff < best_diff:
-                    best_diff = diff
-                    best_h = h
-                
-                if Q_calc >= Q: 
-                    break
-            h += 0.05
-            
-        # Set hasil akhir
-        h = best_h
+            if P <= 0: return 1e6 # Penalti
+            R = A / P
+            Q_calc = (1/n) * A * (R**(2/3)) * (S**0.5)
+            return Q_calc - Q
+
+        # Iterasi fsolve dari scipy jauh lebih presisi dan menghemat resource
+        h_awal = [1.0] # Tebakan awal 1 meter
+        h_optimal = fsolve(persamaan_manning, h_awal)[0]
+        
+        h = round(h_optimal, 3)
         b = h * b_ratio
         
         # Parameter Final
@@ -56,15 +47,15 @@ class Irrigation_Engine:
         
         status = "AMAN"
         warns = []
-        if Fr >= 1.0: status = "BAHAYA"; warns.append("Superkritis")
-        if V < 0.6: status = "PERHATIAN"; warns.append("Sedimentasi")
+        if Fr >= 1.0: status = "BAHAYA (Aliran Superkritis)"
+        if V < 0.6: status = "PERHATIAN (Risiko Sedimentasi)"
         
         return {
             "Dimensi": {"b": round(b, 2), "h_air": round(h, 2), "H_total": round(H_total, 2), "m": m, "w": w},
             "Hidrolis": {"V": round(V, 2), "Fr": round(Fr, 2), "Area": round(A, 2)},
             "Status": status
         }
-
+    
     # =========================================
     # [FIX UTAMA] FUNGSI PLOTTING GRAFIK
     # =========================================
@@ -323,4 +314,5 @@ class Irrigation_Engine:
        
         df_nomenklatur = pd.DataFrame(tabel_nomenklatur)
         return fig, df_nomenklatur
+
 
