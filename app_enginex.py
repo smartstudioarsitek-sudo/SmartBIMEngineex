@@ -284,6 +284,14 @@ if 'shared_execution_vars' not in st.session_state:
 
 def execute_generated_code(code_str, file_ifc_path=None):
     try:
+        # [AUDIT PATCH]: SECURITY SANDBOX FILTER
+        # Memblokir keyword berbahaya yang bisa membajak server atau membaca st.secrets
+        forbidden_keywords = ['os.', 'sys.', 'subprocess', 'open(', 'shutil', 'st.secrets', '__import__']
+        for keyword in forbidden_keywords:
+            if keyword in code_str:
+                st.error(f"🚨 SECURITY BLOCK: AI mencoba mengeksekusi perintah sistem terlarang (`{keyword}`). Eksekusi dihentikan demi keamanan.")
+                return False
+
         local_vars = st.session_state.shared_execution_vars.copy()
         
         # Helper function untuk parsing rupiah
@@ -295,7 +303,7 @@ def execute_generated_code(code_str, file_ifc_path=None):
                 except: return 0
             return 0
 
-        # Inject library & helper (Memastikan kode AI bisa akses semua modul)
+        # Inject library & helper (Environment Terisolasi)
         library_kits = {
             "pd": pd, "np": np, "plt": plt, "st": st, "px": px, "go": go,
             "parse_rupiah": parse_rupiah,
@@ -315,21 +323,17 @@ def execute_generated_code(code_str, file_ifc_path=None):
         if has_geotek:
             library_kits['libs_geoteknik'] = libs_geoteknik
             library_kits['libs_pondasi'] = libs_pondasi
-        # [BARU] Suntikkan MEP ke dalam environment AI
-        if has_mep:
-            library_kits['libs_mep'] = libs_mep
-        if has_legal:
-            library_kits['libs_legal'] = libs_legal    
+        if has_mep: library_kits['libs_mep'] = libs_mep
+        if has_legal: library_kits['libs_legal'] = libs_legal    
+        
         local_vars.update(library_kits)
 
-        if has_4d:
-            library_kits['libs_4d'] = libs_4d
-        if has_transport:
-            library_kits['libs_transport'] = libs_transport
-        if file_ifc_path: 
-            local_vars["file_ifc_user"] = file_ifc_path
+        if has_4d: library_kits['libs_4d'] = libs_4d
+        if has_transport: library_kits['libs_transport'] = libs_transport
+        if file_ifc_path: local_vars["file_ifc_user"] = file_ifc_path
         
-        exec(code_str, local_vars)
+        # Eksekusi dalam Sandbox
+        exec(code_str, {"__builtins__": {}}, local_vars)
         
         for k, v in local_vars.items():
             if k not in library_kits and not k.startswith('__') and not isinstance(v, types.ModuleType):
@@ -512,7 +516,8 @@ with st.sidebar:
                             for el in elements:
                                 if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
                                     vol = engine_ifc.get_element_quantity(el)
-                                    vol_final = round(vol, 3) if vol and vol > 0 else 1.0
+                                    # [AUDIT PATCH]: Menghindari markup volume fiktif
+                                    vol_final = round(vol, 3) if vol and vol > 0 else 0.0                           
                                     nama_el = el.Name if el.Name else f"Elemen_{el.GlobalId[:5]}"
                                     data_boq_asli.append({
                                         "Kategori": el.is_a(),
@@ -1410,3 +1415,4 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
