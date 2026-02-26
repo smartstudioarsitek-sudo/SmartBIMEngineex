@@ -59,51 +59,43 @@ class Export_Engine:
         ws_bp = workbook.add_worksheet('7. Basic Price')
 
         # =======================================================
-        # [PENTING] MENARIK DATA RESEP DARI AHSP ENGINE
+        # [PENTING] MENARIK DATA RESEP DARI MASTER AHSP (ZERO DUMMY)
         # =======================================================
+        import streamlit as st
+        df_master = st.session_state.get('master_ahsp_data', None)
+        
         kebutuhan_unik = {} 
         resep_ahsp_aktif = {} 
-        
-        try:
-            mod_ahsp = sys.modules.get('libs_ahsp')
-            if mod_ahsp:
-                for item_name in dir(mod_ahsp):
-                    item = getattr(mod_ahsp, item_name)
-                    if isinstance(item, type): 
-                        try:
-                            instance = item()
-                            if hasattr(instance, 'koefisien'): 
-                                resep_ahsp_aktif = instance.koefisien 
-                                for key, resep in instance.koefisien.items():
-                                    
-                                    # 1. Tarik Bahan
-                                    for nama_bahan, qty in resep.get("bahan", {}).items():
-                                        if "(" in nama_bahan and ")" in nama_bahan:
-                                            nama_bersih = nama_bahan.split("(")[0].strip()
-                                            satuan = nama_bahan.split("(")[1].replace(")", "").strip()
-                                        else:
-                                            nama_bersih = nama_bahan
-                                            satuan = "Ls/Unit"
-                                        kebutuhan_unik[nama_bersih] = ("Bahan", satuan)
-                                    
-                                    # 2. Tarik Upah
-                                    for nama_upah, qty in resep.get("upah", {}).items():
-                                        kebutuhan_unik[nama_upah] = ("Upah", "OH")
-                                        
-                                    # 3. Tarik Alat Berat
-                                    for nama_alat, qty in resep.get("alat", {}).items():
-                                        if "(" in nama_alat and ")" in nama_alat:
-                                            nama_bersih = nama_alat.split("(")[0].strip()
-                                            satuan = nama_alat.split("(")[1].replace(")", "").strip()
-                                        else:
-                                            nama_bersih = nama_alat
-                                            satuan = "Jam"
-                                        kebutuhan_unik[nama_bersih] = ("Alat", satuan)
-                                break 
-                        except:
-                            pass
-        except Exception as e:
-            pass 
+
+        if df_master is not None and not df_master.empty:
+            for index, row in df_master.iterrows():
+                desc = str(row.get('Deskripsi', ''))
+                kategori = str(row.get('Kategori', '')).upper()
+                komponen = str(row.get('Nama_Komponen', ''))
+                satuan = str(row.get('Satuan', ''))
+                koef = float(row.get('Koefisien', 0.0))
+                kode = str(row.get('Kode_AHSP', ''))
+                
+                # 1. Kumpulkan kebutuhan bahan/upah unik untuk Tab 7 (Basic Price)
+                if komponen not in kebutuhan_unik:
+                    kat_display = "Bahan"
+                    if "UPAH" in kategori or "PEKERJA" in kategori: kat_display = "Upah"
+                    elif "ALAT" in kategori: kat_display = "Alat"
+                    kebutuhan_unik[komponen] = (kat_display, satuan)
+                
+                # 2. Susun ulang jadi format dictionary untuk di-print ke Tab 4 (AHSP)
+                if desc not in resep_ahsp_aktif:
+                    resep_ahsp_aktif[desc] = {"kode": kode, "desc": desc, "bahan": {}, "upah": {}, "alat": {}}
+                
+                # Format string: "Nama Komponen (Satuan)" agar rapi di Excel
+                key_komponen = f"{komponen} ({satuan})"
+                
+                if "UPAH" in kategori or "PEKERJA" in kategori:
+                    resep_ahsp_aktif[desc]["upah"][key_komponen] = koef
+                elif "ALAT" in kategori:
+                    resep_ahsp_aktif[desc]["alat"][key_komponen] = koef
+                else:
+                    resep_ahsp_aktif[desc]["bahan"][key_komponen] = koef 
 
         # =======================================================
         # TAB 7: BASIC PRICE (TERINTEGRASI BPS IKK)
@@ -406,6 +398,7 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
 
 
