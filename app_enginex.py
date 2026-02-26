@@ -1420,122 +1420,72 @@ elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
         except Exception as e:
             st.error(f"❌ Terjadi kesalahan saat memproses file: {e}")
             
-# --- E. MODE LAPORAN RAB 5D ---
+
+# --- E. MODE LAPORAN RAB 5D (WEB-BASED ONLINE) ---
 elif selected_menu == "📑 Laporan RAB 5D":
-    st.header("📑 Laporan Eksekutif RAB 5D (Dokumen Lelang)")
-    st.caption("Generator Dokumen Rencana Anggaran Biaya standar Kementerian PUPR")
+    st.header("📑 Modul RAB 5D (Sistem Hitung Online)")
+    st.caption("Alur Kerja: 1. Input Volume -> 2. Verifikasi & Isi Harga -> 3. Cetak Dokumen")
+
     # =========================================================
-    # [FITUR KEAMANAN ZERO DUMMY] Mencegah Cetak Excel Kosong
+    # [FITUR KEAMANAN] Pastikan Master AHSP Sudah Diupload
     # =========================================================
     if 'master_ahsp_data' not in st.session_state:
         st.error("🚨 SISTEM TERKUNCI: Database AHSP Kosong!")
-        st.warning("Aplikasi menolak mencetak angka nol/fiktif. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP** di sidebar, upload Template Excel AHSP-nya, lalu klik tombol merah **'Kunci Data'** terlebih dahulu.")
-        st.stop() # Menghentikan sistem agar tidak cetak Excel kosong
+        st.warning("Aplikasi membutuhkan Master AHSP. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP** di sidebar, upload Template Excel AHSP-nya, lalu klik tombol merah **'Kunci Data'** terlebih dahulu.")
+        st.stop()
     # =========================================================
 
-    # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
-    st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
+    # Membuat 3 Tab Alur Kerja
+    tab_input, tab_verifikasi, tab_export = st.tabs([
+        "📥 1. Input & Ekstrak Volume", 
+        "📝 2. Verifikasi BOQ & Harga", 
+        "🖨️ 3. Cetak Laporan Final"
+    ])
 
-    # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
-    st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
-    step1, step2, step3 = st.columns(3)
-    step4, step5, step6 = st.columns(3)
-
-    with step1:
-        with st.expander("1. Pendahuluan & Lingkup", expanded=True):
-            st.write("Berisi latar belakang proyek, deskripsi BIM, dan metodologi otomatis.")
-    with step2:
-        with st.expander("2. Asumsi Dasar & AHSP", expanded=True):
-            st.write("Menetapkan dasar harga material, upah kerja, dan referensi AHSP.")
-    with step3:
-        with st.expander("3. Bill of Quantities (BOQ)", expanded=True):
-            st.write("Rekapitulasi total volume pekerjaan dari ekstraksi BIM/AI-QS.")
-    with step4:
-        with st.expander("4. Integrasi SMKK & K3", expanded=True):
-            st.write("Perhitungan biaya Keselamatan Konstruksi sesuai risiko proyek.")
-    with step5:
-        with st.expander("5. Analisis TKDN (Lokal)", expanded=True):
-            st.write("Proporsi penggunaan material dalam negeri vs luar negeri.")
-    with step6:
-        with st.expander("6. Rekapitulasi & Grand Total", expanded=True):
-            st.write("Ringkasan final, PPN 11%, dan Grand Total Biaya Fisik.")
-
-    st.markdown("---")
-    
-    # 1. Kumpulkan teks laporan secara DINAMIS (ZERO DUMMY)
-    df_boq_aktual = st.session_state.get('real_boq_data', None)
-    lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
-
-    laporan_gabungan = f"""
-# DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
-**PROYEK: {nama_proyek.upper()}**
-**LOKASI: {lokasi_proyek.upper()}**
-
-## BAB 1. PENDAHULUAN
-Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex yang terintegrasi dengan standar ekstraksi kuantitas (QTO) berbasis algoritma analitik geometri, serta mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
-
-## BAB 2. BILL OF QUANTITIES (BOQ) AKTUAL
-Berikut adalah rekapitulasi volume pekerjaan yang diekstrak secara presisi dari model digital:
-
-"""
-    # Menyuntikkan data aktual ke dalam PDF
-    if df_boq_aktual is not None and not df_boq_aktual.empty:
-        for index, row in df_boq_aktual.iterrows():
-            laporan_gabungan += f"- **{row['Kategori']}**: {row['Nama']} (Volume: {row.get('Volume', 0)} m3)\n"
-    else:
-        laporan_gabungan += "*(Data BOQ masih kosong. Silakan lakukan ekstraksi file IFC atau ukur via Visual QTO 2D terlebih dahulu untuk mengisi bab ini.)*\n"
-
-    laporan_gabungan += """
-## BAB 3. KESELAMATAN KONSTRUKSI (SMKK) & REKAPITULASI
-Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen standar PUPR untuk memitigasi risiko kecelakaan kerja di lapangan. Total estimasi biaya konstruksi fisik dan rincian Analisa Harga Satuan Pekerjaan (AHSP) dapat dilihat secara komprehensif pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang menyertai laporan ini.
-"""
-    
-    # 2. Render tombol Download yang sesungguhnya
-    try:
-        # Menggunakan engine PDF internal kita
-        pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {nama_proyek}")
+    # ---------------------------------------------------------
+    # TAB 1: INPUT DATA
+    # ---------------------------------------------------------
+    with tab_input:
+        st.subheader("1. Sumber Data Volume (BOQ)")
+        sumber_opsi = st.radio("Pilih Sumber Data:", ["Ekstrak dari Model BIM (IFC)", "Input Manual / Data Visual QTO"], horizontal=True)
         
-        st.download_button(
-            label="📄 1. Download Laporan RAB (PDF)",
-            data=pdf_bytes,
-            file_name=f"Laporan_RAB_{nama_proyek.replace(' ', '_')}.pdf",
-            mime="application/pdf",
-            type="primary",
-            use_container_width=True
-        )
-        
-        # --- TOMBOL EXCEL DIPINDAH KESINI ---
-        df_boq_aktual = st.session_state.get('real_boq_data', None)
-        lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
-        
-        if df_boq_aktual is not None and not df_boq_aktual.empty:
-            st.success(f"🟢 Data BOQ Siap ({len(df_boq_aktual)} baris) untuk Lokasi: {lokasi_proyek}")
-            with st.spinner("Memproses Excel..."):
-                if 'price_engine' not in st.session_state:
-                    st.session_state.price_engine = sys.modules['libs_price_engine'].PriceEngine3Tier()
+        if sumber_opsi == "Ekstrak dari Model BIM (IFC)":
+            ifc_file = st.file_uploader("Upload File .ifc:", type=['ifc'])
+            if ifc_file and st.button("🔄 Ekstrak Volume ke Memori"):
+                st.info("Fitur ekstrak IFC akan kita pindahkan ke sini nanti.")
+                # Nanti logika ekstrak IFC kita taruh sini
                 
-                excel_bytes = sys.modules['libs_export'].Export_Engine().generate_7tab_rab_excel(
-                    nama_proyek, df_boq_aktual, price_engine=st.session_state.price_engine, lokasi_proyek=lokasi_proyek 
-                )
-                st.download_button(
-                    label="📊 2. Download Excel RAB 7-Tab (Harga Auto-BPS)",
-                    data=excel_bytes,
-                    file_name=f"RAB_{lokasi_proyek}_{nama_proyek.replace(' ', '_')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                    use_container_width=True
-                )
         else:
-            st.warning("⚠️ Data Kosong. Ekstrak IFC di Sidebar atau gunakan Visual QTO terlebih dahulu untuk mengaktifkan tombol Excel.")
-            st.button("📊 2. Download Excel RAB", disabled=True, use_container_width=True)
+            st.info("Gunakan data dari menu Visual QTO 2D, atau masukkan data dummy sementara untuk testing.")
+            if st.button("➕ Buat Tabel BOQ Manual (Testing)"):
+                dummy_boq = pd.DataFrame([
+                    {"Kategori": "Pekerjaan Persiapan", "Nama": "Pembuatan Pagar Proyek", "Volume": 15.0},
+                    {"Kategori": "Pekerjaan Beton", "Nama": "Pekerjaan Kolom Beton (K-300)", "Volume": 5.5}
+                ])
+                st.session_state['real_boq_data'] = dummy_boq
+                st.success("Tabel BOQ berhasil dibuat! Silakan lanjut ke Tab 2.")
 
-    except Exception as e:
-        st.error(f"⚠️ Gagal merender dokumen: {e}")
+        # Tampilkan status memori saat ini
+        if 'real_boq_data' in st.session_state and not st.session_state['real_boq_data'].empty:
+            st.success(f"✅ Data BOQ saat ini: {len(st.session_state['real_boq_data'])} item pekerjaan siap diverifikasi.")
+            st.dataframe(st.session_state['real_boq_data'])
 
+    # ---------------------------------------------------------
+    # TAB 2: VERIFIKASI & HARGA (JANTUNG APLIKASI)
+    # ---------------------------------------------------------
+    with tab_verifikasi:
+        st.subheader("2. Verifikasi Data & Pemetaan Harga")
+        st.write("Di sinilah nanti tabel interaktif (Data Editor) muncul. User bisa memilih AHSP dan memasukkan harga dasar material (Semen, Besi, dll) secara langsung di layar.")
+        st.info("Area ini akan kita kembangkan di langkah berikutnya setelah kerangka ini berjalan sukses.")
 
-
-
-
+    # ---------------------------------------------------------
+    # TAB 3: EXPORT
+    # ---------------------------------------------------------
+    with tab_export:
+        st.subheader("3. Cetak Laporan RAB (PDF & Excel)")
+        st.write("Setelah RAB di Tab 2 diverifikasi dan tidak ada angka 0, tombol cetak akan aktif di sini.")
+        st.button("📄 Download Laporan RAB (PDF)", disabled=True)
+        st.button("📊 Download Excel RAB 7-Tab", disabled=True)
 
 
 
