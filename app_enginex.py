@@ -599,6 +599,12 @@ if selected_menu == "🤖 AI Assistant":
                     execute_generated_code(code_content)
                 else:
                     st.markdown(part)
+                    # --- INDIKATOR DEBUGGING MEMORI AHSP ---
+                    if 'master_ahsp_data' in st.session_state:
+                        st.success(f"🔗 STATUS: Terhubung dengan Database Master AHSP ({len(st.session_state['master_ahsp_data'])} item data). AI siap membaca data pasti!")
+                    else:
+                        st.warning("⚠️ STATUS: Database Master AHSP KOSONG. AI berpotensi halusinasi. Silakan ke menu Admin untuk mengunci data.")
+                    # ---------------------------------------
 
     # Input User
     prompt = st.chat_input("Ketik perintah desain, hitungan, atau analisa...")
@@ -1505,6 +1511,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
