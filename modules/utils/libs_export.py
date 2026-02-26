@@ -49,24 +49,20 @@ class Export_Engine:
         fmt_currency = workbook.add_format({'num_format': 'Rp #,##0', 'border': 1})
         fmt_currency_bold = workbook.add_format({'num_format': 'Rp #,##0', 'border': 1, 'bold': True, 'bg_color': '#D1D5DB'})
         
-        # --- MEMBUAT 7 SHEET ---
+        # --- MEMBUAT SHEET ---
         ws_rekap = workbook.add_worksheet('1. Rekap')
         ws_rab = workbook.add_worksheet('2. RAB')
         ws_boq = workbook.add_worksheet('3. Backup BOQ')
         ws_ahsp = workbook.add_worksheet('4. AHSP S2 30 2025')
-        ws_smkk = workbook.add_worksheet('5. SMKK')
-        ws_tkdn = workbook.add_worksheet('6. TKDN')
         ws_bp = workbook.add_worksheet('7. Basic Price')
 
-        # =======================================================
-        # [PENTING] MENARIK DATA RESEP DARI MASTER AHSP (ZERO DUMMY)
-        # =======================================================
         import streamlit as st
         df_master = st.session_state.get('master_ahsp_data', None)
         
         kebutuhan_unik = {} 
         resep_ahsp_aktif = {} 
 
+        # 1. PARSING DATA MASTER DARI MEMORI WEB
         if df_master is not None and not df_master.empty:
             for index, row in df_master.iterrows():
                 desc = str(row.get('Deskripsi', ''))
@@ -74,90 +70,70 @@ class Export_Engine:
                 komponen = str(row.get('Nama_Komponen', ''))
                 satuan = str(row.get('Satuan', ''))
                 koef = float(row.get('Koefisien', 0.0))
-                kode = str(row.get('Kode_AHSP', ''))
                 
-                # 1. Kumpulkan kebutuhan bahan/upah unik untuk Tab 7 (Basic Price)
+                # Mengumpulkan Unik untuk Tab 7
                 if komponen not in kebutuhan_unik:
                     kat_display = "Bahan"
                     if "UPAH" in kategori or "PEKERJA" in kategori: kat_display = "Upah"
                     elif "ALAT" in kategori: kat_display = "Alat"
                     kebutuhan_unik[komponen] = (kat_display, satuan)
                 
-                # 2. Susun ulang jadi format dictionary untuk di-print ke Tab 4 (AHSP)
+                # Mengumpulkan Resep untuk Tab 4
                 if desc not in resep_ahsp_aktif:
-                    resep_ahsp_aktif[desc] = {"kode": kode, "desc": desc, "bahan": {}, "upah": {}, "alat": {}}
-                
-                # Format string: "Nama Komponen (Satuan)" agar rapi di Excel
-                key_komponen = f"{komponen} ({satuan})"
+                    resep_ahsp_aktif[desc] = {"desc": desc, "bahan": {}, "upah": {}, "alat": {}}
                 
                 if "UPAH" in kategori or "PEKERJA" in kategori:
-                    resep_ahsp_aktif[desc]["upah"][key_komponen] = koef
+                    resep_ahsp_aktif[desc]["upah"][komponen] = (koef, satuan)
                 elif "ALAT" in kategori:
-                    resep_ahsp_aktif[desc]["alat"][key_komponen] = koef
+                    resep_ahsp_aktif[desc]["alat"][komponen] = (koef, satuan)
                 else:
-                    resep_ahsp_aktif[desc]["bahan"][key_komponen] = koef 
+                    resep_ahsp_aktif[desc]["bahan"][komponen] = (koef, satuan)
 
         # =======================================================
-        # TAB 7: BASIC PRICE (TERINTEGRASI BPS IKK)
+        # TAB 7: BASIC PRICE (PETA LOKASI BARIS EXCEL)
         # =======================================================
         ws_bp.write('A1', f'DAFTAR HARGA DASAR MATERIAL & UPAH (IKK {lokasi_proyek.upper()})', fmt_title)
-        
-        headers_bp = ['No', 'Kategori', 'Nama Material / Upah', 'Satuan', 'Harga Satuan (Rp)', 'Sumber Data (Validasi Auditor)']
+        headers_bp = ['No', 'Kategori', 'Nama Material / Upah', 'Satuan', 'Harga Satuan (Rp)', 'Sumber Data']
         for col, h in enumerate(headers_bp): ws_bp.write(2, col, h, fmt_header)
         
-        ws_bp.set_column('C:C', 35)
-        ws_bp.set_column('E:E', 20)
-        ws_bp.set_column('F:F', 90)
+        ws_bp.set_column('C:C', 35); ws_bp.set_column('E:E', 20); ws_bp.set_column('F:F', 30)
                 
         row_bp = 3
         idx = 1
+        map_baris_bp = {} # PENYELAMAT ANTI VLOOKUP: Simpan posisi persis barisnya
+
         for nama_item, (kategori, satuan) in kebutuhan_unik.items():
-            harga_angka = 0
-            sumber_teks = "Manual Input"
-            
-            if price_engine:
-                harga_angka, sumber_teks = price_engine.get_best_price(nama_item, lokasi=lokasi_proyek)
-            
             ws_bp.write(row_bp, 0, idx, fmt_border)
             ws_bp.write(row_bp, 1, kategori, fmt_border)
             ws_bp.write(row_bp, 2, nama_item, fmt_border)
             ws_bp.write(row_bp, 3, satuan, fmt_border)
-            ws_bp.write(row_bp, 4, harga_angka, fmt_currency)
+            ws_bp.write(row_bp, 4, 0, fmt_currency) # Harga Nol Menunggu Ketikan
+            ws_bp.write(row_bp, 5, "Ketik Manual", fmt_border)
             
-            if "Toko Online" in sumber_teks:
-                ws_bp.write(row_bp, 5, sumber_teks, workbook.add_format({'border': 1, 'font_color': '#1D4ED8'}))
-            else:
-                ws_bp.write(row_bp, 5, sumber_teks, fmt_border)
-            
+            # Kunci posisi baris item ini (Misal Pekerja ada di baris ke-4 Excel)
+            map_baris_bp[nama_item] = row_bp + 1 
             row_bp += 1
             idx += 1
 
         # =======================================================
-        # TAB 4: AHSP (DILENGKAPI TABEL REKAPITULASI UNTUK VLOOKUP)
+        # TAB 4: AHSP (LINK LANGSUNG KE TAB 7, ZERO VLOOKUP)
         # =======================================================
-        ws_ahsp.set_column('A:A', 15)
-        ws_ahsp.set_column('B:B', 35)
-        ws_ahsp.set_column('C:D', 12)
-        ws_ahsp.set_column('E:F', 18)
+        ws_ahsp.set_column('A:A', 15); ws_ahsp.set_column('B:B', 35); ws_ahsp.set_column('C:D', 12); ws_ahsp.set_column('E:F', 18)
         ws_ahsp.write('A1', 'ANALISA HARGA SATUAN PEKERJAAN (AHSP)', fmt_title)
         
-        # --- [FITUR BARU] TABEL REKAPITULASI AHSP DI SEBELAH KANAN ---
         ws_ahsp.write('H1', 'REKAPITULASI HARGA SATUAN AHSP', fmt_title)
-        ws_ahsp.set_column('H:H', 50)
-        ws_ahsp.set_column('I:I', 10)
-        ws_ahsp.set_column('J:J', 20)
-        for col, h in enumerate(['Nama Pekerjaan / AHSP', 'Satuan', 'Harga Satuan (Rp)']):
-            ws_ahsp.write(2, col+7, h, fmt_header)
+        ws_ahsp.set_column('H:H', 50); ws_ahsp.set_column('I:I', 10); ws_ahsp.set_column('J:J', 20)
+        for col, h in enumerate(['Nama Pekerjaan / AHSP', 'Satuan', 'Harga Satuan (Rp)']): ws_ahsp.write(2, col+7, h, fmt_header)
         
         row_ahsp = 3
         row_rekap = 3
+        map_baris_rekap = {} # PENYELAMAT ANTI VLOOKUP UNTUK TAB 2
         
         if not resep_ahsp_aktif:
-            ws_ahsp.write(row_ahsp, 0, "Buku Resep AHSP Kosong / Gagal Dimuat", fmt_header)
+            ws_ahsp.write(row_ahsp, 0, "Buku Resep AHSP Kosong", fmt_header)
         else:
-            for kode_ahsp, resep in resep_ahsp_aktif.items():
-                nama_ahsp = resep.get('desc', kode_ahsp)
-                ws_ahsp.write(row_ahsp, 0, f"Item: {nama_ahsp}", workbook.add_format({'bold': True, 'font_color': '#1E3A8A'}))
+            for desc, resep in resep_ahsp_aktif.items():
+                ws_ahsp.write(row_ahsp, 0, f"Item: {desc}", workbook.add_format({'bold': True, 'font_color': '#1E3A8A'}))
                 row_ahsp += 1
                 
                 for col, h in enumerate(['Kategori', 'Uraian', 'Koefisien', 'Satuan', 'Harga Dasar', 'Subtotal']): 
@@ -166,110 +142,83 @@ class Export_Engine:
                 
                 start_row = row_ahsp + 1
                 
-                # --- BUG FIX: HAPUS TANDA KUTIP GANDA PADA REFERENSI SHEET ---
-                
-                # Loop Bahan
-                for bahan, qty in resep.get("bahan", {}).items():
-                    nama_b = bahan.split("(")[0].strip() if "(" in bahan else bahan
-                    sat = bahan.split("(")[1].replace(")","").strip() if "(" in bahan else "Ls"
-                    ws_ahsp.write(row_ahsp, 0, 'Bahan', fmt_border)
-                    ws_ahsp.write(row_ahsp, 1, nama_b, fmt_border)
-                    ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
-                    ws_ahsp.write(row_ahsp, 3, sat, fmt_border)
-                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{nama_b}*",\'7. Basic Price\'!C:E, 3, FALSE), 0)', fmt_currency)
-                    ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
-                    row_ahsp += 1
-                    
-                # Loop Upah
-                for upah, qty in resep.get("upah", {}).items():
-                    ws_ahsp.write(row_ahsp, 0, 'Upah', fmt_border)
-                    ws_ahsp.write(row_ahsp, 1, upah, fmt_border)
-                    ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
-                    ws_ahsp.write(row_ahsp, 3, 'OH', fmt_border)
-                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{upah}*",\'7. Basic Price\'!C:E, 3, FALSE), 0)', fmt_currency)
-                    ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
-                    row_ahsp += 1
-                    
-                # Loop Alat (BARU)
-                for alat, qty in resep.get("alat", {}).items():
-                    nama_a = alat.split("(")[0].strip() if "(" in alat else alat
-                    sat = alat.split("(")[1].replace(")","").strip() if "(" in alat else "Jam"
-                    ws_ahsp.write(row_ahsp, 0, 'Alat', fmt_border)
-                    ws_ahsp.write(row_ahsp, 1, nama_a, fmt_border)
-                    ws_ahsp.write(row_ahsp, 2, float(qty), fmt_border)
-                    ws_ahsp.write(row_ahsp, 3, sat, fmt_border)
-                    ws_ahsp.write_formula(row_ahsp, 4, f'=IFERROR(VLOOKUP("*{nama_a}*",\'7. Basic Price\'!C:E, 3, FALSE), 0)', fmt_currency)
-                    ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
-                    row_ahsp += 1
+                # Fungsi tulis baris dengan LINK LANGSUNG
+                def tulis_komponen(kategori_nama, dict_data):
+                    nonlocal row_ahsp
+                    for nama_k, (koef, sat) in dict_data.items():
+                        ws_ahsp.write(row_ahsp, 0, kategori_nama, fmt_border)
+                        ws_ahsp.write(row_ahsp, 1, nama_k, fmt_border)
+                        ws_ahsp.write(row_ahsp, 2, koef, fmt_border)
+                        ws_ahsp.write(row_ahsp, 3, sat, fmt_border)
+                        
+                        # LINK TEMBAK LANGSUNG KE SEL TAB 7
+                        if nama_k in map_baris_bp:
+                            # Hasilnya jadi seperti: ='7. Basic Price'!E4
+                            ws_ahsp.write_formula(row_ahsp, 4, f"='7. Basic Price'!E{map_baris_bp[nama_k]}", fmt_currency)
+                        else:
+                            ws_ahsp.write(row_ahsp, 4, 0, fmt_currency)
+                            
+                        ws_ahsp.write_formula(row_ahsp, 5, f"=C{row_ahsp+1}*E{row_ahsp+1}", fmt_currency)
+                        row_ahsp += 1
+
+                tulis_komponen('Bahan', resep['bahan'])
+                tulis_komponen('Upah', resep['upah'])
+                tulis_komponen('Alat', resep['alat'])
                     
                 ws_ahsp.write(row_ahsp, 4, 'Total Harga Satuan', fmt_header)
-                if row_ahsp >= start_row:
-                    ws_ahsp.write_formula(row_ahsp, 5, f"=SUM(F{start_row}:F{row_ahsp})", fmt_currency_bold)
-                else:
-                    ws_ahsp.write(row_ahsp, 5, 0, fmt_currency_bold)
+                ws_ahsp.write_formula(row_ahsp, 5, f"=SUM(F{start_row}:F{row_ahsp})", fmt_currency_bold)
                     
-                # --- INJEKSI KE TABEL REKAP VLOOKUP ---
-                ws_ahsp.write(row_rekap, 7, nama_ahsp, fmt_border)
+                # INJEKSI KE TABEL REKAP & SIMPAN POSISINYA
+                ws_ahsp.write(row_rekap, 7, desc, fmt_border)
                 ws_ahsp.write(row_rekap, 8, "Ls/m3", fmt_border)
                 ws_ahsp.write_formula(row_rekap, 9, f"=F{row_ahsp+1}", fmt_currency)
-                row_rekap += 1
                 
+                map_baris_rekap[desc] = row_rekap + 1 # Simpan posisi baris di kolom J
+                row_rekap += 1
                 row_ahsp += 3 
 
         # =======================================================
-        # TAB 3 & 2: INJEKSI DATA ASLI IFC DENGAN VLOOKUP KE AHSP
+        # TAB 3 & 2: INJEKSI DATA RAB DENGAN LINK LANGSUNG KE TAB 4
         # =======================================================
         ws_boq.set_column('B:C', 30)
-        ws_boq.write('A1', 'BACKUP BILL OF QUANTITIES (BOQ) DARI BIM IFC', fmt_title)
-        for col, h in enumerate(['No', 'Kategori IFC', 'Nama Elemen', 'Volume (m3)']): ws_boq.write(2, col, h, fmt_header)
+        ws_boq.write('A1', 'BACKUP BILL OF QUANTITIES (BOQ)', fmt_title)
+        for col, h in enumerate(['No', 'Kategori', 'Nama Elemen', 'Volume (m3)']): ws_boq.write(2, col, h, fmt_header)
 
-        ws_rab.set_column('B:B', 40)
-        ws_rab.set_column('E:E', 45) # Kolom Kuning Baru
+        ws_rab.set_column('B:B', 40); ws_rab.set_column('E:E', 45) 
         ws_rab.write('A1', f'RENCANA ANGGARAN BIAYA (RAB) - {project_name.upper()}', fmt_title)
         
-        headers_rab = ['No', 'Elemen Struktur', 'Volume', 'Satuan', 'Link Referensi AHSP (Pilih/Ketik)', 'Harga Satuan (Rp)', 'Total Harga (Rp)']
+        headers_rab = ['No', 'Elemen Struktur', 'Volume', 'Satuan', 'Referensi AHSP', 'Harga Satuan (Rp)', 'Total Harga (Rp)']
         for col, h in enumerate(headers_rab): ws_rab.write(2, col, h, fmt_header)
 
         if df_boq is None or df_boq.empty:
-            df_boq = pd.DataFrame([{"Kategori": "Data Manual", "Nama": "Item Pekerjaan 1", "Volume": 1.0}])
+            df_boq = pd.DataFrame([{"Kategori": "Data Manual", "Nama": "Item Kosong", "Volume": 0.0, "Referensi AHSP": ""}])
 
         baris_terakhir_rab = 3
 
-        # [FITUR BARU]: Tarik semua nama AHSP yang tersedia untuk dijadikan Dropdown di Excel
-        daftar_nama_ahsp = [resep['desc'] for kode, resep in resep_ahsp_aktif.items()]
-
         for index, row in df_boq.iterrows():
             row_excel = index + 3 
-            nama_elemen = str(row['Nama'])
+            nama_elemen = str(row.get('Nama', ''))
+            vol_elemen = float(row.get('Volume', 0))
+            ref_ahsp = str(row.get('Referensi AHSP', ''))
             
             ws_rab.write(row_excel, 0, index + 1, fmt_border)
-            ws_rab.write(row_excel, 1, f"{nama_elemen}", fmt_border)
-            ws_rab.write(row_excel, 2, float(row.get('Volume', 0)), fmt_border)
+            ws_rab.write(row_excel, 1, nama_elemen, fmt_border)
+            ws_rab.write(row_excel, 2, vol_elemen, fmt_border)
             ws_rab.write(row_excel, 3, 'm3', fmt_border)
+            ws_rab.write(row_excel, 4, ref_ahsp, fmt_border)
             
-            # Kolom Referensi AHSP (Kuning - Editable)
-            fmt_input = workbook.add_format({'border': 1, 'bg_color': '#FEF9C3', 'font_color': '#B45309'})
-            
-            # Default ke pilihan pertama jika ada, agar rumus VLOOKUP langsung jalan
-            tebakan_ahsp = daftar_nama_ahsp[0] if len(daftar_nama_ahsp) > 0 else "Data AHSP Kosong"
-            ws_rab.write(row_excel, 4, tebakan_ahsp, fmt_input)
-            
-            # [FITUR ENTERPRISE]: Tambahkan Validasi Dropdown List ke Cell Excel
-            if len(daftar_nama_ahsp) > 0:
-                ws_rab.data_validation(row_excel, 4, row_excel, 4, {
-                    'validate': 'list',
-                    'source': daftar_nama_ahsp,
-                    'input_title': 'Pilih AHSP',
-                    'input_message': 'Pilih referensi AHSP dari daftar untuk item ini.'
-                })
-            
-            # VLOOKUP Cerdas ke Tabel Rekap di Tab 4
-            ws_rab.write_formula(row_excel, 5, f"=IFERROR(VLOOKUP(E{row_excel+1},'4. AHSP S2 30 2025'!H:J, 3, FALSE), 0)", fmt_currency)
+            # LINK TEMBAK LANGSUNG KE REKAP TAB 4 (ZERO VLOOKUP)
+            if ref_ahsp in map_baris_rekap:
+                # Hasilnya jadi seperti: ='4. AHSP S2 30 2025'!J4
+                ws_rab.write_formula(row_excel, 5, f"='4. AHSP S2 30 2025'!J{map_baris_rekap[ref_ahsp]}", fmt_currency)
+            else:
+                ws_rab.write(row_excel, 5, 0, fmt_currency)
+                
             ws_rab.write_formula(row_excel, 6, f"=C{row_excel+1}*F{row_excel+1}", fmt_currency)
-            
             baris_terakhir_rab = row_excel
+
         # =======================================================
-        # TAB 1: REKAPITULASI (Termasuk PPN)
+        # TAB 1: REKAPITULASI (SUM LANGSUNG KE TAB 2)
         # =======================================================
         ws_rekap.set_column('B:B', 35)
         ws_rekap.write('A1', 'REKAPITULASI BIAYA PROYEK', fmt_title)
@@ -277,7 +226,8 @@ class Export_Engine:
         
         ws_rekap.write('A4', 1, fmt_border)
         ws_rekap.write('B4', 'Pekerjaan Struktur Utama', fmt_border)
-        ws_rekap.write_formula('C4', f"='2. RAB'!G{baris_terakhir_rab + 2}", fmt_currency)
+        # SUM seluruh baris G di Tab 2
+        ws_rekap.write_formula('C4', f"=SUM('2. RAB'!G4:G{baris_terakhir_rab + 1})", fmt_currency)
         
         ws_rekap.write('B6', 'A. TOTAL BIAYA FISIK', fmt_header)
         ws_rekap.write_formula('C6', "=SUM(C4:C4)", fmt_currency_bold)
@@ -288,104 +238,9 @@ class Export_Engine:
         ws_rekap.write('B8', 'C. GRAND TOTAL (A + B)', fmt_header)
         ws_rekap.write_formula('C8', "=C6 + C7", fmt_currency_bold)
 
-        # =======================================================
-        # TAB 5: SMKK (STANDAR 9 KOMPONEN + BPJS DINAMIS)
-        # =======================================================
-        ws_smkk.set_column('B:B', 60)
-        ws_smkk.write('A1', 'RENCANA BIAYA PENERAPAN SISTEM MANAJEMEN KESELAMATAN KONSTRUKSI (SMKK)', fmt_title)
-        
-        # [AUDIT PATCH FINAL]: Koreksi Paradigma BPJS (Anti-Galat Dimensional)
-        # Jangan pernah menjumlahkan campuran unit Volume fisik. Gunakan kolom Rupiah.
-        if 'Total Harga (Rp)' in df_boq.columns:
-            estimasi_rab_awal = df_boq['Total Harga (Rp)'].sum()
-            nilai_bpjs_aktual = hitung_bpjs_berjenjang(estimasi_rab_awal)
-        else:
-            # Jika harga belum dipetakan secara final di Python, kembalikan 0.
-            # Hal ini memaksa akuntabilitas PPK untuk menautkan sel Excel BPJS ke Total RAB secara manual.
-            nilai_bpjs_aktual = 0.0
-       
-
-        headers_smkk = ['No', 'Uraian Pekerjaan', 'Satuan', 'Volume', 'Harga Satuan (Rp)', 'Total Harga (Rp)']
-        for col, h in enumerate(headers_smkk): ws_smkk.write(2, col, h, fmt_header)
-        
-        smkk_items = [
-            ("1. Penyiapan RKK, RKPPL, RMLLP, dan RMPK", "", "", "", ""),
-            ("   a. Pembuatan Dokumen SMKK (RKK, RMPK, RKPPL)", "Set", 1, 250000, "=D5*E5"),
-            ("2. Sosialisasi, Promosi, dan Pelatihan", "", "", "", ""),
-            ("   a. Spanduk (Banner) K3", "Lbr", 1, 150000, "=D7*E7"),
-            ("   b. Papan Informasi K3", "Bh", 1, 250000, "=D8*E8"),
-            ("3. Alat Pelindung Kerja (APK) dan APD", "", "", "", ""),
-            ("   a. Topi Pelindung (Safety Helmet)", "Bh", 5, 65000, "=D11*E11"),
-            ("   b. Sepatu Keselamatan (Safety Shoes)", "Psg", 5, 160000, "=D12*E12"),
-            ("   c. Rompi Keselamatan (Safety Vest)", "Bh", 5, 45000, "=D13*E13"),
-            ("4. Asuransi dan Perizinan", "", "", "", ""),
-            ("   a. BPJS Ketenagakerjaan (Sektor Konstruksi PP 44/2015)", "Ls", 1, nilai_bpjs_aktual, "=D16*E16"),
-            ("5. Personel K3 Konstruksi", "", "", "", ""),
-            ("   a. Petugas Keselamatan Konstruksi (Tingkat Risiko Kecil)", "OB", 1, 2500000, "=D19*E19"),
-            ("6. Fasilitas Sarana, Prasarana, dan Alat Kesehatan", "", "", "", ""),
-            ("   a. Peralatan P3K (Kotak P3K Lengkap)", "Ls", 1, 300000, "=D22*E22"),
-            ("7. Rambu-Rambu dan Barikade", "", "", "", ""),
-            ("   a. Rambu Peringatan (Warning Sign)", "Ls", 1, 250000, "=D25*E25"),
-            ("8. Konsultasi dengan Ahli Keselamatan", "", "", "", ""),
-            ("   a. (Tidak diwajibkan untuk Risiko Kecil)", "Ls", 0, 0, 0),
-            ("9. Kegiatan Pengendalian Risiko", "", "", "", ""),
-            ("   a. Alat Pemadam Api Ringan (APAR) 3 Kg", "Bh", 1, 450000, "=D30*E30")
-        ]
-        
-        row_smkk = 3
-        for item in smkk_items:
-            if item[1] == "":
-                ws_smkk.write(row_smkk, 0, "", fmt_border)
-                ws_smkk.write(row_smkk, 1, item[0], workbook.add_format({'bold': True, 'border': 1, 'bg_color': '#E5E7EB'}))
-                ws_smkk.write_blank(row_smkk, 2, "", fmt_border)
-                ws_smkk.write_blank(row_smkk, 3, "", fmt_border)
-                ws_smkk.write_blank(row_smkk, 4, "", fmt_border)
-                ws_smkk.write_blank(row_smkk, 5, "", fmt_border)
-            else:
-                ws_smkk.write(row_smkk, 0, "", fmt_border)
-                ws_smkk.write(row_smkk, 1, item[0], fmt_border) 
-                ws_smkk.write(row_smkk, 2, item[1], fmt_border) 
-                ws_smkk.write(row_smkk, 3, item[2], fmt_border) 
-                ws_smkk.write(row_smkk, 4, item[3], fmt_currency) 
-                ws_smkk.write_formula(row_smkk, 5, str(item[4]), fmt_currency) 
-            row_smkk += 1
-            
-        ws_smkk.write(row_smkk, 1, 'TOTAL BIAYA SMKK', fmt_header)
-        ws_smkk.write_formula(row_smkk, 5, f"=SUM(F4:F{row_smkk})", fmt_currency_bold)
-
-        # =======================================================
-        # TAB 6: TKDN (Tingkat Komponen Dalam Negeri)
-        # =======================================================
-        ws_tkdn.set_column('B:B', 30)
-        ws_tkdn.set_column('C:E', 22)
-        ws_tkdn.write('A1', 'PERHITUNGAN TINGKAT KOMPONEN DALAM NEGERI (TKDN)', fmt_title)
-        
-        headers_tkdn = ['No', 'Kategori Komponen', 'KDN (Dalam Negeri)', 'KLN (Luar Negeri)', 'Total Biaya (Rp)']
-        for col, h in enumerate(headers_tkdn): ws_tkdn.write(2, col, h, fmt_header)
-        
-        ws_tkdn.write('A4', 1, fmt_border)
-        ws_tkdn.write('B4', 'Bahan / Material Struktur', fmt_border)
-        ws_tkdn.write_formula('E4', f"='2. RAB'!G{baris_terakhir_rab + 2}", fmt_currency) 
-        ws_tkdn.write_formula('C4', "=E4 * 0.85", fmt_currency) 
-        ws_tkdn.write_formula('D4', "=E4 * 0.15", fmt_currency) 
-        
-        ws_tkdn.write('A5', 2, fmt_border)
-        ws_tkdn.write('B5', 'Tenaga Kerja & Upah', fmt_border)
-        ws_tkdn.write('E5', 50000000, fmt_currency) 
-        ws_tkdn.write_formula('C5', "=E5 * 1.0", fmt_currency) 
-        ws_tkdn.write('D5', 0, fmt_currency)
-        
-        ws_tkdn.write(5, 1, 'TOTAL', fmt_header)
-        ws_tkdn.write_formula(5, 2, "=SUM(C4:C5)", fmt_currency_bold)
-        ws_tkdn.write_formula(5, 3, "=SUM(D4:D5)", fmt_currency_bold)
-        ws_tkdn.write_formula(5, 4, "=SUM(E4:E5)", fmt_currency_bold)
-        
-        fmt_percent = workbook.add_format({'num_format': '0.00" %"', 'bold': True, 'border': 1, 'bg_color': '#D1D5DB', 'align': 'center'})
-        ws_tkdn.write(7, 1, 'NILAI TKDN PROYEK (%) =', fmt_header)
-        ws_tkdn.write_formula(7, 2, "=(C6/E6)*100", fmt_percent)
-
         workbook.close()
         return output.getvalue()
+
 
 
 
