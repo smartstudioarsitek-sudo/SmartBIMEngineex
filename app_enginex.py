@@ -1424,6 +1424,17 @@ elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
 elif selected_menu == "📑 Laporan RAB 5D":
     st.header("📑 Laporan Eksekutif RAB 5D (Dokumen Lelang)")
     st.caption("Generator Dokumen Rencana Anggaran Biaya standar Kementerian PUPR")
+    # =========================================================
+    # [FITUR KEAMANAN ZERO DUMMY] Mencegah Cetak Excel Kosong
+    # =========================================================
+    if 'master_ahsp_data' not in st.session_state:
+        st.error("🚨 SISTEM TERKUNCI: Database AHSP Kosong!")
+        st.warning("Aplikasi menolak mencetak angka nol/fiktif. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP** di sidebar, upload Template Excel AHSP-nya, lalu klik tombol merah **'Kunci Data'** terlebih dahulu.")
+        st.stop() # Menghentikan sistem agar tidak cetak Excel kosong
+    # =========================================================
+
+    # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
+    st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
 
     # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
     st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
@@ -1520,6 +1531,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
