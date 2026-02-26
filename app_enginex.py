@@ -1349,36 +1349,64 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
 
-# --- MODE ADMIN: EKSTRAKSI AHSP ---
+# --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
-    st.header("⚙️ Ekstraksi PDF PUPR ke Database Excel")
-    st.info("Menu khusus Admin. Cukup lakukan ini 1x setiap kali ada pembaruan Surat Edaran PUPR.")
+    import io
+    st.header("⚙️ Manajemen Database AHSP PUPR")
+    st.info("Menu khusus Admin. Unggah file Master Database AHSP (Excel/CSV) yang sudah terstruktur dengan pasti. Fitur AI dihentikan di menu ini untuk menjaga validitas angka.")
     
-    file_pdf_pupr = st.file_uploader("Upload Lampiran PDF AHSP PUPR:", type=["pdf"])
+    # A. SEDIAKAN TEMPLATE KOSONG UNTUK PENGGUNA
+    st.markdown("**1. Format Standar Sistem**")
+    st.caption("Jika belum memiliki format, silakan download template tabel standar ini lalu isi menggunakan Microsoft Excel.")
+    kolom_wajib = ["Bidang", "Kode_AHSP", "Deskripsi", "Kategori", "Nama_Komponen", "Satuan", "Koefisien"]
+    template_df = pd.DataFrame(columns=kolom_wajib)
     
-    if file_pdf_pupr and st.button("🚀 Ekstrak via AI & Buat Database", type="primary"):
-        with st.spinner("Mengekstrak tabel dari PDF... (Ini mungkin memakan waktu beberapa menit)"):
-            from modules.utils import pdf_extractor
-            
-            # 1. Ekstrak teks/tabel kotor menggunakan pdfplumber
-            raw_text = pdf_extractor.extract_text_from_pdf(file_pdf_pupr)
-            
-            # 2. (Simulasi) AI merapikan teks kotor menjadi format tabel terstruktur
-            # Dalam skenario nyata, Kakak bisa menggunakan Gemini prompt khusus tabel di sini.
-            # Untuk sekarang, kita buatkan struktur Excel dummy yang siap dipakai.
-            
-            df_template = pd.DataFrame([
-                {"Bidang": "SDA", "Kode_AHSP": "T.01.a", "Deskripsi": "1 m3 Galian Tanah Biasa", "Kategori": "Upah", "Nama_Komponen": "Pekerja", "Satuan": "OH", "Koefisien": 0.526},
-                {"Bidang": "SDA", "Kode_AHSP": "T.01.a", "Deskripsi": "1 m3 Galian Tanah Biasa", "Kategori": "Upah", "Nama_Komponen": "Mandor", "Satuan": "OH", "Koefisien": 0.052},
-            ])
-            
-            # 3. Simpan menjadi file Excel fisik di server/folder lokal
-            file_path = "Database_AHSP.xlsx"
-            df_template.to_excel(file_path, index=False)
-            
-            st.success(f"✅ Ekstraksi selesai! File {file_path} berhasil dibuat di sistem.")
-            st.dataframe(df_template)
+    output_template = io.BytesIO()
+    with pd.ExcelWriter(output_template, engine='xlsxwriter') as writer:
+        template_df.to_excel(writer, index=False, sheet_name='Master_AHSP')
+    
+    st.download_button(
+        label="📥 Download Template Excel AHSP", 
+        data=output_template.getvalue(), 
+        file_name="Template_Master_AHSP.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    
+    st.divider()
 
+    # B. UPLOADER DATABASE MURNI
+    st.markdown("**2. Unggah Data Master**")
+    file_master_ahsp = st.file_uploader("Upload file Master AHSP (.xlsx, .csv):", type=["xlsx", "xls", "csv"])
+    
+    if file_master_ahsp is not None:
+        try:
+            with st.spinner("Membaca dan memvalidasi keaslian data..."):
+                # Baca sesuai ekstensi file
+                if file_master_ahsp.name.endswith('.csv'):
+                    df_ahsp = pd.read_csv(file_master_ahsp)
+                else:
+                    df_ahsp = pd.read_excel(file_master_ahsp)
+                
+                # Validasi anti-bug: Pastikan strukturnya benar
+                kolom_file = df_ahsp.columns.tolist()
+                
+                if all(k in kolom_file for k in kolom_wajib):
+                    st.success(f"✅ Data tervalidasi! Berhasil memuat {len(df_ahsp)} baris resep AHSP.")
+                    
+                    # Tampilkan tabel asli dari file
+                    st.dataframe(df_ahsp, use_container_width=True)
+                    
+                    # Tombol Simpan ke Memori
+                    if st.button("💾 Kunci Data ke Sistem Estimasi", type="primary", use_container_width=True):
+                        st.session_state['master_ahsp_data'] = df_ahsp
+                        st.success("✅ Database terkunci! Modul RAB sekarang akan merujuk pada data ini secara mutlak.")
+                else:
+                    st.error("❌ Format file ditolak. Pastikan header tabel sesuai dengan template.")
+                    st.warning(f"Kolom yang terdeteksi di file Anda: {kolom_file}")
+                    
+        except Exception as e:
+            st.error(f"❌ Terjadi kesalahan saat memproses file: {e}")
+            
 # --- E. MODE LAPORAN RAB 5D ---
 elif selected_menu == "📑 Laporan RAB 5D":
     st.header("📑 Laporan Eksekutif RAB 5D (Dokumen Lelang)")
@@ -1472,6 +1500,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
