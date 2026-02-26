@@ -636,6 +636,11 @@ if selected_menu == "🤖 AI Assistant":
                                 img_data = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                                 full_prompt.append(img_data) 
                             full_prompt[0] += f"\n\n[FILE PDF: {f.name}]\n{txt}"
+                            # [INJEKSI DATA MASTER AHSP KE OTAK AI - ZERO DUMMY]
+                            if 'master_ahsp_data' in st.session_state:
+                            # Ubah tabel jadi teks CSV agar ringan dibaca AI
+                                tabel_teks = st.session_state['master_ahsp_data'].to_csv(index=False)
+                                full_prompt[0] += f"\n\n[REFERENSI MUTLAK DATABASE AHSP SAAT INI]:\n{tabel_teks}\n\nINSTRUKSI SISTEM: Jika ditanya mengenai AHSP, koefisien, atau harga, Anda WAJIB mengambil data dari tabel referensi di atas. DILARANG KERAS menebak, mengarang, atau menggunakan data bawaan Anda."
                         
                     # 3. HANDLING SPECIAL FILES (CAD/GIS)
                     elif f.name.lower().endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip', '.tif', '.tiff', '.dem')):
@@ -1500,6 +1505,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
