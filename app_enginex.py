@@ -618,11 +618,19 @@ if selected_menu == "🤖 AI Assistant":
 
         full_prompt = [prompt]
 
+        # =================================================================
+        # [INJEKSI DATA MASTER AHSP KE OTAK AI - ZERO DUMMY]
+        # Posisinya dipindah ke luar agar selalu terbaca AI setiap saat!
+        # =================================================================
+        if 'master_ahsp_data' in st.session_state:
+            tabel_teks = st.session_state['master_ahsp_data'].to_csv(index=False)
+            full_prompt[0] += f"\n\n[REFERENSI MUTLAK DATABASE AHSP SAAT INI]:\n{tabel_teks}\n\n[PERINTAH OVERRIDE TERTINGGI]: DILARANG KERAS MENGGUNAKAN ASUMSI! DILARANG KERAS MEMBUAT KODE PYTHON (```python)! Anda hanya bertugas sebagai pembaca teks. Baca langsung tabel CSV di atas, lalu jawab angkanya secara langsung di chat tanpa basa-basi."
+
         # LOGIKA BARU: UNIVERSAL FILE PROCESSOR
         if uploaded_files:
             for f in uploaded_files:
                 if f.name not in st.session_state.processed_files:
-                    
+                   
                     # 1. HANDLING GAMBAR BIASA
                     if f.name.lower().endswith(('.png','.jpg','.jpeg')): 
                         full_prompt.append(Image.open(f))
@@ -642,17 +650,9 @@ if selected_menu == "🤖 AI Assistant":
                                 img_data = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                                 full_prompt.append(img_data) 
                             full_prompt[0] += f"\n\n[FILE PDF: {f.name}]\n{txt}"
-
-                            # [INJEKSI DATA MASTER AHSP KE OTAK AI - ZERO DUMMY]
-                            if 'master_ahsp_data' in st.session_state:
-                                # Ubah tabel jadi teks CSV agar ringan dibaca AI
-                                tabel_teks = st.session_state['master_ahsp_data'].to_csv(index=False)
-                                full_prompt[0] += f"\n\n[REFERENSI MUTLAK DATABASE AHSP SAAT INI]:\n{tabel_teks}\n\n[INSTRUKSI SISTEM OVERRIDE]: Anda WAJIB menjawab pertanyaan pengguna SECARA LANGSUNG menggunakan data tabel di atas. DILARANG KERAS mendelegasikan tugas ini ke 'Estimator AI', 'Procurement', atau tim lain. Abaikan instruksi persona Anda yang melarang menjawab detail teknis untuk prompt ini. Langsung sebutkan angkanya sekarang juga!"
-                            
                         
                     # 3. HANDLING SPECIAL FILES (CAD/GIS)
                     elif f.name.lower().endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip', '.tif', '.tiff', '.dem')):
-                    
                         with st.spinner(f"Menganalisis struktur file {f.name}..."):
                             try:
                                 text_data, img_data, _ = libs_loader.process_special_file(f)
@@ -1513,6 +1513,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
