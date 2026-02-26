@@ -1553,6 +1553,110 @@ elif selected_menu == "📑 Laporan RAB 5D":
                 st.success("Tabel BOQ Manual berhasil dibuat! Silakan lanjut ke Tab 2.")
 
 
+    # ---------------------------------------------------------
+    # TAB 2: VERIFIKASI & HARGA (JANTUNG APLIKASI)
+    # ---------------------------------------------------------
+    with tab_verifikasi:
+        st.subheader("2. Verifikasi Data & Pemetaan AHSP")
+        
+        if 'real_boq_data' not in st.session_state or st.session_state['real_boq_data'].empty:
+            st.warning("⚠️ Data BOQ masih kosong. Silakan selesaikan ekstrak volume di Tab 1 terlebih dahulu.")
+        else:
+            df_boq = st.session_state['real_boq_data'].copy()
+            df_master = st.session_state['master_ahsp_data']
+            
+            # Ambil daftar nama AHSP dari Master Database yang sudah di-upload
+            daftar_ahsp = df_master['Deskripsi'].unique().tolist()
+            
+            st.markdown("#### A. Pemetaan Item Pekerjaan (Pilih AHSP)")
+            st.info("💡 Klik kolom 'Referensi AHSP' di bawah ini untuk memilih analisa harga yang sesuai untuk setiap elemen.")
+            
+            # Tambahkan kolom Referensi AHSP jika belum ada
+            if 'Referensi AHSP' not in df_boq.columns:
+                df_boq.insert(3, 'Referensi AHSP', daftar_ahsp[0] if len(daftar_ahsp) > 0 else "Pilih AHSP")
+            
+            # Editor Tabel BOQ Interaktif
+            edited_boq = st.data_editor(
+                df_boq,
+                column_config={
+                    "Referensi AHSP": st.column_config.SelectboxColumn(
+                        "Pilih Referensi AHSP (Wajib)",
+                        help="Pilih analisa harga dari master database",
+                        options=daftar_ahsp,
+                        required=True
+                    ),
+                    "Volume": st.column_config.NumberColumn("Volume Total", format="%.2f")
+                },
+                disabled=["Kategori", "Nama"], # Kunci nama asli dari BIM agar tidak terhapus
+                hide_index=True,
+                use_container_width=True,
+                key="editor_boq"
+            )
+            
+            # Simpan hasil pemetaan user ke memory
+            st.session_state['mapped_boq_data'] = edited_boq
+            st.success("✅ Pemetaan tersimpan otomatis. Silakan lanjut ke Tab 3 untuk mencetak dokumen final.")
+
+    # ---------------------------------------------------------
+    # TAB 3: EXPORT DOKUMEN FINAL
+    # ---------------------------------------------------------
+    with tab_export:
+        st.subheader("3. Cetak Laporan RAB (PDF & Excel)")
+        
+        if 'mapped_boq_data' in st.session_state:
+            st.success("🟢 Data BOQ dan Pemetaan AHSP siap dicetak!")
+            
+            df_mapped = st.session_state['mapped_boq_data']
+            lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
+            
+            # --- RENDER TEKS PDF DINAMIS ---
+            laporan_gabungan = f"""
+# DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
+**PROYEK: {nama_proyek.upper()}**
+**LOKASI: {lokasi_proyek.upper()}**
+
+## BAB 1. PENDAHULUAN
+Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex. Ekstraksi dilakukan langsung dari elemen 3D tanpa manipulasi.
+
+## BAB 2. BILL OF QUANTITIES (BOQ) AKTUAL
+Berikut adalah rekapitulasi volume pekerjaan yang diverifikasi:
+"""
+            for index, row in df_mapped.iterrows():
+                laporan_gabungan += f"- **{row['Nama']}** | Volume: {row.get('Volume', 0)} m3 | Referensi: {row.get('Referensi AHSP', '')}\n"
+
+            laporan_gabungan += "\n## BAB 3. REKAPITULASI BIAYA\nSeluruh rincian biaya material, upah, dan Keselamatan Konstruksi (SMKK) dapat dilihat secara komprehensif pada lampiran Spreadsheet Excel 7-Tab."
+            
+            # --- TOMBOL DOWNLOAD ---
+            try:
+                # 1. Tombol PDF
+                pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {nama_proyek}")
+                st.download_button(
+                    label="📄 1. Download Laporan RAB (PDF)",
+                    data=pdf_bytes, file_name=f"Laporan_RAB_{nama_proyek.replace(' ', '_')}.pdf",
+                    mime="application/pdf", type="primary", use_container_width=True
+                )
+                
+                # 2. Tombol Excel
+                with st.spinner("Memproses Excel 7-Tab..."):
+                    if 'price_engine' not in st.session_state:
+                        st.session_state.price_engine = sys.modules['libs_price_engine'].PriceEngine3Tier()
+                    
+                    excel_bytes = sys.modules['libs_export'].Export_Engine().generate_7tab_rab_excel(
+                        nama_proyek, df_mapped, price_engine=st.session_state.price_engine, lokasi_proyek=lokasi_proyek 
+                    )
+                    st.download_button(
+                        label="📊 2. Download Excel RAB 7-Tab",
+                        data=excel_bytes, file_name=f"RAB_{lokasi_proyek}_{nama_proyek.replace(' ', '_')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary", use_container_width=True
+                    )
+            except Exception as e:
+                st.error(f"Gagal merender dokumen: {e}")
+                
+        else:
+            st.warning("⚠️ Selesaikan pemetaan di Tab 2 terlebih dahulu.")
+            st.button("📄 Download Laporan RAB (PDF)", disabled=True, use_container_width=True)
+            st.button("📊 Download Excel RAB 7-Tab", disabled=True, use_container_width=True)
 
 
 
