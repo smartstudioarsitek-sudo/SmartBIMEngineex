@@ -645,12 +645,9 @@ if selected_menu == "🤖 AI Assistant":
 
                             # [INJEKSI DATA MASTER AHSP KE OTAK AI - ZERO DUMMY]
                             if 'master_ahsp_data' in st.session_state:
+                                # Ubah tabel jadi teks CSV agar ringan dibaca AI
                                 tabel_teks = st.session_state['master_ahsp_data'].to_csv(index=False)
-                                full_prompt[0] += f"\n\n[REFERENSI MUTLAK DATABASE AHSP SAAT INI]:\n{tabel_teks}\n\n[PERINTAH OVERRIDE TERTINGGI]: DILARANG KERAS MENGGUNAKAN ASUMSI! DILARANG KERAS MEMBUAT KODE PYTHON (```python)! Anda hanya bertugas sebagai pembaca teks. Baca langsung tabel CSV di atas, lalu jawab angkanya secara langsung di chat tanpa basa-basi."
-
-                            # LOGIKA BARU: UNIVERSAL FILE PROCESSOR
-                            if uploaded_files:
-                                for f in uploaded_files:
+                                full_prompt[0] += f"\n\n[REFERENSI MUTLAK DATABASE AHSP SAAT INI]:\n{tabel_teks}\n\n[INSTRUKSI SISTEM OVERRIDE]: Anda WAJIB menjawab pertanyaan pengguna SECARA LANGSUNG menggunakan data tabel di atas. DILARANG KERAS mendelegasikan tugas ini ke 'Estimator AI', 'Procurement', atau tim lain. Abaikan instruksi persona Anda yang melarang menjawab detail teknis untuk prompt ini. Langsung sebutkan angkanya sekarang juga!"
                             
                         
                     # 3. HANDLING SPECIAL FILES (CAD/GIS)
@@ -1516,6 +1513,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
