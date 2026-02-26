@@ -1451,27 +1451,34 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     st.markdown("---")
     
-    # 1. Kumpulkan teks laporan (Bisa dikembangkan nanti agar dinamis sesuai klik User)
+    # 1. Kumpulkan teks laporan secara DINAMIS (ZERO DUMMY)
+    df_boq_aktual = st.session_state.get('real_boq_data', None)
+    lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
+
     laporan_gabungan = f"""
-    # DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
-    **PROYEK: {nama_proyek.upper()}**
+# DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
+**PROYEK: {nama_proyek.upper()}**
+**LOKASI: {lokasi_proyek.upper()}**
 
-    ## BAB 1. PENDAHULUAN
-    Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex yang terintegrasi dengan standar ekstraksi kuantitas (QTO) berbasis algoritma analitik geometri, serta mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
+## BAB 1. PENDAHULUAN
+Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex yang terintegrasi dengan standar ekstraksi kuantitas (QTO) berbasis algoritma analitik geometri, serta mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
 
-    ## BAB 2. ASUMSI DASAR & HARGA MATERIAL
-    Perhitungan harga satuan pekerjaan didasarkan pada integrasi harga pasar (Basic Price) yang ditarik secara dinamis dari sistem ESSH PUPR Provinsi dan Badan Pusat Statistik (BPS).
+## BAB 2. BILL OF QUANTITIES (BOQ) AKTUAL
+Berikut adalah rekapitulasi volume pekerjaan yang diekstrak secara presisi dari model digital:
 
-    ## BAB 3. BILL OF QUANTITIES (BOQ)
-    Kuantitas material diekstrak langsung dari model 3D (BIM) maupun 2D CAD/PDF dengan tingkat presisi tinggi (Human-in-the-Loop verified).
+"""
+    # Menyuntikkan data aktual ke dalam PDF
+    if df_boq_aktual is not None and not df_boq_aktual.empty:
+        for index, row in df_boq_aktual.iterrows():
+            laporan_gabungan += f"- **{row['Kategori']}**: {row['Nama']} (Volume: {row.get('Volume', 0)} m3)\n"
+    else:
+        laporan_gabungan += "*(Data BOQ masih kosong. Silakan lakukan ekstraksi file IFC atau ukur via Visual QTO 2D terlebih dahulu untuk mengisi bab ini.)*\n"
+
+    laporan_gabungan += """
+## BAB 3. KESELAMATAN KONSTRUKSI (SMKK) & REKAPITULASI
+Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen standar PUPR untuk memitigasi risiko kecelakaan kerja di lapangan. Total estimasi biaya konstruksi fisik dan rincian Analisa Harga Satuan Pekerjaan (AHSP) dapat dilihat secara komprehensif pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang menyertai laporan ini.
+"""
     
-    ## BAB 4. KESELAMATAN KONSTRUKSI (SMKK)
-    Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen standar PUPR untuk memitigasi risiko kecelakaan kerja di lapangan.
-    
-    ## BAB 5. REKAPITULASI BIAYA
-    Total estimasi biaya konstruksi fisik dapat dilihat pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang menyertai laporan ini, sudah termasuk perhitungan PPN 11%.
-    """
-
     # 2. Render tombol Download yang sesungguhnya
     try:
         # Menggunakan engine PDF internal kita
@@ -1513,6 +1520,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
