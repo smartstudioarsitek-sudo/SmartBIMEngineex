@@ -23,22 +23,6 @@ class Export_Engine:
 
     def generate_7tab_rab_excel(self, project_name="Proyek Strategis Nasional", df_boq=None, price_engine=None, lokasi_proyek="Lampung"):
         
-        # --- [INJEKSI RUMUS BPJS PP 44/2015] ---
-        def hitung_bpjs_berjenjang(nilai_kontrak_tanpa_ppn):
-            sisa_nilai = nilai_kontrak_tanpa_ppn
-            bpjs_total = 0.0
-            if sisa_nilai > 0:
-                potongan = min(sisa_nilai, 100000000); bpjs_total += potongan * 0.0024; sisa_nilai -= potongan
-            if sisa_nilai > 0:
-                potongan = min(sisa_nilai, 400000000); bpjs_total += potongan * 0.0019; sisa_nilai -= potongan
-            if sisa_nilai > 0:
-                potongan = min(sisa_nilai, 500000000); bpjs_total += potongan * 0.0015; sisa_nilai -= potongan
-            if sisa_nilai > 0:
-                potongan = min(sisa_nilai, 4000000000); bpjs_total += potongan * 0.0012; sisa_nilai -= potongan
-            if sisa_nilai > 0:
-                bpjs_total += sisa_nilai * 0.0010
-            return bpjs_total
-
         output = BytesIO()
         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
         
@@ -49,11 +33,13 @@ class Export_Engine:
         fmt_currency = workbook.add_format({'num_format': 'Rp #,##0', 'border': 1})
         fmt_currency_bold = workbook.add_format({'num_format': 'Rp #,##0', 'border': 1, 'bold': True, 'bg_color': '#D1D5DB'})
         
-        # --- MEMBUAT SHEET ---
+        # --- MEMBUAT 7 SHEET KEMBALI UTUH ---
         ws_rekap = workbook.add_worksheet('1. Rekap')
         ws_rab = workbook.add_worksheet('2. RAB')
         ws_boq = workbook.add_worksheet('3. Backup BOQ')
         ws_ahsp = workbook.add_worksheet('4. AHSP S2 30 2025')
+        ws_smkk = workbook.add_worksheet('5. SMKK')
+        ws_tkdn = workbook.add_worksheet('6. TKDN')
         ws_bp = workbook.add_worksheet('7. Basic Price')
 
         import streamlit as st
@@ -90,7 +76,7 @@ class Export_Engine:
                     resep_ahsp_aktif[desc]["bahan"][komponen] = (koef, satuan)
 
         # =======================================================
-        # TAB 7: BASIC PRICE (PETA LOKASI BARIS EXCEL)
+        # TAB 7: BASIC PRICE
         # =======================================================
         ws_bp.write('A1', f'DAFTAR HARGA DASAR MATERIAL & UPAH (IKK {lokasi_proyek.upper()})', fmt_title)
         headers_bp = ['No', 'Kategori', 'Nama Material / Upah', 'Satuan', 'Harga Satuan (Rp)', 'Sumber Data']
@@ -100,23 +86,22 @@ class Export_Engine:
                 
         row_bp = 3
         idx = 1
-        map_baris_bp = {} # PENYELAMAT ANTI VLOOKUP: Simpan posisi persis barisnya
+        map_baris_bp = {} # Simpan posisi persis barisnya
 
         for nama_item, (kategori, satuan) in kebutuhan_unik.items():
             ws_bp.write(row_bp, 0, idx, fmt_border)
             ws_bp.write(row_bp, 1, kategori, fmt_border)
             ws_bp.write(row_bp, 2, nama_item, fmt_border)
             ws_bp.write(row_bp, 3, satuan, fmt_border)
-            ws_bp.write(row_bp, 4, 0, fmt_currency) # Harga Nol Menunggu Ketikan
-            ws_bp.write(row_bp, 5, "Ketik Manual", fmt_border)
+            ws_bp.write(row_bp, 4, 0, fmt_currency) # Tunggu Ketikan User
+            ws_bp.write(row_bp, 5, "Ketik Manual di Kolom E", fmt_border)
             
-            # Kunci posisi baris item ini (Misal Pekerja ada di baris ke-4 Excel)
             map_baris_bp[nama_item] = row_bp + 1 
             row_bp += 1
             idx += 1
 
         # =======================================================
-        # TAB 4: AHSP (LINK LANGSUNG KE TAB 7, ZERO VLOOKUP)
+        # TAB 4: AHSP (LINK LANGSUNG KE TAB 7)
         # =======================================================
         ws_ahsp.set_column('A:A', 15); ws_ahsp.set_column('B:B', 35); ws_ahsp.set_column('C:D', 12); ws_ahsp.set_column('E:F', 18)
         ws_ahsp.write('A1', 'ANALISA HARGA SATUAN PEKERJAAN (AHSP)', fmt_title)
@@ -127,7 +112,7 @@ class Export_Engine:
         
         row_ahsp = 3
         row_rekap = 3
-        map_baris_rekap = {} # PENYELAMAT ANTI VLOOKUP UNTUK TAB 2
+        map_baris_rekap = {} 
         
         if not resep_ahsp_aktif:
             ws_ahsp.write(row_ahsp, 0, "Buku Resep AHSP Kosong", fmt_header)
@@ -142,7 +127,6 @@ class Export_Engine:
                 
                 start_row = row_ahsp + 1
                 
-                # Fungsi tulis baris dengan LINK LANGSUNG
                 def tulis_komponen(kategori_nama, dict_data):
                     nonlocal row_ahsp
                     for nama_k, (koef, sat) in dict_data.items():
@@ -151,9 +135,7 @@ class Export_Engine:
                         ws_ahsp.write(row_ahsp, 2, koef, fmt_border)
                         ws_ahsp.write(row_ahsp, 3, sat, fmt_border)
                         
-                        # LINK TEMBAK LANGSUNG KE SEL TAB 7
                         if nama_k in map_baris_bp:
-                            # Hasilnya jadi seperti: ='7. Basic Price'!E4
                             ws_ahsp.write_formula(row_ahsp, 4, f"='7. Basic Price'!E{map_baris_bp[nama_k]}", fmt_currency)
                         else:
                             ws_ahsp.write(row_ahsp, 4, 0, fmt_currency)
@@ -168,17 +150,16 @@ class Export_Engine:
                 ws_ahsp.write(row_ahsp, 4, 'Total Harga Satuan', fmt_header)
                 ws_ahsp.write_formula(row_ahsp, 5, f"=SUM(F{start_row}:F{row_ahsp})", fmt_currency_bold)
                     
-                # INJEKSI KE TABEL REKAP & SIMPAN POSISINYA
                 ws_ahsp.write(row_rekap, 7, desc, fmt_border)
                 ws_ahsp.write(row_rekap, 8, "Ls/m3", fmt_border)
                 ws_ahsp.write_formula(row_rekap, 9, f"=F{row_ahsp+1}", fmt_currency)
                 
-                map_baris_rekap[desc] = row_rekap + 1 # Simpan posisi baris di kolom J
+                map_baris_rekap[desc] = row_rekap + 1
                 row_rekap += 1
                 row_ahsp += 3 
 
         # =======================================================
-        # TAB 3 & 2: INJEKSI DATA RAB DENGAN LINK LANGSUNG KE TAB 4
+        # TAB 3 & 2: DATA RAB (LINK LANGSUNG KE TAB 4)
         # =======================================================
         ws_boq.set_column('B:C', 30)
         ws_boq.write('A1', 'BACKUP BILL OF QUANTITIES (BOQ)', fmt_title)
@@ -207,9 +188,7 @@ class Export_Engine:
             ws_rab.write(row_excel, 3, 'm3', fmt_border)
             ws_rab.write(row_excel, 4, ref_ahsp, fmt_border)
             
-            # LINK TEMBAK LANGSUNG KE REKAP TAB 4 (ZERO VLOOKUP)
             if ref_ahsp in map_baris_rekap:
-                # Hasilnya jadi seperti: ='4. AHSP S2 30 2025'!J4
                 ws_rab.write_formula(row_excel, 5, f"='4. AHSP S2 30 2025'!J{map_baris_rekap[ref_ahsp]}", fmt_currency)
             else:
                 ws_rab.write(row_excel, 5, 0, fmt_currency)
@@ -218,7 +197,7 @@ class Export_Engine:
             baris_terakhir_rab = row_excel
 
         # =======================================================
-        # TAB 1: REKAPITULASI (SUM LANGSUNG KE TAB 2)
+        # TAB 1: REKAPITULASI
         # =======================================================
         ws_rekap.set_column('B:B', 35)
         ws_rekap.write('A1', 'REKAPITULASI BIAYA PROYEK', fmt_title)
@@ -226,7 +205,6 @@ class Export_Engine:
         
         ws_rekap.write('A4', 1, fmt_border)
         ws_rekap.write('B4', 'Pekerjaan Struktur Utama', fmt_border)
-        # SUM seluruh baris G di Tab 2
         ws_rekap.write_formula('C4', f"=SUM('2. RAB'!G4:G{baris_terakhir_rab + 1})", fmt_currency)
         
         ws_rekap.write('B6', 'A. TOTAL BIAYA FISIK', fmt_header)
@@ -238,8 +216,90 @@ class Export_Engine:
         ws_rekap.write('B8', 'C. GRAND TOTAL (A + B)', fmt_header)
         ws_rekap.write_formula('C8', "=C6 + C7", fmt_currency_bold)
 
+        # =======================================================
+        # TAB 5: SMKK (DIKEMBALIKAN)
+        # =======================================================
+        ws_smkk.set_column('B:B', 60)
+        ws_smkk.write('A1', 'RENCANA BIAYA PENERAPAN SISTEM MANAJEMEN KESELAMATAN KONSTRUKSI (SMKK)', fmt_title)
+        
+        headers_smkk = ['No', 'Uraian Pekerjaan', 'Satuan', 'Volume', 'Harga Satuan (Rp)', 'Total Harga (Rp)']
+        for col, h in enumerate(headers_smkk): ws_smkk.write(2, col, h, fmt_header)
+        
+        smkk_items = [
+            ("1. Penyiapan RKK, RKPPL, RMLLP, dan RMPK", "", "", "", ""),
+            ("   a. Pembuatan Dokumen SMKK (RKK, RMPK, RKPPL)", "Set", 1, 250000, "=D5*E5"),
+            ("2. Sosialisasi, Promosi, dan Pelatihan", "", "", "", ""),
+            ("   a. Spanduk (Banner) K3", "Lbr", 1, 150000, "=D7*E7"),
+            ("   b. Papan Informasi K3", "Bh", 1, 250000, "=D8*E8"),
+            ("3. Alat Pelindung Kerja (APK) dan APD", "", "", "", ""),
+            ("   a. Topi Pelindung (Safety Helmet)", "Bh", 5, 65000, "=D11*E11"),
+            ("   b. Sepatu Keselamatan (Safety Shoes)", "Psg", 5, 160000, "=D12*E12"),
+            ("   c. Rompi Keselamatan (Safety Vest)", "Bh", 5, 45000, "=D13*E13"),
+            ("4. Asuransi dan Perizinan", "", "", "", ""),
+            ("   a. BPJS Ketenagakerjaan", "Ls", 1, 0, "=D16*E16"), # Harga diset 0 sementara
+            ("5. Personel K3 Konstruksi", "", "", "", ""),
+            ("   a. Petugas Keselamatan Konstruksi", "OB", 1, 2500000, "=D19*E19"),
+            ("6. Fasilitas Sarana, Prasarana, dan Alat Kesehatan", "", "", "", ""),
+            ("   a. Peralatan P3K (Kotak P3K Lengkap)", "Ls", 1, 300000, "=D22*E22"),
+            ("7. Rambu-Rambu dan Barikade", "", "", "", ""),
+            ("   a. Rambu Peringatan (Warning Sign)", "Ls", 1, 250000, "=D25*E25"),
+            ("8. Konsultasi dengan Ahli Keselamatan", "", "", "", ""),
+            ("   a. (Tidak diwajibkan untuk Risiko Kecil)", "Ls", 0, 0, 0),
+            ("9. Kegiatan Pengendalian Risiko", "", "", "", ""),
+            ("   a. Alat Pemadam Api Ringan (APAR) 3 Kg", "Bh", 1, 450000, "=D30*E30")
+        ]
+        
+        row_smkk = 3
+        for item in smkk_items:
+            if item[1] == "":
+                ws_smkk.write(row_smkk, 0, "", fmt_border)
+                ws_smkk.write(row_smkk, 1, item[0], workbook.add_format({'bold': True, 'border': 1, 'bg_color': '#E5E7EB'}))
+                for c in range(2, 6): ws_smkk.write_blank(row_smkk, c, "", fmt_border)
+            else:
+                ws_smkk.write(row_smkk, 0, "", fmt_border)
+                ws_smkk.write(row_smkk, 1, item[0], fmt_border) 
+                ws_smkk.write(row_smkk, 2, item[1], fmt_border) 
+                ws_smkk.write(row_smkk, 3, item[2], fmt_border) 
+                ws_smkk.write(row_smkk, 4, item[3], fmt_currency) 
+                ws_smkk.write_formula(row_smkk, 5, str(item[4]), fmt_currency) 
+            row_smkk += 1
+            
+        ws_smkk.write(row_smkk, 1, 'TOTAL BIAYA SMKK', fmt_header)
+        ws_smkk.write_formula(row_smkk, 5, f"=SUM(F4:F{row_smkk})", fmt_currency_bold)
+
+        # =======================================================
+        # TAB 6: TKDN (DIKEMBALIKAN & DILINK KE TAB 2)
+        # =======================================================
+        ws_tkdn.set_column('B:B', 30); ws_tkdn.set_column('C:E', 22)
+        ws_tkdn.write('A1', 'PERHITUNGAN TINGKAT KOMPONEN DALAM NEGERI (TKDN)', fmt_title)
+        headers_tkdn = ['No', 'Kategori Komponen', 'KDN (Dalam Negeri)', 'KLN (Luar Negeri)', 'Total Biaya (Rp)']
+        for col, h in enumerate(headers_tkdn): ws_tkdn.write(2, col, h, fmt_header)
+        
+        ws_tkdn.write('A4', 1, fmt_border)
+        ws_tkdn.write('B4', 'Bahan / Material Struktur', fmt_border)
+        # Tembak langsung ke total RAB di Tab 2
+        ws_tkdn.write_formula('E4', f"=SUM('2. RAB'!G4:G{baris_terakhir_rab + 1})", fmt_currency) 
+        ws_tkdn.write_formula('C4', "=E4 * 0.85", fmt_currency) 
+        ws_tkdn.write_formula('D4', "=E4 * 0.15", fmt_currency) 
+        
+        ws_tkdn.write('A5', 2, fmt_border)
+        ws_tkdn.write('B5', 'Tenaga Kerja & Upah', fmt_border)
+        ws_tkdn.write('E5', 50000000, fmt_currency) # Asumsi statis sementara
+        ws_tkdn.write_formula('C5', "=E5 * 1.0", fmt_currency) 
+        ws_tkdn.write('D5', 0, fmt_currency)
+        
+        ws_tkdn.write(5, 1, 'TOTAL', fmt_header)
+        ws_tkdn.write_formula(5, 2, "=SUM(C4:C5)", fmt_currency_bold)
+        ws_tkdn.write_formula(5, 3, "=SUM(D4:D5)", fmt_currency_bold)
+        ws_tkdn.write_formula(5, 4, "=SUM(E4:E5)", fmt_currency_bold)
+        
+        fmt_percent = workbook.add_format({'num_format': '0.00" %"', 'bold': True, 'border': 1, 'bg_color': '#D1D5DB', 'align': 'center'})
+        ws_tkdn.write(7, 1, 'NILAI TKDN PROYEK (%) =', fmt_header)
+        ws_tkdn.write_formula(7, 2, "=IFERROR((C6/E6)*100, 0)", fmt_percent)
+
         workbook.close()
         return output.getvalue()
+
 
 
 
