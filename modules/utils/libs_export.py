@@ -231,55 +231,43 @@ class Export_Engine:
         for col, h in enumerate(headers_rab): ws_rab.write(2, col, h, fmt_header)
 
         if df_boq is None or df_boq.empty:
-            df_boq = pd.DataFrame([{"Kategori": "IfcColumn", "Nama": "Kolom K1 (Upload IFC untuk data asli)", "Volume": 64.0}])
+            df_boq = pd.DataFrame([{"Kategori": "Data Manual", "Nama": "Item Pekerjaan 1", "Volume": 1.0}])
 
         baris_terakhir_rab = 3
+
+        # [FITUR BARU]: Tarik semua nama AHSP yang tersedia untuk dijadikan Dropdown di Excel
+        daftar_nama_ahsp = [resep['desc'] for kode, resep in resep_ahsp_aktif.items()]
 
         for index, row in df_boq.iterrows():
             row_excel = index + 3 
             nama_elemen = str(row['Nama'])
             
-            # AI-QS mencoba menebak pasangan AHSP yang tepat
-            tebakan_ahsp = "- Ketik/Paste Nama AHSP dari Tab 4 Di Sini -"
-            for kode_ahsp, resep in resep_ahsp_aktif.items():
-                desc = resep.get('desc', kode_ahsp).lower()
-                if ("beton" in nama_elemen.lower() and "beton" in desc) or \
-                   ("besi" in nama_elemen.lower() and "besi" in desc) or \
-                   ("pasangan" in nama_elemen.lower() and "pasangan" in desc):
-                    tebakan_ahsp = resep.get('desc', kode_ahsp)
-                    break
             ws_rab.write(row_excel, 0, index + 1, fmt_border)
             ws_rab.write(row_excel, 1, f"{nama_elemen}", fmt_border)
-            ws_rab.write(row_excel, 2, float(row['Volume']), fmt_border) # <--- PERBAIKAN FATAL: Menulis angka mutlak
+            ws_rab.write(row_excel, 2, float(row.get('Volume', 0)), fmt_border)
             ws_rab.write(row_excel, 3, 'm3', fmt_border)
             
             # Kolom Referensi AHSP (Kuning - Editable)
             fmt_input = workbook.add_format({'border': 1, 'bg_color': '#FEF9C3', 'font_color': '#B45309'})
             
-            tebakan_ahsp = "- Ketik/Paste Nama AHSP dari Tab 4 Di Sini -"
-            nama_elemen_lower = nama_elemen.lower()
-            
-            for kode_ahsp, resep in resep_ahsp_aktif.items():
-                desc_ahsp = resep.get('desc', kode_ahsp)
-                desc_lower = desc_ahsp.lower()
-                
-                # Pencocokan karena nama elemen sudah baku bahasa SNI
-                if "beton" in nama_elemen_lower and "beton" in desc_lower:
-                    tebakan_ahsp = desc_ahsp
-                    break
-                elif "bata" in nama_elemen_lower and ("bata" in desc_lower or "pasangan" in desc_lower):
-                    tebakan_ahsp = desc_ahsp
-                    break
-                elif ("pintu" in nama_elemen_lower or "jendela" in nama_elemen_lower) and ("pintu" in desc_lower or "jendela" in desc_lower):
-                    tebakan_ahsp = desc_ahsp
-                    break
-
+            # Default ke pilihan pertama jika ada, agar rumus VLOOKUP langsung jalan
+            tebakan_ahsp = daftar_nama_ahsp[0] if len(daftar_nama_ahsp) > 0 else "Data AHSP Kosong"
             ws_rab.write(row_excel, 4, tebakan_ahsp, fmt_input)
+            
+            # [FITUR ENTERPRISE]: Tambahkan Validasi Dropdown List ke Cell Excel
+            if len(daftar_nama_ahsp) > 0:
+                ws_rab.data_validation(row_excel, 4, row_excel, 4, {
+                    'validate': 'list',
+                    'source': daftar_nama_ahsp,
+                    'input_title': 'Pilih AHSP',
+                    'input_message': 'Pilih referensi AHSP dari daftar untuk item ini.'
+                })
             
             # VLOOKUP Cerdas ke Tabel Rekap di Tab 4
             ws_rab.write_formula(row_excel, 5, f"=IFERROR(VLOOKUP(E{row_excel+1},'4. AHSP S2 30 2025'!H:J, 3, FALSE), 0)", fmt_currency)
             ws_rab.write_formula(row_excel, 6, f"=C{row_excel+1}*F{row_excel+1}", fmt_currency)
-
+            
+            baris_terakhir_rab = row_excel
         # =======================================================
         # TAB 1: REKAPITULASI (Termasuk PPN)
         # =======================================================
@@ -398,6 +386,7 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
 
 
