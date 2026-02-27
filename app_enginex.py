@@ -93,7 +93,13 @@ try:
         has_geotek = True
     except ImportError: 
         has_geotek = False
-
+    
+    try: 
+        from modules.utils import libs_topografi
+        sys.modules['libs_topografi'] = libs_topografi
+    except ImportError: 
+        pass
+        
 except ImportError as e:
     st.error(f"⚠️ **CRITICAL SYSTEM ERROR**")
     st.write(f"Gagal memuat modul engineering dasar. Pesan Error: `{e}`")
@@ -1764,6 +1770,96 @@ elif selected_menu == "🏗️ Daya Dukung Pondasi":
                 m_bk1.metric("Volume Pasangan Batu Kali", f"{res_bk['vol_pasangan']:.2f} m³")
                 m_bk2.metric("Volume Galian Tanah", f"{res_bk['vol_galian']:.2f} m³", delta="Toleransi ruang kerja sisi bawah", delta_color="off")
 
+# --- J. MODE TOPOGRAFI 3D (CUT/FILL & BANJIR) ---
+elif selected_menu == "🗺️ Analisis Topografi 3D":
+    st.header("🗺️ Analisis Digital Terrain Model (DTM)")
+    st.caption("Perhitungan Volume Galian & Timbunan (Metode Prisma TIN) dan Simulasi Genangan 3D")
+    
+    if 'libs_topografi' not in sys.modules:
+        st.warning("⚠️ Modul `libs_topografi` belum dimuat oleh sistem.")
+    else:
+        topo_eng = sys.modules['libs_topografi'].Topografi_Engine()
+        
+        st.markdown("### 📥 1. Input Data Kordinat Lapangan")
+        st.info("Unggah file CSV atau Excel yang berisi hasil ukur Topografi/Survey. Wajib memiliki 3 kolom dengan nama header: **X**, **Y**, dan **Z**.")
+        file_xyz = st.file_uploader("Upload File Titik Koordinat (CSV/XLSX)", type=['csv', 'xlsx', 'xls'])
+        
+        if file_xyz:
+            try:
+                # Baca file berdasarkan ekstensi
+                if file_xyz.name.endswith('.csv'):
+                    df_points = pd.read_csv(file_xyz)
+                else:
+                    df_points = pd.read_excel(file_xyz)
+                    
+                # Standarisasi nama kolom ke huruf kapital (X, Y, Z)
+                df_points.columns = [str(c).upper().strip() for c in df_points.columns]
+                
+                if all(k in df_points.columns for k in ['X', 'Y', 'Z']):
+                    st.success(f"✅ Berhasil memuat {len(df_points)} titik koordinat spasial.")
+                    
+                    # Dapatkan rentang elevasi eksisting
+                    z_min = df_points['Z'].min()
+                    z_max = df_points['Z'].max()
+                    z_avg = df_points['Z'].mean()
+                    
+                    tab_cutfill, tab_banjir = st.tabs(["⛏️ Analisis Cut & Fill", "🌊 Simulasi Genangan Banjir"])
+                    
+                    # =========================================================
+                    # TAB 1: CUT & FILL
+                    # =========================================================
+                    with tab_cutfill:
+                        c_cf1, c_cf2 = st.columns([1, 2])
+                        with c_cf1:
+                            st.markdown("**Parameter Perataan Tanah (Grading)**")
+                            st.caption(f"Elevasi Eksisting: {z_min:.2f} m s/d {z_max:.2f} m")
+                            elevasi_rencana = st.number_input("Target Elevasi Rencana [m]", value=float(z_avg), step=0.5)
+                            
+                            if st.button("⛏️ Hitung Volume & Render 3D", type="primary", use_container_width=True):
+                                with st.spinner("Membangun jaring segitiga (Delaunay TIN) & menghitung volume prisma..."):
+                                    hasil_cf = topo_eng.hitung_cut_fill(df_points, elevasi_rencana)
+                                    
+                                    if "error" not in hasil_cf:
+                                        st.success("✅ " + hasil_cf["Status"])
+                                        st.metric("Total Volume Galian (Cut) \U0001f7eb", f"{hasil_cf['Volume_Galian_m3']} m³")
+                                        st.metric("Total Volume Timbunan (Fill) \U0001f7e9", f"{hasil_cf['Volume_Timbunan_m3']} m³")
+                                        st.caption(f"Estimasi Luas Area Terdampak: {hasil_cf['Luas_Area_m2']} m²")
+                                    else:
+                                        st.error(hasil_cf["error"])
+                                        
+                        with c_cf2:
+                            if 'hasil_cf' in locals() and "error" not in hasil_cf:
+                                fig_cf = topo_eng.visualisasi_3d_terrain(df_points, elevasi_rencana)
+                                st.plotly_chart(fig_cf, use_container_width=True)
+
+                    # =========================================================
+                    # TAB 2: SIMULASI BANJIR
+                    # =========================================================
+                    with tab_banjir:
+                        c_bj1, c_bj2 = st.columns([1, 2])
+                        with c_bj1:
+                            st.markdown("**Parameter Muka Air Banjir (MAB)**")
+                            elevasi_banjir = st.number_input("Elevasi MAB Rencana [m]", value=float(z_max - (z_max-z_min)*0.2), step=0.5)
+                            
+                            if st.button("🌊 Jalankan Simulasi Genangan", type="primary", use_container_width=True):
+                                with st.spinner("Memodelkan genangan bathtub dan area terendam kritis..."):
+                                    fig_bj, hasil_bj = topo_eng.simulasi_genangan_banjir_3d(df_points, elevasi_banjir)
+                                    
+                                    if fig_bj:
+                                        st.success(hasil_bj['Status'])
+                                        st.metric("Estimasi Luas Tergenang", f"{hasil_bj['Estimasi_Luas_Genangan_m2']} m²", delta=f"{hasil_bj['Estimasi_Luas_Genangan_Ha']} Ha", delta_color="off")
+                                        st.metric("Volume Tampungan Air", f"{hasil_bj['Volume_Tampungan_Banjir_m3']} m³")
+                                    else:
+                                        st.error(hasil_bj.get("error", "Gagal merender."))
+                        with c_bj2:
+                            if 'fig_bj' in locals() and fig_bj:
+                                st.plotly_chart(fig_bj, use_container_width=True)
+                else:
+                    st.error("❌ Format tabel salah! File harus memiliki header kolom bernama 'X', 'Y', dan 'Z'.")
+            except Exception as e:
+                st.error(f"Gagal membaca file: {e}")
+        else:
+            st.info("💡 **Petunjuk:** Buat file Excel sederhana berisi 3 kolom (X, Y, Z), isi dengan titik kordinat hasil survey lapangan (atau hasil ekstraksi DXF dari AI Assistant), lalu unggah ke sini.")
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
     import io
@@ -1933,6 +2029,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
