@@ -468,7 +468,9 @@ with st.sidebar:
             "🌉 Audit Baja & Jembatan",
             "🛣️ Analisis Transportasi (Jalan)",
             "💡 Kalkulator MEP (SNI)",           
-            "🌿 Green Building & Zonasi",      
+            "🌿 Green Building & Zonasi",
+            "📅 Penjadwalan Proyek (4D BIM)",  
+            "⚖️ Evaluasi Tender & Legal",      
             "⚙️ Admin: Ekstraksi AHSP"
         ],
         label_visibility="collapsed"
@@ -2409,6 +2411,157 @@ elif selected_menu == "🌿 Green Building & Zonasi":
                 
                 # Kompensasi Pohon
                 m_co2.metric("Kompensasi Deforestasi Ekologis", f"{res_co2['Kompensasi_Pohon_Dibutuhkan']} Pohon Dewasa", help="Jumlah pohon yang dibutuhkan untuk menyerap emisi ini dalam 1 tahun")
+# --- O. MODE PENJADWALAN 4D BIM (GANTT & KURVA-S) ---
+elif selected_menu == "📅 Penjadwalan Proyek (4D BIM)":
+    st.header("📅 Penjadwalan Proyek Terpadu (4D BIM)")
+    st.caption("Generator Work Breakdown Structure (WBS), CPM, Gantt Chart, dan Kurva-S Otomatis")
+    
+    if 'libs_4d' not in sys.modules:
+        st.warning("⚠️ Modul `libs_4d` belum dimuat oleh sistem.")
+    else:
+        eng_4d = sys.modules['libs_4d'].Schedule_4D_Engine()
+        
+        st.markdown("### 📋 Data Bill of Quantities (BOQ) & Harga")
+        st.write("Silakan edit tabel di bawah ini sesuai item pekerjaan proyek Anda. Sistem akan otomatis menghitung durasi berdasarkan asumsi produktivitas tenaga kerja harian.")
+        
+        # Template Data Editor
+        df_boq_template = pd.DataFrame([
+            {"Nama Pekerjaan": "Pembersihan Lahan", "Volume": 500, "Total Harga (Rp)": 15000000},
+            {"Nama Pekerjaan": "Galian Tanah", "Volume": 250, "Total Harga (Rp)": 12500000},
+            {"Nama Pekerjaan": "Pondasi", "Volume": 45, "Total Harga (Rp)": 55000000},
+            {"Nama Pekerjaan": "Struktur Beton", "Volume": 120, "Total Harga (Rp)": 240000000},
+            {"Nama Pekerjaan": "Atap & Plafon", "Volume": 300, "Total Harga (Rp)": 90000000}
+        ])
+        
+        c_4d1, c_4d2 = st.columns([2, 1])
+        with c_4d1:
+            df_input_4d = st.data_editor(df_boq_template, num_rows="dynamic", use_container_width=True)
+        with c_4d2:
+            tgl_mulai = st.date_input("Tanggal Mulai Proyek (Kick-off)")
+            if st.button("🚀 Generate Jadwal 4D (CPM & Kurva-S)", type="primary", use_container_width=True):
+                st.session_state['trigger_4d'] = True
+                
+        if st.session_state.get('trigger_4d', False):
+            with st.spinner("Merakit jaringan NetworkX dan menghitung Jalur Kritis (CPM)..."):
+                res_4d = eng_4d.hitung_cpm_dan_jadwal(df_input_4d, tgl_mulai.strftime("%Y-%m-%d"))
+                
+                if res_4d['status'] == 'success':
+                    df_wbs = res_4d['data']
+                    st.success("✅ Penjadwalan Berhasil Disusun!")
+                    
+                    tab_gantt, tab_scurve, tab_wbs = st.tabs(["📊 Gantt Chart", "📈 Kurva-S (S-Curve)", "🗂️ Tabel WBS & Durasi"])
+                    
+                    with tab_gantt:
+                        fig_gantt = eng_4d.gambar_gantt_chart(df_wbs)
+                        st.plotly_chart(fig_gantt, use_container_width=True)
+                        
+                    with tab_scurve:
+                        fig_scurve = eng_4d.gambar_kurva_s(df_wbs)
+                        st.plotly_chart(fig_scurve, use_container_width=True)
+                        
+                    with tab_wbs:
+                        st.dataframe(df_wbs[['Task ID', 'Task', 'Volume', 'Durasi (Hari)', 'Start', 'Finish', 'Bobot (%)']], use_container_width=True)
+                else:
+                    st.error(res_4d['message'])
+
+
+# --- P. MODE EVALUASI TENDER & LEGAL KONTRAK ---
+elif selected_menu == "⚖️ Evaluasi Tender & Legal":
+    st.header("⚖️ Evaluasi Tender & Administrasi Kontrak")
+    st.caption("Pendeteksi Harga Tidak Wajar (Dumping) dan Auto-Drafting SPK / RKK")
+    
+    if 'libs_legal' not in sys.modules:
+        st.warning("⚠️ Modul `libs_legal` belum dimuat oleh sistem.")
+    else:
+        eng_legal = sys.modules['libs_legal'].Legal_Contract_Engine()
+        
+        tab_tender, tab_spk = st.tabs(["🕵️ Evaluasi Kewajaran Harga (HPS vs Penawaran)", "📝 Auto-Drafting SPK & RKK"])
+        
+        # =========================================================
+        # TAB 1: EVALUASI TENDER
+        # =========================================================
+        with tab_tender:
+            st.markdown("#### Analisis Kewajaran Harga (Anti-Dumping)")
+            st.write("Masukkan Rencana Anggaran (OE/HPS) dan Harga Penawaran Kontraktor untuk mendeteksi item yang ditawar terlalu rendah (< 80%).")
+            
+            c_td1, c_td2 = st.columns(2)
+            with c_td1:
+                st.markdown("**Owner Estimate (OE / HPS)**")
+                df_oe_tmpl = pd.DataFrame([
+                    {"Nama Pekerjaan": "Pekerjaan Persiapan", "Total Harga": 15000000},
+                    {"Nama Pekerjaan": "Struktur Bawah", "Total Harga": 150000000},
+                    {"Nama Pekerjaan": "Struktur Atas", "Total Harga": 300000000}
+                ])
+                df_oe = st.data_editor(df_oe_tmpl, num_rows="dynamic", key="df_oe")
+                
+            with c_td2:
+                st.markdown("**Penawaran Kontraktor**")
+                df_pen_tmpl = pd.DataFrame([
+                    {"Nama Pekerjaan": "Pekerjaan Persiapan", "Total Harga": 14000000},
+                    {"Nama Pekerjaan": "Struktur Bawah", "Total Harga": 100000000}, # Sengaja dibuat terlalu rendah (dumping)
+                    {"Nama Pekerjaan": "Struktur Atas", "Total Harga": 290000000}
+                ])
+                df_penawaran = st.data_editor(df_pen_tmpl, num_rows="dynamic", key="df_pen")
+                
+            if st.button("⚖️ Evaluasi Penawaran", type="primary"):
+                res_tender = eng_legal.evaluasi_kewajaran_harga(df_oe, df_penawaran)
+                
+                if "error" in res_tender:
+                    st.error(res_tender["error"])
+                else:
+                    st.markdown("### 📊 Hasil Evaluasi Panitia Pokja")
+                    
+                    status_rek = res_tender['Rekomendasi_Panitia']
+                    if "DITOLAK" in status_rek: st.error(f"**Keputusan:** {status_rek}")
+                    elif "TAHAN" in status_rek: st.warning(f"**Keputusan:** {status_rek}")
+                    else: st.success(f"**Keputusan:** {status_rek}")
+                    
+                    m_t1, m_t2, m_t3 = st.columns(3)
+                    m_t1.metric("Total HPS / OE", f"Rp {res_tender['Total_OE_Rp']:,.0f}")
+                    m_t2.metric("Total Penawaran", f"Rp {res_tender['Total_Penawaran_Rp']:,.0f}")
+                    m_t3.metric("Rasio Penawaran", f"{res_tender['Rasio_Penawaran_Total']} %", delta="Batas Wajar: 80% - 100%", delta_color="off")
+                    
+                    st.markdown("**Rincian Kewajaran per Item Pekerjaan:**")
+                    def color_eval(val):
+                        if 'GUGUR' in str(val): return 'color: white; background-color: #ef4444; font-weight:bold;'
+                        if 'KLARIFIKASI' in str(val): return 'color: black; background-color: #facc15; font-weight:bold;'
+                        if 'WAJAR' in str(val): return 'color: white; background-color: #22c55e; font-weight:bold;'
+                        return ''
+                    
+                    st.dataframe(res_tender['Detail_Evaluasi'].style.map(color_eval, subset=['Status Evaluasi']), use_container_width=True)
+
+        # =========================================================
+        # TAB 2: DRAFTING SPK & RKK
+        # =========================================================
+        with tab_spk:
+            st.markdown("#### Generator Surat Perintah Kerja (SPK) & Dokumen SMKK")
+            
+            with st.expander("⚙️ Parameter Kontrak", expanded=True):
+                c_spk1, c_spk2 = st.columns(2)
+                nama_proyek = c_spk1.text_input("Nama Paket Pekerjaan", value="Pembangunan Gedung Kantor Tahap I")
+                nama_ppk = c_spk2.text_input("Nama Pejabat Pembuat Komitmen (PPK)", value="Ir. Budi Santoso, M.T.")
+                
+                c_spk3, c_spk4 = st.columns(2)
+                nama_kontraktor = c_spk3.text_input("Nama Perusahaan Pemenang", value="PT. Konstruksi Nusantara")
+                nilai_kontrak = c_spk4.number_input("Nilai Kontrak Final (Rp)", value=450000000.0, step=1000000.0)
+                
+                c_spk5, c_spk6 = st.columns(2)
+                waktu_hari = c_spk5.number_input("Waktu Pelaksanaan (Hari Kalender)", value=120, step=10)
+                nilai_smkk = c_spk6.number_input("Alokasi Biaya K3 / SMKK (Rp)", value=15000000.0, step=500000.0)
+                
+            if st.button("📝 Generate Dokumen Legal", type="primary", use_container_width=True):
+                draft_spk = eng_legal.draft_spk_pemerintah(nama_proyek, nama_kontraktor, nilai_kontrak, waktu_hari, nama_ppk)
+                draft_rkk = eng_legal.draft_rkk_dasar(nama_proyek, nilai_smkk)
+                
+                col_dok1, col_dok2 = st.columns(2)
+                with col_dok1:
+                    st.info("📄 **PREVIEW: Surat Perintah Kerja (SPK)**")
+                    st.markdown(f"""<div style="padding:20px; background-color:white; border:1px solid #ccc; color:black; height:500px; overflow-y:auto;">
+                                {draft_spk.replace(chr(10), '<br>')}</div>""", unsafe_allow_html=True)
+                with col_dok2:
+                    st.info("📄 **PREVIEW: Ringkasan Rencana Keselamatan (RKK)**")
+                    st.markdown(f"""<div style="padding:20px; background-color:white; border:1px solid #ccc; color:black; height:500px; overflow-y:auto;">
+                                {draft_rkk.replace(chr(10), '<br>')}</div>""", unsafe_allow_html=True)
 
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
@@ -2579,6 +2732,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
