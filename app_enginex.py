@@ -648,10 +648,7 @@ if selected_menu == "🤖 AI Assistant":
         # [INJEKSI DATA MASTER AHSP KE OTAK AI - ZERO DUMMY]
         # Posisinya dipindah ke luar agar selalu terbaca AI setiap saat!
         # =================================================================
-        if 'master_ahsp_data' in st.session_state:
-            tabel_teks = st.session_state['master_ahsp_data'].to_csv(index=False)
-            full_prompt[0] += f"\n\n[REFERENSI MUTLAK DATABASE AHSP SAAT INI]:\n{tabel_teks}\n\n[PERINTAH OVERRIDE TERTINGGI]: DILARANG KERAS MENGGUNAKAN ASUMSI! DILARANG KERAS MEMBUAT KODE PYTHON (```python)! Anda hanya bertugas sebagai pembaca teks. Baca langsung tabel CSV di atas, lalu jawab angkanya secara langsung di chat tanpa basa-basi."
-
+       
         # LOGIKA BARU: UNIVERSAL FILE PROCESSOR
         if uploaded_files:
             for f in uploaded_files:
@@ -2718,6 +2715,7 @@ Total estimasi biaya konstruksi fisik, persentase TKDN final, dan rincian Analis
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
