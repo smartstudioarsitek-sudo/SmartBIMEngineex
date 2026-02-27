@@ -336,3 +336,152 @@ class OpenSeesTruss2D:
             margin=dict(l=20, r=20, t=50, b=20)
         )
         return fig
+
+class OpenSeesPortal2D:
+    """
+    Engine OpenSees khusus 2D untuk Kalkulator Portal Baja (Gable Frame WF).
+    Menghitung Gaya Aksial dan Momen Lentur akibat sambungan kaku (Rigid).
+    """
+    def __init__(self):
+        self.nodes = {}
+        self.elements = []
+        
+    def build_and_analyze(self, span, height_col, height_apex, q_load_kn_m):
+        if not HAS_OPENSEES:
+            return None, "Error: Library openseespy belum terinstall."
+            
+        try:
+            import openseespy.opensees as ops
+            import pandas as pd
+            import math
+            
+            # Sapu bersih memori
+            ops.wipe()
+            
+            # Mode 2D, 3 Derajat Kebebasan (X, Y, dan Rotasi/Momen Z)
+            ops.model('basic', '-ndm', 2, '-ndf', 3) 
+            
+            # Material Baja
+            E = 200000.0 # MPa
+            
+            # Properti Penampang (Rasio proporsional WF untuk distribusi momen)
+            # Asumsi: Kolom pakai WF lebih besar dari Rafter
+            A_col = 0.011; I_col = 0.000237  # Setara WF 400
+            A_raf = 0.008; I_raf = 0.000119  # Setara WF 300
+            
+            transf_tag = 1
+            ops.geomTransf('Linear', transf_tag)
+            
+            # 1. GEOMETRI (5 Node Utama)
+            ops.node(1, 0.0, 0.0)                                # Tumpuan Kiri
+            ops.node(2, span, 0.0)                               # Tumpuan Kanan
+            ops.node(3, 0.0, height_col)                         # Lutut (Knee) Kiri
+            ops.node(4, span, height_col)                        # Lutut (Knee) Kanan
+            ops.node(5, span/2.0, height_col + height_apex)      # Puncak (Apex)
+            
+            self.nodes = {1: (0,0), 2: (span,0), 3: (0,height_col), 4: (span,height_col), 5: (span/2, height_col+height_apex)}
+            
+            # 2. BOUNDARY CONDITIONS
+            # Asumsi Tumpuan Sendi (Pinned Base) - Umum untuk baja agar pondasi lebih murah
+            # Tahan translasi X, Y, tapi Rotasi Z bebas (0)
+            ops.fix(1, 1, 1, 0) 
+            ops.fix(2, 1, 1, 0)
+            
+            # 3. MESHING ELEMEN (Beam-Column)
+            # Kolom (Kiri & Kanan)
+            ops.element('elasticBeamColumn', 1, 1, 3, A_col, E, I_col, transf_tag) 
+            ops.element('elasticBeamColumn', 2, 2, 4, A_col, E, I_col, transf_tag) 
+            # Rafter / Kuda-kuda (Kiri & Kanan)
+            ops.element('elasticBeamColumn', 3, 3, 5, A_raf, E, I_raf, transf_tag) 
+            ops.element('elasticBeamColumn', 4, 5, 4, A_raf, E, I_raf, transf_tag) 
+            
+            self.elements = [
+                {'id': 1, 'type': 'Kolom Kiri', 'n1': 1, 'n2': 3},
+                {'id': 2, 'type': 'Kolom Kanan', 'n1': 2, 'n2': 4},
+                {'id': 3, 'type': 'Rafter Kiri', 'n1': 3, 'n2': 5},
+                {'id': 4, 'type': 'Rafter Kanan', 'n1': 5, 'n2': 4},
+            ]
+            
+            # 4. APLIKASI BEBAN MERATA (Gravity Load pada Rafter)
+            ops.timeSeries('Linear', 1)
+            ops.pattern('Plain', 1, 1)
+            
+            # Konversi beban merata gravitasi (Q) ke sumbu lokal elemen miring
+            L_raf = math.sqrt((span/2)**2 + height_apex**2)
+            cos_th = (span/2) / L_raf
+            sin_th = height_apex / L_raf
+            
+            # Beban lokal (Wy = tegak lurus batang, Wx = sejajar batang)
+            wy = -q_load_kn_m * cos_th
+            wx = -q_load_kn_m * sin_th
+            
+            # Terapkan ke rafter kiri dan kanan
+            ops.eleLoad('-ele', 3, '-type', '-beamUniform', wy, wx)
+            ops.eleLoad('-ele', 4, '-type', '-beamUniform', wy, -wx) # Rafter kanan kemiringan terbalik
+            
+            # 5. SOLVER ANALISIS
+            ops.system('BandGeneral')
+            ops.numberer('RCM')
+            ops.constraints('Plain')
+            ops.integrator('LoadControl', 1.0)
+            ops.algorithm('Linear')
+            ops.analysis('Static')
+            ops.analyze(1)
+            
+            # 6. EKSTRAKSI GAYA DALAM (Aksial & Momen)
+            data_hasil = []
+            for el in self.elements:
+                forces = ops.basicForce(el['id'])
+                # basicForce untuk 2D Beam: [Gaya Aksial, Momen Node 1, Momen Node 2]
+                axial = forces[0]
+                momen_1 = forces[1]
+                momen_2 = forces[2]
+                
+                # Cari momen terbesar absolut di elemen tersebut
+                max_momen = max(abs(momen_1), abs(momen_2))
+                
+                data_hasil.append({
+                    "Elemen WF": el['type'],
+                    "Gaya Aksial (kN)": round(abs(axial), 2),
+                    "Momen Maksimum (kNm)": round(max_momen, 2)
+                })
+                
+            df_hasil = pd.DataFrame(data_hasil)
+            fig = self.render_plotly_portal()
+            
+            # Ambil nilai krusial untuk panduan
+            max_momen_rafter = df_hasil[df_hasil['Elemen WF'].str.contains('Rafter')]['Momen Maksimum (kNm)'].max()
+            max_axial_kolom = df_hasil[df_hasil['Elemen WF'].str.contains('Kolom')]['Gaya Aksial (kN)'].max()
+            
+            insight = {"momen_rafter": max_momen_rafter, "aksial_kolom": max_axial_kolom}
+            
+            return df_hasil, fig, insight
+            
+        except Exception as e:
+            return None, f"Gagal mengeksekusi OpenSees Portal: {e}", None
+
+    def render_plotly_portal(self):
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        
+        # Gambar Geometri Portal
+        for el in self.elements:
+            n1 = self.nodes[el['n1']]
+            n2 = self.nodes[el['n2']]
+            
+            fig.add_trace(go.Scatter(
+                x=[n1[0], n2[0]], y=[n1[1], n2[1]],
+                mode='lines+markers', line=dict(color='#1E3A8A', width=6),
+                marker=dict(size=10, color='gold', line=dict(color='black', width=2)),
+                name=el['type'],
+                hoverinfo='name'
+            ))
+            
+        fig.update_layout(
+            title="Model Geometri Portal Baja Gudang (Gable Frame)",
+            xaxis_title="Panjang Bentang (m)", yaxis_title="Tinggi (m)",
+            yaxis=dict(scaleanchor="x", scaleratio=1), # Skala 1:1 proporsional
+            plot_bgcolor='whitesmoke', showlegend=False,
+            margin=dict(l=20, r=20, t=50, b=20)
+        )
+        return fig
