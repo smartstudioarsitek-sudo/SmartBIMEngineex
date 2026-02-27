@@ -454,6 +454,7 @@ with st.sidebar:
             "🌪️ Analisis Gempa (FEM)", 
             "🏗️ Audit Struktur",
             "🌾 Desain Irigasi (KP-01)",
+            "🌊 Hidrolika Bendung (KP-02)",
             "🌊 Analisis Hidrologi", 
             "⚙️ Admin: Ekstraksi AHSP"
         ],
@@ -1277,7 +1278,112 @@ elif selected_menu == "🌾 Desain Irigasi (KP-01)":
                         
                     except Exception as e:
                         st.error(f"Gagal menyusun skema: {e}")
-                        
+# --- G. MODE HIDROLIKA BENDUNG & KANTONG LUMPUR ---
+elif selected_menu == "🌊 Hidrolika Bendung (KP-02)":
+    st.header("🌊 Analisis Hidrolika Bendung & Kantong Lumpur")
+    st.caption("Standard Perencanaan Irigasi KP-02 (Bangunan Utama)")
+    
+    if 'libs_bendung' not in sys.modules:
+        st.warning("⚠️ Modul `libs_bendung` belum dimuat oleh sistem.")
+    else:
+        bendung_eng = sys.modules['libs_bendung'].Bendung_Engine()
+        
+        tab_mercu, tab_rembesan, tab_lumpur = st.tabs(["🌊 Hidrolika Mercu", "💧 Analisis Rembesan (Piping)", "🪨 Kantong Lumpur"])
+        
+        # =========================================================
+        # TAB 1: HIDROLIKA MERCU
+        # =========================================================
+        with tab_mercu:
+            st.markdown("#### Dimensi Efektif Mercu & Muka Air Banjir (Hd)")
+            with st.expander("⚙️ Parameter Sungai & Bendung", expanded=True):
+                c1, c2 = st.columns(2)
+                Q_banjir = c1.number_input("Debit Banjir Rencana (Q) [m3/s]", value=150.0, step=10.0)
+                B_sungai = c2.number_input("Lebar Sungai Rata-rata (B) [m]", value=30.0, step=1.0)
+                
+                c3, c4, c5 = st.columns(3)
+                n_pilar = c3.number_input("Jumlah Pilar Pembilas", value=2, step=1)
+                lebar_pilar = c4.number_input("Lebar Pilar [m]", value=1.0, step=0.1)
+                Cd = c5.number_input("Koefisien Debit (Cd)", value=2.1, format="%.2f")
+                
+            if st.button("🚀 Hitung Hidrolika Mercu", type="primary", use_container_width=True):
+                with st.spinner("Mengkalkulasi dimensi efektif..."):
+                    Be = bendung_eng.hitung_lebar_efektif(B_sungai, n_pilar, lebar_pilar)
+                    Hd = bendung_eng.hitung_tinggi_muka_air_banjir(Q_banjir, Be, Cd)
+                    
+                    st.success("✅ Perhitungan Selesai!")
+                    m1, m2 = st.columns(2)
+                    m1.metric("Lebar Efektif Bendung (Be)", f"{Be:.2f} m", delta=f"Lebar Total: {B_sungai} m", delta_color="off")
+                    m2.metric("Tinggi Energi di atas Mercu (Hd)", f"{Hd:.3f} m")
+                    st.info(f"💡 **Interpretasi:** Untuk melewatkan debit banjir {Q_banjir} m3/s, muka air akan naik setinggi {Hd:.3f} meter dari elevasi puncak mercu bendung.")
+
+        # =========================================================
+        # TAB 2: ANALISIS REMBESAN (PIPING)
+        # =========================================================
+        with tab_rembesan:
+            st.markdown("#### Kontrol Stabilitas Rembesan (Metode Lane)")
+            st.write("Mencegah terjadinya gejala *Piping* (pembawaan partikel tanah di bawah pondasi bendung).")
+            
+            with st.expander("⚙️ Parameter Geoteknik & Rayapan", expanded=True):
+                dH = st.number_input("Beda Tinggi Muka Air Hulu-Hilir (\u0394H) [m]", value=5.0, step=0.5)
+                jenis_tanah = st.selectbox("Jenis Tanah Dasar Pondasi", [
+                    "pasir sangat halus", "pasir halus", "pasir sedang", 
+                    "pasir kasar", "kerikil halus", "kerikil kasar", "lempung keras"
+                ], index=1)
+                
+                st.markdown("**Panjang Jalur Rayapan (Creep Line):**")
+                c_lv, c_lh = st.columns(2)
+                lv_str = c_lv.text_input("Rayapan Vertikal (Lv) [m]", value="2.0, 3.0, 2.0", help="Kedalaman Sheetpile/Cut-off (pisahkan dengan koma)")
+                lh_str = c_lh.text_input("Rayapan Horizontal (Lh) [m]", value="5.0, 10.0, 5.0", help="Panjang lantai muka/kolam olak (pisahkan dengan koma)")
+            
+            if st.button("🛡️ Cek Keamanan Rembesan", type="primary", use_container_width=True):
+                try:
+                    # Konversi string ke list of floats
+                    lv_list = [float(x.strip()) for x in lv_str.split(",")]
+                    lh_list = [float(x.strip()) for x in lh_str.split(",")]
+                    
+                    res_lane = bendung_eng.cek_rembesan_lane(dH, lv_list, lh_list, jenis_tanah)
+                    
+                    if "Error" in res_lane.get("Status", ""):
+                        st.error(res_lane["Status"])
+                    else:
+                        if "AMAN" in res_lane["Status"]:
+                            st.success(f"**{res_lane['Status']}**")
+                        else:
+                            st.error(f"**{res_lane['Status']}**")
+                            
+                        # Tampilkan Rincian
+                        st.json({
+                            "Total Rayapan Lane (Lw)": f"{res_lane['Panjang_Rayapan_Lane_Lw_m']} m",
+                            "Angka Rembesan Aktual (Cw)": res_lane['Angka_Rembesan_Aktual_Cw'],
+                            "Syarat Cw Minimum KP-02": res_lane['Angka_Rembesan_Izin_Min']
+                        })
+                except Exception as e:
+                    st.error("❌ Format input Lv/Lh salah. Pastikan menggunakan angka yang dipisah koma (contoh: 2.5, 3.0).")
+
+        # =========================================================
+        # TAB 3: KANTONG LUMPUR (SEDIMENT TRAP)
+        # =========================================================
+        with tab_lumpur:
+            st.markdown("#### Desain Dimensi Kantong Lumpur")
+            st.write("Berdasarkan kecepatan jatuh sedimen (w) dan kecepatan aliran (v).")
+            
+            with st.expander("⚙️ Parameter Hidrolis Kantong Lumpur", expanded=True):
+                c_k1, c_k2, c_k3 = st.columns(3)
+                Q_normal = c_k1.number_input("Debit Pengambilan Normal [m3/s]", value=2.5, step=0.1)
+                w_endap = c_k2.number_input("Kecepatan Endap Partikel (w) [m/s]", value=0.040, format="%.3f", help="0.04 m/s umum untuk pasir halus")
+                v_aliran = c_k3.number_input("Kecepatan Aliran Izin (v) [m/s]", value=0.30, format="%.2f", help="Batas kecepatan agar lumpur mengendap (biasanya < 0.4 m/s)")
+                
+            if st.button("📏 Hitung Dimensi Kantong Lumpur", type="primary", use_container_width=True):
+                with st.spinner("Menghitung proporsi sediment trap..."):
+                    res_lumpur = bendung_eng.dimensi_kantong_lumpur(Q_normal, w_endap, v_aliran)
+                    
+                    st.success("✅ Estimasi Dimensi Selesai!")
+                    col_res1, col_res2, col_res3 = st.columns(3)
+                    col_res1.metric("Lebar Efektif (B)", f"{res_lumpur['Lebar_B_m']} m")
+                    col_res2.metric("Kedalaman Air (h)", f"{res_lumpur['Kedalaman_Air_h_m']} m")
+                    col_res3.metric("Panjang Saluran (L)", f"{res_lumpur['Panjang_L_m']} m", delta="+20% Turbulensi", delta_color="off")
+                    
+                    st.info(f"**Luas Permukaan Minimum yang Dibutuhkan:** {res_lumpur['Luas_Permukaan_m2']} m²")                       
 # --- D. MODE ANALISIS HIDROLOGI & JIAT (SNI 2415 & KP-01) ---
 elif selected_menu == "🌊 Analisis Hidrologi":
     st.header("🌊 Analisis Sumber Daya Air & JIAT")
@@ -1622,6 +1728,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
