@@ -1940,8 +1940,8 @@ elif selected_menu == "🌉 Audit Baja & Jembatan":
     if 'libs_baja' not in sys.modules or 'libs_bridge' not in sys.modules:
         st.warning("⚠️ Modul `libs_baja` atau `libs_bridge` belum dimuat.")
     else:
-        tab_baja, tab_jembatan = st.tabs(["🏗️ Audit Baja Gedung", "🛣️ Desain Gelagar Jembatan"])
-        
+        tab_baja, tab_jembatan, tab_truss = st.tabs(["🏗️ Audit Baja Gedung", "🛣️ Desain Gelagar Jembatan", "🔺 Kalkulator Truss 2D (OpenSees)"])
+               
         # =========================================================
         # TAB 1: AUDIT BAJA GEDUNG (SNI 1729:2020)
         # =========================================================
@@ -2022,6 +2022,59 @@ elif selected_menu == "🌉 Audit Baja & Jembatan":
                     db_profil = sys.modules['libs_bridge'].Bridge_Profile_DB.get_profiles()
                     df_profil = pd.DataFrame.from_dict(db_profil, orient='index')
                     st.dataframe(df_profil, use_container_width=True)
+        # =========================================================
+        # TAB 3: KALKULATOR TRUSS 2D (OPENSEES)
+        # =========================================================
+        with tab_truss:
+            st.markdown("#### Generator Rangka Atap (Truss 2D)")
+            st.write("Ditenagai oleh *OpenSees Engine* untuk komputasi gaya dalam matriks linear.")
+            
+            with st.expander("⚙️ Geometri & Beban Truss", expanded=True):
+                c_tr1, c_tr2 = st.columns(2)
+                span = c_tr1.number_input("Panjang Bentang Kuda-Kuda (L) [m]", value=12.0, step=1.0)
+                height = c_tr2.number_input("Tinggi Puncak (H) [m]", value=3.0, step=0.5)
+                
+                c_tr3, c_tr4 = st.columns(2)
+                panels = c_tr3.number_input("Jumlah Pias / Segmen (Wajib Genap)", value=6, step=2)
+                load_p = c_tr4.number_input("Beban Titik per Buhul (P) [kN]", value=15.0, step=1.0, help="Kombinasi Beban Mati + Angin + Hidup")
+                
+            if st.button("🚀 Rakit Matriks & Hitung Gaya Aksial", type="primary", use_container_width=True):
+                with st.spinner("OpenSees sedang membangun meshing & menjalankan solver statik..."):
+                    try:
+                        # Inisialisasi Class baru yang kita buat di libs_fem.py
+                        truss_eng = sys.modules['libs_fem'].OpenSeesTruss2D()
+                        
+                        df_hasil, fig_truss = truss_eng.build_and_analyze(span, height, panels, load_p)
+                        
+                        if df_hasil is not None:
+                            st.success("✅ Analisis FEM Linear Statik Konvergen!")
+                            
+                            # Layout 2 Kolom: Kiri untuk Tabel, Kanan untuk Gambar
+                            col_hasil1, col_hasil2 = st.columns([1, 1.5])
+                            
+                            with col_hasil1:
+                                st.markdown("**Tabel Gaya Aksial Elemen:**")
+                                # Highlight warna tabel
+                                def color_status(val):
+                                    if 'Tarik' in val: return 'color: white; background-color: #3b82f6; font-weight:bold;'
+                                    if 'Tekan' in val: return 'color: white; background-color: #ef4444; font-weight:bold;'
+                                    return ''
+                                st.dataframe(df_hasil.style.map(color_status, subset=['Sifat Gaya']), height=400)
+                                
+                            with col_hasil2:
+                                st.markdown("**Diagram Geometri & Distribusi Gaya:**")
+                                st.caption("Biru = Gaya Tarik | Merah = Gaya Tekan. Arahkan mouse ke garis untuk detail.")
+                                st.plotly_chart(fig_truss, use_container_width=True)
+                                
+                            # Info untuk Ekspor
+                            max_tekan = df_hasil[df_hasil['Sifat Gaya'].str.contains('Tekan')]['Gaya Aksial (kN)'].max()
+                            max_tarik = df_hasil[df_hasil['Sifat Gaya'].str.contains('Tarik')]['Gaya Aksial (kN)'].max()
+                            st.info(f"💡 **Insight Desain:** Gunakan gaya Tarik maksimum (**{max_tarik} kN**) dan Tekan maksimum (**{max_tekan} kN**) dari tabel di atas untuk mengecek profil siku/WF di Tab 'Audit Baja Gedung'.")
+                            
+                        else:
+                            st.error(fig_truss) # Jika error, pesan errornya tersimpan di return kedua
+                    except Exception as e:
+                        st.error(f"Gagal menjalankan mesin: {e}")
 
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
@@ -2192,6 +2245,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
