@@ -941,46 +941,7 @@ elif selected_menu == "📏 Visual QTO 2D (PlanSwift Mode)":
                     st.success("✅ Volume berhasil dimasukkan ke Bill of Quantities (BOQ)! Buka menu **📑 Laporan RAB 5D** untuk melihat perhitungan biayanya.")
 
 
-        # Hitung Otomatis Berdasarkan Gambar
-        if canvas_result.json_data is not None:
-            objects = canvas_result.json_data["objects"]
-            if len(objects) > 0:
-                st.markdown("### 📊 Hasil Quantity Take-Off (QTO)")
-                
-                total_panjang_m = 0
-                total_luas_m2 = 0
-                
-                for obj in objects:
-                    if obj["type"] == "line":
-                        # Hitung jarak Euclidean (Pytagoras)
-                        x1, y1 = obj["x1"], obj["y1"]
-                        x2, y2 = obj["x2"], obj["y2"]
-                        length_px = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-                        total_panjang_m += length_px * ratio_px_to_m
-                        
-                    elif obj["type"] == "rect":
-                        # Hitung Luas Persegi
-                        area_px2 = obj["width"] * obj["height"]
-                        total_luas_m2 += area_px2 * ratio_px2_to_m2
-                
-                # Tampilkan Metrik
-                m1, m2 = st.columns(2)
-                m1.metric("📏 Total Panjang (Meter Lari)", f"{total_panjang_m:.2f} m")
-                m2.metric("🟦 Total Luas Area (Meter Persegi)", f"{total_luas_m2:.2f} m²")
-                
-                if st.button("💾 Simpan Volume ke Memori RAB", type="primary"):
-                    # Inject ke session_state agar terbaca di Tab RAB 5D
-                    item_baru = {
-                        "Kategori": "Visual QTO",
-                        "Nama": "Pekerjaan Area " + drawing_mode.capitalize(),
-                        "Volume": round(total_luas_m2 if total_luas_m2 > 0 else total_panjang_m, 2)
-                    }
-                    if 'real_boq_data' not in st.session_state or st.session_state['real_boq_data'] is None:
-                        st.session_state['real_boq_data'] = pd.DataFrame([item_baru])
-                    else:
-                        st.session_state['real_boq_data'] = pd.concat([st.session_state['real_boq_data'], pd.DataFrame([item_baru])], ignore_index=True)
-                    
-                    st.success("Volume berhasil dimasukkan ke Bill of Quantities (BOQ)! Buka menu RAB 5D untuk melihat harganya.")
+       
 
 # --- B. MODE FEM (ANALISIS GEMPA) ---
 elif selected_menu == "🌪️ Analisis Gempa (FEM)":
@@ -2747,6 +2708,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
