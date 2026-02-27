@@ -890,50 +890,56 @@ if selected_menu == "🤖 AI Assistant":
     # Ini akan memunculkan tombol generator di bawah chat
     libs_auto_chain.render_auto_chain_panel(target_category, active_persona)
 
-# --- MODE VISUAL QTO 2D ---
+# --- MODE VISUAL QTO 2D (VECTOR DXF MODE) ---
 elif selected_menu == "📏 Visual QTO 2D (PlanSwift Mode)":
-    from streamlit_drawable_canvas import st_canvas
-    from PIL import Image
-    import math
+    st.header("📏 Vector QTO 2D (Auto-Extract DXF)")
+    st.caption("Ekstraksi Kuantitas (Luasan & Panjang) Otomatis langsung dari Topologi Vektor CAD.")
+    
+    if 'libs_loader' not in sys.modules:
+        st.warning("⚠️ Modul `libs_loader` belum dimuat oleh sistem.")
+    else:
+        st.markdown("### 1. Upload Denah CAD (.DXF)")
+        st.info("💡 **Tips Persiapan CAD:** Pastikan gambar Anda digambar dengan skala **1 unit CAD = 1 Meter**. Kelompokkan objek ke dalam Layer yang benar (Misal: buat layer bernama *'Pekerjaan Pasangan Dinding Bata'* untuk garis dinding, atau *'Pekerjaan Pelat Lantai'* untuk poligon tertutup lantai).")
+        
+        dxf_file = st.file_uploader("Pilih File DXF", type=["dxf"])
+        
+        if dxf_file:
+            if st.button("🚀 Ekstrak Geometri (QTO)", type="primary", use_container_width=True):
+                with st.spinner("Membaca Vektor dan Menghitung Algoritma Geometri..."):
+                    # Panggil Class baru dari libs_loader
+                    qto_engine = sys.modules['libs_loader'].DXF_QTO_Engine()
+                    df_hasil, pesan = qto_engine.extract_qto_from_dxf(dxf_file)
+                    
+                    if df_hasil is not None:
+                        st.success("✅ Ekstraksi Vektor Selesai!")
+                        
+                        st.markdown("### 📊 Hasil Quantity Take-Off (QTO)")
+                        st.dataframe(df_hasil, use_container_width=True)
+                        
+                        # Siapkan data untuk di-inject ke Memori Utama RAB
+                        # Kita ubah formatnya agar persis seperti df_boq di memori aplikasi
+                        df_inject = df_hasil.rename(columns={"Layer (Item Pekerjaan)": "Nama"})
+                        df_inject['Kategori'] = "Ekstraksi Visual QTO 2D"
+                        
+                        # Simpan ke session_state agar tombol di bawah bisa berfungsi
+                        st.session_state['temp_dxf_qto'] = df_inject
+                    else:
+                        st.error(pesan)
+                        
+            # Tombol injeksi ke RAB (Hanya muncul jika sudah ada hasil ekstraksi)
+            if 'temp_dxf_qto' in st.session_state:
+                st.divider()
+                if st.button("💾 Simpan Volume ke Memori RAB Utama", type="secondary", use_container_width=True):
+                    df_inject = st.session_state['temp_dxf_qto']
+                    
+                    # Tambahkan ke real_boq_data
+                    if 'real_boq_data' not in st.session_state or st.session_state['real_boq_data'] is None:
+                        st.session_state['real_boq_data'] = df_inject[['Kategori', 'Nama', 'Volume']]
+                    else:
+                        st.session_state['real_boq_data'] = pd.concat([st.session_state['real_boq_data'], df_inject[['Kategori', 'Nama', 'Volume']]], ignore_index=True)
+                    
+                    st.success("✅ Volume berhasil dimasukkan ke Bill of Quantities (BOQ)! Buka menu **📑 Laporan RAB 5D** untuk melihat perhitungan biayanya.")
 
-    st.header("📏 Visual Take-Off 2D (PlanSwift / Bluebeam Mode)")
-    st.caption(f"Area Kerja Terkalibrasi untuk Bidang: **{st.session_state.get('bidang_proyek', 'Cipta Karya')}**")
-    
-    col_upload, col_kalibrasi = st.columns([1, 1])
-    
-    with col_upload:
-        bg_file = st.file_uploader("1. Upload Denah 2D (JPG/PNG)", type=["png", "jpg", "jpeg"])
-    
-    with col_kalibrasi:
-        st.markdown("**2. Kalibrasi Skala (Scaling)**")
-        px_length = st.number_input("Panjang Garis di Layar (Pixel):", min_value=1.0, value=100.0)
-        real_length = st.number_input("Panjang Aktual di Lapangan (Meter):", min_value=0.1, value=1.0)
-        ratio_px_to_m = real_length / px_length
-        ratio_px2_to_m2 = ratio_px_to_m ** 2
-        st.success(f"Skala Terkalibrasi: 1 Pixel = {ratio_px_to_m:.4f} m")
-
-    if bg_file:
-        img = Image.open(bg_file)
-        
-        # Opsi Penggambaran
-        drawing_mode = st.radio("3. Mode Pengukuran (Take-off):", ("line", "polygon", "rect"), horizontal=True)
-        
-        stroke_width = 3
-        stroke_color = "rgba(255, 0, 0, 1)" if drawing_mode == "line" else "rgba(0, 0, 255, 0.3)"
-        
-        st.markdown("### Area Kanvas (Draw Here)")
-        # Inisialisasi Canvas
-        canvas_result = st_canvas(
-            fill_color="rgba(0, 0, 255, 0.3)",  # Transparan biru untuk area (polygon/rect)
-            stroke_width=stroke_width,
-            stroke_color=stroke_color,
-            background_image=img,
-            update_streamlit=True,
-            height=600,
-            width=800,
-            drawing_mode=drawing_mode,
-            key="canvas",
-        )
 
         # Hitung Otomatis Berdasarkan Gambar
         if canvas_result.json_data is not None:
@@ -2741,6 +2747,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
