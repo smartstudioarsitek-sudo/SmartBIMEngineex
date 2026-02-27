@@ -2593,128 +2593,192 @@ elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
                     
         except Exception as e:
             st.error(f"❌ Terjadi kesalahan saat memproses file: {e}")
-            
-# --- E. MODE LAPORAN RAB 5D ---
+
+# --- E. MODE LAPORAN RAB 5D (WORKSPACE ONLINE) ---
 elif selected_menu == "📑 Laporan RAB 5D":
-    st.header("📑 Laporan Eksekutif RAB 5D (Dokumen Lelang)")
-    st.caption("Generator Dokumen Rencana Anggaran Biaya standar Kementerian PUPR")
+    st.header("📑 Workspace RAB 5D Interaktif")
+    st.caption("Validasi perhitungan RAB, SMKK, dan TKDN secara online sebelum mencetak dokumen final.")
+    
     # =========================================================
-    # [FITUR KEAMANAN ZERO DUMMY] Mencegah Cetak Excel Kosong
+    # 1. PENGAMANAN DATA (ZERO DUMMY)
     # =========================================================
     if 'master_ahsp_data' not in st.session_state:
         st.error("🚨 SISTEM TERKUNCI: Database AHSP Kosong!")
-        st.warning("Aplikasi menolak mencetak angka nol/fiktif. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP** di sidebar, upload Template Excel AHSP-nya, lalu klik tombol merah **'Kunci Data'** terlebih dahulu.")
-        st.stop() # Menghentikan sistem agar tidak cetak Excel kosong
-    # =========================================================
-
-    # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
-    st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
-
-    # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
-    st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
-    step1, step2, step3 = st.columns(3)
-    step4, step5, step6 = st.columns(3)
-
-    with step1:
-        with st.expander("1. Pendahuluan & Lingkup", expanded=True):
-            st.write("Berisi latar belakang proyek, deskripsi BIM, dan metodologi otomatis.")
-    with step2:
-        with st.expander("2. Asumsi Dasar & AHSP", expanded=True):
-            st.write("Menetapkan dasar harga material, upah kerja, dan referensi AHSP.")
-    with step3:
-        with st.expander("3. Bill of Quantities (BOQ)", expanded=True):
-            st.write("Rekapitulasi total volume pekerjaan dari ekstraksi BIM/AI-QS.")
-    with step4:
-        with st.expander("4. Integrasi SMKK & K3", expanded=True):
-            st.write("Perhitungan biaya Keselamatan Konstruksi sesuai risiko proyek.")
-    with step5:
-        with st.expander("5. Analisis TKDN (Lokal)", expanded=True):
-            st.write("Proporsi penggunaan material dalam negeri vs luar negeri.")
-    with step6:
-        with st.expander("6. Rekapitulasi & Grand Total", expanded=True):
-            st.write("Ringkasan final, PPN 11%, dan Grand Total Biaya Fisik.")
-
-    st.markdown("---")
-    
-    # 1. Kumpulkan teks laporan secara DINAMIS (ZERO DUMMY)
+        st.warning("Aplikasi menolak menampilkan angka fiktif. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP** di sidebar, upload Template Excel AHSP-nya, lalu klik tombol merah **'Kunci Data'** terlebih dahulu.")
+        st.stop()
+        
     df_boq_aktual = st.session_state.get('real_boq_data', None)
     lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
+    
+    if df_boq_aktual is None or df_boq_aktual.empty:
+        st.warning("⚠️ Data BOQ Kosong. Silakan ekstrak file IFC atau ukur via Visual QTO 2D di sidebar terlebih dahulu.")
+        st.stop()
 
-    laporan_gabungan = f"""
+    # =========================================================
+    # 2. KALKULASI RAB ONLINE (MENGGUNAKAN PANDAS)
+    # =========================================================
+    with st.spinner("Mengalkulasi Rantai Pasok Harga & RAB secara real-time..."):
+        # A. Siapkan Mesin Harga
+        if 'price_engine' not in st.session_state:
+            st.session_state.price_engine = sys.modules['libs_price_engine'].PriceEngine3Tier()
+        pe = st.session_state.price_engine
+        
+        df_master = st.session_state['master_ahsp_data']
+        
+        # B. Hitung Harga Satuan per Item Pekerjaan dari Resep AHSP
+        harga_satuan_dict = {}
+        for index, row in df_master.iterrows():
+            desc = str(row.get('Deskripsi', '')).strip().lower()
+            komponen = str(row.get('Nama_Komponen', ''))
+            koef = float(row.get('Koefisien', 0.0))
+            
+            # Tarik harga dasar dari API/Database
+            harga_dasar, _ = pe.get_best_price(komponen, lokasi=lokasi_proyek)
+            subtotal = koef * harga_dasar
+            
+            if desc in harga_satuan_dict:
+                harga_satuan_dict[desc] += subtotal
+            else:
+                harga_satuan_dict[desc] = subtotal
+
+        # C. Bentuk DataFrame RAB untuk ditampilkan
+        df_rab_preview = df_boq_aktual.copy()
+        
+        # Pencocokan nama pekerjaan (Toleransi huruf besar/kecil)
+        def cari_harga(nama_pekerjaan):
+            return harga_satuan_dict.get(str(nama_pekerjaan).strip().lower(), 0.0)
+            
+        df_rab_preview['Harga Satuan (Rp)'] = df_rab_preview['Nama'].apply(cari_harga)
+        df_rab_preview['Total Harga (Rp)'] = df_rab_preview['Volume'] * df_rab_preview['Harga Satuan (Rp)']
+        
+        # D. Hitung Metrik Turunan
+        total_rab_fisik = df_rab_preview['Total Harga (Rp)'].sum()
+        
+        # Simulasi Formula SMKK
+        smkk_dokumen = total_rab_fisik * 0.001
+        smkk_sosialisasi = total_rab_fisik * 0.0005
+        smkk_apd = max(10, total_rab_fisik/100000000) * 350000
+        smkk_personel = max(1, total_rab_fisik/500000000) * 3500000
+        total_smkk = smkk_dokumen + smkk_sosialisasi + smkk_apd + smkk_personel
+        
+        # Simulasi Formula TKDN
+        tkdn_bahan = total_rab_fisik * 0.85
+        tkdn_upah = (total_rab_fisik * 0.25) * 1.0 # Estimasi 25% porsi upah (100% lokal)
+        total_tkdn = tkdn_bahan + tkdn_upah
+        persentase_tkdn = (total_tkdn / (total_rab_fisik + (total_rab_fisik*0.25))) * 100 if total_rab_fisik > 0 else 0
+        
+        # Simulasi Rekapitulasi
+        ppn = total_rab_fisik * 0.11
+        grand_total = total_rab_fisik + ppn
+
+    # =========================================================
+    # 3. RENDER UI TAB ONLINE
+    # =========================================================
+    tab_boq, tab_rab, tab_smkk, tab_tkdn, tab_rekap = st.tabs([
+        "🧱 1. BOQ Aktual", "💰 2. Kalkulasi RAB", "👷 3. Biaya SMKK", "🇮🇩 4. Analisis TKDN", "📊 5. Rekapitulasi Final"
+    ])
+    
+    with tab_boq:
+        st.markdown("**Volume Pekerjaan Terekstrak dari Vektor (BIM/CAD):**")
+        st.dataframe(df_boq_aktual, use_container_width=True)
+        
+    with tab_rab:
+        st.markdown(f"**Rencana Anggaran Biaya (Indeks Harga: {lokasi_proyek.upper()})**")
+        # Format Rupiah khusus untuk tampilan web
+        st.dataframe(df_rab_preview.style.format({"Volume": "{:.3f}", "Harga Satuan (Rp)": "Rp {:,.0f}", "Total Harga (Rp)": "Rp {:,.0f}"}), use_container_width=True)
+        
+        if total_rab_fisik == 0:
+            st.warning("⚠️ Total RAB bernilai Rp0. Pastikan 'Nama Pekerjaan' di BOQ sama persis dengan 'Deskripsi' di tabel Master AHSP yang Anda unggah.")
+            
+    with tab_smkk:
+        st.markdown("**Estimasi Biaya Sistem Manajemen Keselamatan Konstruksi (SMKK):**")
+        st.metric("Total Biaya SMKK", f"Rp {total_smkk:,.0f}", delta=f"{(total_smkk/total_rab_fisik)*100 if total_rab_fisik > 0 else 0:.2f}% dari nilai proyek")
+        st.caption("Porsi Dokumen, Sosialisasi, APD, dan Personel dihitung secara proporsional. Rincian absolut akan di-generate di dalam file Excel.")
+        
+    with tab_tkdn:
+        st.markdown("**Estimasi Tingkat Komponen Dalam Negeri (TKDN):**")
+        c_t1, c_t2, c_t3 = st.columns(3)
+        c_t1.metric("Komponen Material Lokal", f"Rp {tkdn_bahan:,.0f}")
+        c_t2.metric("Komponen Upah Lokal", f"Rp {tkdn_upah:,.0f}")
+        c_t3.metric("Persentase TKDN Proyek", f"{persentase_tkdn:.2f} %")
+        
+    with tab_rekap:
+        st.markdown("**Rekapitulasi & Grand Total Proyek:**")
+        c_r1, c_r2, c_r3 = st.columns(3)
+        c_r1.metric("A. Total Biaya Fisik", f"Rp {total_rab_fisik:,.0f}")
+        c_r2.metric("B. Pajak (PPN 11%)", f"Rp {ppn:,.0f}")
+        c_r3.metric("C. GRAND TOTAL (A+B)", f"Rp {grand_total:,.0f}", delta="Pagu Anggaran")
+
+    st.divider()
+    
+    # =========================================================
+    # 4. EXPORT FINAL (PDF & EXCEL)
+    # =========================================================
+    st.markdown("### 📥 Cetak Dokumen Final (Approval)")
+    st.caption("Jika seluruh angka pada Tab di atas sudah dievaluasi dan dianggap sesuai (Fix), silakan cetak format pelaporan resminya.")
+    
+    col_dl1, col_dl2 = st.columns(2)
+    
+    with col_dl1:
+        laporan_gabungan = f"""
 # DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
 **PROYEK: {nama_proyek.upper()}**
 **LOKASI: {lokasi_proyek.upper()}**
 
 ## BAB 1. PENDAHULUAN
-Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex yang terintegrasi dengan standar ekstraksi kuantitas (QTO) berbasis algoritma analitik geometri, serta mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
+Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex, mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
 
 ## BAB 2. ASUMSI DASAR & HARGA MATERIAL
 Perhitungan harga satuan pekerjaan mengacu pada indeks harga material regional untuk wilayah **{lokasi_proyek.upper()}**.
 
 ## BAB 3. BILL OF QUANTITIES (BOQ) AKTUAL
-Berikut adalah rekapitulasi volume pekerjaan yang diekstrak secara presisi dari model digital:
-
+Berikut adalah rekapitulasi volume pekerjaan yang diekstrak secara presisi:
 """
-    # Menyuntikkan data aktual ke dalam PDF
-    if df_boq_aktual is not None and not df_boq_aktual.empty:
         for index, row in df_boq_aktual.iterrows():
             laporan_gabungan += f"- **{row['Kategori']}**: {row['Nama']} (Volume: {row.get('Volume', 0)} m3)\n"
-    else:
-        laporan_gabungan += "*(Data BOQ masih kosong. Silakan lakukan ekstraksi file IFC atau ukur via Visual QTO 2D terlebih dahulu untuk mengisi bab ini.)*\n"
 
-    laporan_gabungan += """
+        laporan_gabungan += f"""
 ## BAB 4. KESELAMATAN KONSTRUKSI (SMKK)
-Sesuai Permen PUPR No. 10 Tahun 2021, alokasi biaya penerapan SMKK telah dihitung secara algoritmik menyesuaikan dengan skala proyek, meliputi penyediaan APD, BPJS, rambu keselamatan, dan fasilitas P3K.
+Estimasi total alokasi biaya penerapan SMKK yang proporsional dengan skala proyek ini adalah sebesar **Rp {total_smkk:,.0f}**.
 
 ## BAB 5. ANALISIS TINGKAT KOMPONEN DALAM NEGERI (TKDN)
-Proyek ini mengutamakan penggunaan material pabrikan lokal dan tenaga kerja dalam negeri. Komponen bahan bangunan diestimasi memiliki kandungan lokal sebesar 85%, sedangkan komponen tenaga kerja dialokasikan 100% menggunakan sumber daya nasional.
+Proyek ini mengutamakan penggunaan material lokal dengan persentase TKDN terhitung sebesar **{persentase_tkdn:.2f}%**.
 
 ## BAB 6. REKAPITULASI & GRAND TOTAL
-Total estimasi biaya konstruksi fisik, persentase TKDN final, dan rincian Analisa Harga Satuan Pekerjaan (AHSP) dapat dilihat secara komprehensif pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang dicetak bersamaan dengan laporan ini. Nilai akhir sudah termasuk PPN 11%.
+Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah ditambah PPN 11% (Rp {ppn:,.0f}), maka Grand Total Pagu Anggaran adalah **Rp {grand_total:,.0f}**. 
+*Rincian komprehensif terdapat pada Spreadsheet Excel lampiran.*
 """
-    
-    
-    # 2. Render tombol Download yang sesungguhnya
-    try:
-        # Menggunakan engine PDF internal kita
-        pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {nama_proyek}")
-        
-        st.download_button(
-            label="📄 1. Download Laporan RAB (PDF)",
-            data=pdf_bytes,
-            file_name=f"Laporan_RAB_{nama_proyek.replace(' ', '_')}.pdf",
-            mime="application/pdf",
-            type="primary",
-            use_container_width=True
-        )
-        
-        # --- TOMBOL EXCEL DIPINDAH KESINI ---
-        df_boq_aktual = st.session_state.get('real_boq_data', None)
-        lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
-        
-        if df_boq_aktual is not None and not df_boq_aktual.empty:
-            st.success(f"🟢 Data BOQ Siap ({len(df_boq_aktual)} baris) untuk Lokasi: {lokasi_proyek}")
-            with st.spinner("Memproses Excel..."):
-                if 'price_engine' not in st.session_state:
-                    st.session_state.price_engine = sys.modules['libs_price_engine'].PriceEngine3Tier()
-                
-                excel_bytes = sys.modules['libs_export'].Export_Engine().generate_7tab_rab_excel(
-                    nama_proyek, df_boq_aktual, price_engine=st.session_state.price_engine, lokasi_proyek=lokasi_proyek 
-                )
-                st.download_button(
-                    label="📊 2. Download Excel RAB 7-Tab (Harga Auto-BPS)",
-                    data=excel_bytes,
-                    file_name=f"RAB_{lokasi_proyek}_{nama_proyek.replace(' ', '_')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                    use_container_width=True
-                )
-        else:
-            st.warning("⚠️ Data Kosong. Ekstrak IFC di Sidebar atau gunakan Visual QTO terlebih dahulu untuk mengaktifkan tombol Excel.")
-            st.button("📊 2. Download Excel RAB", disabled=True, use_container_width=True)
+        try:
+            pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {nama_proyek}")
+            st.download_button(
+                label="📄 Download Laporan Naratif (PDF)",
+                data=pdf_bytes,
+                file_name=f"Laporan_RAB_{nama_proyek.replace(' ', '_')}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Gagal render PDF: {e}")
+            
+    with col_dl2:
+        try:
+            excel_bytes = sys.modules['libs_export'].Export_Engine().generate_7tab_rab_excel(
+                nama_proyek, df_boq_aktual, price_engine=pe, lokasi_proyek=lokasi_proyek 
+            )
+            st.download_button(
+                label="📊 Download Lampiran RAB 7-Tab (Excel)",
+                data=excel_bytes,
+                file_name=f"RAB_{lokasi_proyek}_{nama_proyek.replace(' ', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Gagal render Excel: {e}")
 
-    except Exception as e:
-        st.error(f"⚠️ Gagal merender dokumen: {e}")
+
+
 
 
 
