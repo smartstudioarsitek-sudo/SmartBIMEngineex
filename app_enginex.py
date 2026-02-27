@@ -466,6 +466,7 @@ with st.sidebar:
             "🏗️ Daya Dukung Pondasi",
             "🗺️ Analisis Topografi 3D",
             "🌉 Audit Baja & Jembatan",
+            "🛣️ Analisis Transportasi (Jalan)",
             "⚙️ Admin: Ekstraksi AHSP"
         ],
         label_visibility="collapsed"
@@ -2119,6 +2120,113 @@ elif selected_menu == "🌉 Audit Baja & Jembatan":
                             st.error(fig_por)
                     except Exception as e:
                         st.error(f"Gagal menghitung Portal: {e}")
+# --- L. MODE TRANSPORTASI & JALAN RAYA ---
+elif selected_menu == "🛣️ Analisis Transportasi (Jalan)":
+    st.header("🛣️ Analisis Transportasi & Perkerasan Jalan")
+    st.caption("Evaluasi ANDALALIN, Desain Tebal Perkerasan (MDP 2017), dan Geometrik Tikungan")
+    
+    if 'libs_transport' not in sys.modules:
+        st.warning("⚠️ Modul `libs_transport` belum dimuat oleh sistem.")
+    else:
+        trans_eng = sys.modules['libs_transport'].Transport_Infrastructure_Engine()
+        
+        tab_andalalin, tab_pavement, tab_geometrik = st.tabs([
+            "🚦 Bangkitan Lalin (ANDALALIN)", 
+            "🛣️ Perkerasan Lentur (MDP 2017)", 
+            "🔄 Geometrik & Superelevasi"
+        ])
+        
+        # =========================================================
+        # TAB 1: ANDALALIN (BANGKITAN LALU LINTAS)
+        # =========================================================
+        with tab_andalalin:
+            st.markdown("#### Estimasi Bangkitan Lalu Lintas (Trip Generation)")
+            st.write("Kalkulasi awal untuk penentuan dokumen wajib Analisis Dampak Lalu Lintas (Permenhub 17/2021).")
+            
+            with st.expander("⚙️ Parameter Tata Guna Lahan", expanded=True):
+                c_and1, c_and2 = st.columns(2)
+                fungsi = c_and1.selectbox("Fungsi Lahan / Bangunan", ["Sekolah", "Perumahan", "Komersial", "Rumah Sakit"])
+                
+                # Input dinamis berdasarkan fungsi lahan
+                if fungsi == "Komersial":
+                    kapasitas = c_and2.number_input("Luas Lantai Efektif [m²]", value=5000, step=100)
+                elif fungsi == "Sekolah":
+                    kapasitas = c_and2.number_input("Jumlah Siswa & Staf [Orang]", value=1000, step=50)
+                elif fungsi == "Rumah Sakit":
+                    kapasitas = c_and2.number_input("Jumlah Tempat Tidur [Bed]", value=200, step=10)
+                else:
+                    kapasitas = c_and2.number_input("Jumlah Unit Rumah [Unit]", value=150, step=10)
+            
+            if st.button("🚦 Evaluasi Kewajiban ANDALALIN", type="primary", use_container_width=True):
+                res_and = trans_eng.hitung_bangkitan_lalin(fungsi, kapasitas)
+                
+                st.metric("Estimasi Bangkitan Lalu Lintas (Puncak)", f"{res_and['Estimasi_Bangkitan_smp_jam']} SMP/Jam")
+                
+                status_lalin = res_and['Status_Regulasi']
+                if "WAJIB" in status_lalin:
+                    st.error(f"**STATUS: {status_lalin}**")
+                elif "RINGAN" in status_lalin:
+                    st.warning(f"**STATUS: {status_lalin}**")
+                else:
+                    st.success(f"**STATUS: {status_lalin}**")
+
+        # =========================================================
+        # TAB 2: PERKERASAN LENTUR (ASPAL)
+        # =========================================================
+        with tab_pavement:
+            st.markdown("#### Desain Struktur Perkerasan Lentur (Bina Marga MDP 2017)")
+            
+            with st.expander("⚙️ Parameter Beban & Geoteknik Tanah", expanded=True):
+                c_pav1, c_pav2 = st.columns(2)
+                cbr_tanah = c_pav1.number_input("CBR Tanah Dasar Lapangan [%]", value=5.0, step=1.0)
+                cesa = c_pav2.number_input("Beban Sumbu Standar Kumulatif (CESA) [Juta]", value=3.5, step=0.5, help="Cumulative Equivalent Single Axle Load x 10^6")
+                
+            if st.button("🛣️ Desain Tebal Perkerasan", type="primary", use_container_width=True):
+                res_pav = trans_eng.desain_perkerasan_lentur(cbr_tanah, cesa)
+                
+                st.success(f"✅ Klasifikasi Jalan: **{res_pav['Klasifikasi_Jalan']}**")
+                
+                if "KRITIS" in res_pav['Rekomendasi_Geoteknik']:
+                    st.error(res_pav['Rekomendasi_Geoteknik'])
+                else:
+                    st.info(res_pav['Rekomendasi_Geoteknik'])
+                    
+                st.markdown("**Rekomendasi Susunan Lapisan Perkerasan Lentur:**")
+                col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+                col_p1.metric("Surface (AC-WC)", f"{res_pav['Lapis_Permukaan_AC_WC_mm']} mm")
+                col_p2.metric("Binder (AC-BC)", f"{res_pav['Lapis_Antara_AC_BC_mm']} mm")
+                col_p3.metric("Base (LPA Kelas A)", f"{res_pav['Lapis_Pondasi_Atas_LPA_KelasA_mm']} mm")
+                col_p4.metric("Subbase (LPB Kelas B)", f"{res_pav['Lapis_Pondasi_Bawah_LPB_KelasB_mm']} mm")
+
+        # =========================================================
+        # TAB 3: GEOMETRIK TIKUNGAN
+        # =========================================================
+        with tab_geometrik:
+            st.markdown("#### Alinyemen Horizontal & Superelevasi")
+            st.write("Pengecekan batas radius aman untuk mencegah kendaraan tergelincir (overturning) pada kecepatan tertentu.")
+            
+            with st.expander("⚙️ Parameter Rencana Jalan", expanded=True):
+                c_geo1, c_geo2, c_geo3 = st.columns(3)
+                v_rencana = c_geo1.number_input("Kecepatan Rencana (V) [km/jam]", value=60.0, step=10.0)
+                r_rencana = c_geo2.number_input("Radius Tikungan Rencana (R) [m]", value=120.0, step=10.0)
+                lebar_lajur = c_geo3.number_input("Lebar Separuh Jalan [m]", value=3.5, step=0.5, help="Jarak dari as (centerline) ke tepi luar jalan")
+                
+            if st.button("🔄 Analisis Tikungan & Render Profil", type="primary", use_container_width=True):
+                res_geo = trans_eng.desain_tikungan_horizontal(v_rencana, r_rencana)
+                
+                status_geo = res_geo['Status_Keamanan']
+                if "BAHAYA" in status_geo:
+                    st.error(f"**{status_geo}**")
+                else:
+                    st.success(f"**{status_geo}**")
+                    
+                m_g1, m_g2 = st.columns(2)
+                m_g1.metric("Batas Radius Minimum (R_min)", f"{res_geo['Radius_Minimum_Aman_m']} m")
+                m_g2.metric("Superelevasi Desain (e)", f"{res_geo['Superelevasi_Desain_%']}%", delta="Maks Normal: 10%", delta_color="off")
+                
+                st.markdown("**Potongan Melintang Jalan pada Daerah Tikungan Penuh (Full Superelevation):**")
+                fig_geo = trans_eng.gambar_profil_melintang(lebar_lajur, res_geo['Superelevasi_Desain_%'])
+                st.plotly_chart(fig_geo, use_container_width=True)
 
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
@@ -2289,6 +2397,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
