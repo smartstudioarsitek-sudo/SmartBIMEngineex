@@ -71,10 +71,19 @@ try:
     
     # [BARU] Modul Legal & Kontrak
     try:
+        # Percobaan 1: Cari di dalam folder terstruktur (Standard)
         from modules.legal import libs_legal
         has_legal = True
     except ImportError:
-        has_legal = False
+        try:
+            # Percobaan 2: Cari di folder utama/root (Fallback)
+            import libs_legal
+            has_legal = True
+        except ImportError as e:
+            # Tampilkan pesan error teknis di atas jika masih gagal
+            st.error(f"⚠️ Gagal memuat libs_legal: {e}")
+            has_legal = False
+    
     
     try:
         from modules.schedule import libs_4d
@@ -2732,6 +2741,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
