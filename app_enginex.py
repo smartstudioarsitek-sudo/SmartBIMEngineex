@@ -2597,7 +2597,7 @@ elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
 # --- E. MODE LAPORAN RAB 5D (WORKSPACE ONLINE) ---
 elif selected_menu == "📑 Laporan RAB 5D":
     st.header("📑 Workspace RAB 5D Interaktif")
-    st.caption("Validasi perhitungan RAB, SMKK, dan TKDN secara online sebelum mencetak dokumen final.")
+    st.caption("Validasi perhitungan RAB, rincian AHSP, SMKK, dan TKDN secara online sebelum mencetak dokumen final.")
     
     # =========================================================
     # 1. PENGAMANAN DATA (ZERO DUMMY)
@@ -2644,11 +2644,16 @@ elif selected_menu == "📑 Laporan RAB 5D":
         # C. Bentuk DataFrame RAB untuk ditampilkan
         df_rab_preview = df_boq_aktual.copy()
         
-        # Pencocokan nama pekerjaan (Toleransi huruf besar/kecil)
-        def cari_harga(nama_pekerjaan):
-            return harga_satuan_dict.get(str(nama_pekerjaan).strip().lower(), 0.0)
+        # [PERBAIKAN AUDIT - PENYAMBUNG LINK ONLINE]: 
+        def cari_harga(row):
+            nama_pekerjaan = str(row.get('Nama', ''))
+            ref_ahsp = str(row.get('Referensi AHSP', ''))
             
-        df_rab_preview['Harga Satuan (Rp)'] = df_rab_preview['Nama'].apply(cari_harga)
+            # Jika referensi AHSP kosong, gunakan Nama Pekerjaan
+            kata_kunci = ref_ahsp if ref_ahsp and ref_ahsp.lower() != 'nan' else nama_pekerjaan
+            return harga_satuan_dict.get(kata_kunci.strip().lower(), 0.0)
+            
+        df_rab_preview['Harga Satuan (Rp)'] = df_rab_preview.apply(cari_harga, axis=1)
         df_rab_preview['Total Harga (Rp)'] = df_rab_preview['Volume'] * df_rab_preview['Harga Satuan (Rp)']
         
         # D. Hitung Metrik Turunan
@@ -2674,8 +2679,8 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # =========================================================
     # 3. RENDER UI TAB ONLINE
     # =========================================================
-    tab_boq, tab_rab, tab_smkk, tab_tkdn, tab_rekap = st.tabs([
-        "🧱 1. BOQ Aktual", "💰 2. Kalkulasi RAB", "👷 3. Biaya SMKK", "🇮🇩 4. Analisis TKDN", "📊 5. Rekapitulasi Final"
+    tab_boq, tab_rab, tab_ahsp, tab_smkk, tab_tkdn, tab_rekap = st.tabs([
+        "🧱 1. BOQ", "💰 2. RAB", "📋 3. Rincian AHSP", "👷 4. SMKK", "🇮🇩 5. TKDN", "📊 6. Rekapitulasi"
     ])
     
     with tab_boq:
@@ -2690,6 +2695,46 @@ elif selected_menu == "📑 Laporan RAB 5D":
         if total_rab_fisik == 0:
             st.warning("⚠️ Total RAB bernilai Rp0. Pastikan 'Nama Pekerjaan' di BOQ sama persis dengan 'Deskripsi' di tabel Master AHSP yang Anda unggah.")
             
+    with tab_ahsp:
+        st.markdown("**Rincian Komponen Analisa Harga Satuan Pekerjaan (AHSP) Aktif:**")
+        pekerjaan_unik = df_rab_preview['Nama'].unique()
+        
+        for pek in pekerjaan_unik:
+            # Cari baris yang sesuai di Master AHSP
+            df_filter = df_master[df_master['Deskripsi'].astype(str).str.strip().str.lower() == str(pek).strip().lower()]
+            
+            with st.expander(f"🔍 AHSP: {pek}", expanded=False):
+                if not df_filter.empty:
+                    display_ahsp = []
+                    total_hsp = 0
+                    for _, row in df_filter.iterrows():
+                        kategori = str(row.get('Kategori', ''))
+                        komponen = str(row.get('Nama_Komponen', ''))
+                        koef = float(row.get('Koefisien', 0.0))
+                        sat = str(row.get('Satuan', ''))
+                        
+                        harga_dasar, sumber = pe.get_best_price(komponen, lokasi=lokasi_proyek)
+                        subtotal = koef * harga_dasar
+                        total_hsp += subtotal
+                        
+                        display_ahsp.append({
+                            "Kategori": kategori,
+                            "Komponen": komponen,
+                            "Koefisien": koef,
+                            "Satuan": sat,
+                            "Harga Dasar (Rp)": harga_dasar,
+                            "Subtotal (Rp)": subtotal
+                        })
+                        
+                    st.dataframe(pd.DataFrame(display_ahsp).style.format({
+                        "Koefisien": "{:.4f}",
+                        "Harga Dasar (Rp)": "Rp {:,.0f}",
+                        "Subtotal (Rp)": "Rp {:,.0f}"
+                    }), use_container_width=True)
+                    st.success(f"**Total Harga Satuan: Rp {total_hsp:,.0f} / {sat}**")
+                else:
+                    st.error(f"❌ Resep komponen untuk '{pek}' tidak ditemukan di database Master AHSP!")
+
     with tab_smkk:
         st.markdown("**Estimasi Biaya Sistem Manajemen Keselamatan Konstruksi (SMKK):**")
         st.metric("Total Biaya SMKK", f"Rp {total_smkk:,.0f}", delta=f"{(total_smkk/total_rab_fisik)*100 if total_rab_fisik > 0 else 0:.2f}% dari nilai proyek")
@@ -2722,7 +2767,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
     with col_dl1:
         laporan_gabungan = f"""
 # DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
-**PROYEK: {nama_proyek.upper()}**
+**PROYEK: {st.session_state.nama_proyek.upper()}**
 **LOKASI: {lokasi_proyek.upper()}**
 
 ## BAB 1. PENDAHULUAN
@@ -2749,11 +2794,11 @@ Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah 
 *Rincian komprehensif terdapat pada Spreadsheet Excel lampiran.*
 """
         try:
-            pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {nama_proyek}")
+            pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {st.session_state.nama_proyek}")
             st.download_button(
                 label="📄 Download Laporan Naratif (PDF)",
                 data=pdf_bytes,
-                file_name=f"Laporan_RAB_{nama_proyek.replace(' ', '_')}.pdf",
+                file_name=f"Laporan_RAB_{st.session_state.nama_proyek.replace(' ', '_')}.pdf",
                 mime="application/pdf",
                 type="primary",
                 use_container_width=True
@@ -2764,18 +2809,21 @@ Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah 
     with col_dl2:
         try:
             excel_bytes = sys.modules['libs_export'].Export_Engine().generate_7tab_rab_excel(
-                nama_proyek, df_boq_aktual, price_engine=pe, lokasi_proyek=lokasi_proyek 
+                st.session_state.nama_proyek, df_boq_aktual, price_engine=pe, lokasi_proyek=lokasi_proyek 
             )
             st.download_button(
                 label="📊 Download Lampiran RAB 7-Tab (Excel)",
                 data=excel_bytes,
-                file_name=f"RAB_{lokasi_proyek}_{nama_proyek.replace(' ', '_')}.xlsx",
+                file_name=f"RAB_{lokasi_proyek}_{st.session_state.nama_proyek.replace(' ', '_')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
                 use_container_width=True
             )
         except Exception as e:
             st.error(f"Gagal render Excel: {e}")
+
+
+
 
 
 
