@@ -452,7 +452,8 @@ with st.sidebar:
             "📏 Visual QTO 2D (PlanSwift Mode)", 
             "📑 Laporan RAB 5D", 
             "🌪️ Analisis Gempa (FEM)", 
-            "🏗️ Audit Struktur", 
+            "🏗️ Audit Struktur",
+            "🌾 Desain Irigasi (KP-01)",
             "🌊 Analisis Hidrologi", 
             "⚙️ Admin: Ekstraksi AHSP"
         ],
@@ -1186,7 +1187,97 @@ elif selected_menu == "🏗️ Audit Struktur":
 
                 except Exception as e:
                     st.error(f"Gagal hitung: {e}")
+# --- F. MODE DESAIN IRIGASI & KP-01 ---
+elif selected_menu == "🌾 Desain Irigasi (KP-01)":
+    st.header("🌾 Desain Jaringan Irigasi & Nomenklatur (KP-01)")
+    
+    if 'libs_irigasi' not in sys.modules:
+        st.warning("⚠️ Modul `libs_irigasi` belum dimuat oleh sistem.")
+    else:
+        # Inisialisasi Engine
+        irigasi_eng = sys.modules['libs_irigasi'].Irrigation_Engine()
+        
+        # Buat 2 Tab agar UI tetap bersih
+        tab_saluran, tab_jaringan = st.tabs(["📐 Desain Penampang Hidrolis", "🕸️ Skema & Nomenklatur Jaringan"])
+        
+        # =========================================================
+        # TAB 1: DESAIN PENAMPANG SALURAN EKONOMIS
+        # =========================================================
+        with tab_saluran:
+            st.markdown("#### Desain Dimensi Saluran Ekonomis (Metode fsolve)")
+            with st.expander("⚙️ Parameter Hidrolika Saluran Terbuka", expanded=True):
+                c_ir1, c_ir2 = st.columns(2)
+                q_desain = c_ir1.number_input("Debit Rencana (Q) [m3/s]", value=2.5, step=0.1)
+                kemiringan_m = c_ir2.number_input("Kemiringan Talud (m) [1:m]", value=1.0, step=0.1, help="Misal 1.0 untuk saluran tanah")
+                
+                c_ir3, c_ir4 = st.columns(2)
+                kemiringan_dasar = c_ir3.number_input("Kemiringan Dasar Saluran (S)", value=0.0005, format="%.5f", step=0.0001)
+                manning_n = c_ir4.number_input("Angka Kekasaran Manning (n)", value=0.025, format="%.3f", help="0.025 untuk saluran tanah biasa, 0.015 untuk beton")
 
+            if st.button("🚀 Hitung & Gambar Saluran", type="primary", use_container_width=True):
+                with st.spinner("Menghitung resolusi numerik dimensi optimal..."):
+                    try:
+                        # Panggil fungsi yang mengembalikan figur Matplotlib dan data dimensi
+                        fig_saluran, data_dim = irigasi_eng.hitung_dan_gambar_saluran(
+                            Q=q_desain, S=kemiringan_dasar, n=manning_n, m=kemiringan_m
+                        )
+                        
+                        st.success("✅ Desain Penampang Selesai!")
+                        
+                        # Tampilkan Metrik Hasil
+                        m1, m2, m3, m4 = st.columns(4)
+                        m1.metric("Lebar Dasar (b)", f"{data_dim['b']} m")
+                        m2.metric("Kedalaman Air (h)", f"{data_dim['h']} m")
+                        m3.metric("Tinggi Jagaan (w)", f"{data_dim['w']} m")
+                        m4.metric("Tinggi Total (H)", f"{data_dim['H']} m")
+                        
+                        # Render Gambar Potongan Melintang
+                        st.pyplot(fig_saluran)
+                    except Exception as e:
+                        st.error(f"Terjadi kesalahan komputasi: {e}")
+
+        # =========================================================
+        # TAB 2: SKEMA JARINGAN & NOMENKLATUR (NETWORKX)
+        # =========================================================
+        with tab_jaringan:
+            st.markdown("#### Generator Nomenklatur & Skema Jaringan (Standar KP-01)")
+            
+            nama_di = st.text_input("Nama Daerah Irigasi (DI):", value="Way Sekampung")
+            
+            st.markdown("**Data Saluran Sekunder & Petak Tersier:**")
+            st.caption("Silakan edit tabel di bawah ini untuk menambahkan saluran sekunder dan jumlah boks sadap tersiernya.")
+            
+            # Gunakan Data Editor bawaan Streamlit agar user bisa menambah/menghapus baris
+            df_sekunder_template = pd.DataFrame([
+                {"nama": "Natar", "jumlah_tersier": 3},
+                {"nama": "Jati Agung", "jumlah_tersier": 2},
+                {"nama": "Tegineneng", "jumlah_tersier": 4}
+            ])
+            
+            df_input = st.data_editor(df_sekunder_template, num_rows="dynamic", use_container_width=True)
+            
+            if st.button("🕸️ Generate Skema & Nomenklatur", type="primary"):
+                with st.spinner("Menyusun hierarki graf jaringan..."):
+                    try:
+                        # Ubah DataFrame menjadi list of dicts sesuai kebutuhan backend
+                        data_sekunder_list = df_input.to_dict('records')
+                        
+                        # Panggil fungsi backend
+                        fig_network, df_nomenklatur = irigasi_eng.generate_skema_jaringan_kp01(
+                            nama_daerah_irigasi=nama_di, 
+                            data_sekunder=data_sekunder_list
+                        )
+                        
+                        # Render Grafik Hierarki NetworkX - Plotly
+                        st.plotly_chart(fig_network, use_container_width=True)
+                        
+                        # Tampilkan Tabel Nomenklatur
+                        st.markdown(f"**Tabel Rekapitulasi Nomenklatur D.I. {nama_di}**")
+                        st.dataframe(df_nomenklatur, use_container_width=True)
+                        
+                    except Exception as e:
+                        st.error(f"Gagal menyusun skema: {e}")
+                        
 # --- D. MODE ANALISIS HIDROLOGI & JIAT (SNI 2415 & KP-01) ---
 elif selected_menu == "🌊 Analisis Hidrologi":
     st.header("🌊 Analisis Sumber Daya Air & JIAT")
@@ -1531,6 +1622,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
