@@ -1860,6 +1860,7 @@ elif selected_menu == "🗺️ Analisis Topografi 3D":
                 st.error(f"Gagal membaca file: {e}")
         else:
             st.info("💡 **Petunjuk:** Buat file Excel sederhana berisi 3 kolom (X, Y, Z), isi dengan titik kordinat hasil survey lapangan (atau hasil ekstraksi DXF dari AI Assistant), lalu unggah ke sini.")
+
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
     import io
@@ -2029,6 +2030,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
