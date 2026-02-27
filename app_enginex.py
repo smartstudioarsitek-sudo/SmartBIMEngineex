@@ -458,6 +458,7 @@ with st.sidebar:
             "🌊 Analisis Hidrologi",
             "🪨 Analisis Geoteknik & Lereng",
             "🏗️ Daya Dukung Pondasi",
+            "🗺️ Analisis Topografi 3D",
             "⚙️ Admin: Ekstraksi AHSP"
         ],
         label_visibility="collapsed"
@@ -1932,6 +1933,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
