@@ -599,6 +599,12 @@ if selected_menu == "🤖 AI Assistant":
                     execute_generated_code(code_content)
                 else:
                     st.markdown(part)
+                    # --- INDIKATOR DEBUGGING MEMORI AHSP ---
+                    if 'master_ahsp_data' in st.session_state:
+                        st.success(f"🔗 STATUS: Terhubung dengan Database Master AHSP ({len(st.session_state['master_ahsp_data'])} item data). AI siap membaca data pasti!")
+                    else:
+                        st.warning("⚠️ STATUS: Database Master AHSP KOSONG. AI berpotensi halusinasi. Silakan ke menu Admin untuk mengunci data.")
+                    # ---------------------------------------
 
     # Input User
     prompt = st.chat_input("Ketik perintah desain, hitungan, atau analisa...")
@@ -612,11 +618,19 @@ if selected_menu == "🤖 AI Assistant":
 
         full_prompt = [prompt]
 
+        # =================================================================
+        # [INJEKSI DATA MASTER AHSP KE OTAK AI - ZERO DUMMY]
+        # Posisinya dipindah ke luar agar selalu terbaca AI setiap saat!
+        # =================================================================
+        if 'master_ahsp_data' in st.session_state:
+            tabel_teks = st.session_state['master_ahsp_data'].to_csv(index=False)
+            full_prompt[0] += f"\n\n[REFERENSI MUTLAK DATABASE AHSP SAAT INI]:\n{tabel_teks}\n\n[PERINTAH OVERRIDE TERTINGGI]: DILARANG KERAS MENGGUNAKAN ASUMSI! DILARANG KERAS MEMBUAT KODE PYTHON (```python)! Anda hanya bertugas sebagai pembaca teks. Baca langsung tabel CSV di atas, lalu jawab angkanya secara langsung di chat tanpa basa-basi."
+
         # LOGIKA BARU: UNIVERSAL FILE PROCESSOR
         if uploaded_files:
             for f in uploaded_files:
                 if f.name not in st.session_state.processed_files:
-                    
+                   
                     # 1. HANDLING GAMBAR BIASA
                     if f.name.lower().endswith(('.png','.jpg','.jpeg')): 
                         full_prompt.append(Image.open(f))
@@ -639,7 +653,6 @@ if selected_menu == "🤖 AI Assistant":
                         
                     # 3. HANDLING SPECIAL FILES (CAD/GIS)
                     elif f.name.lower().endswith(('.dxf', '.dwg', '.geojson', '.kml', '.kmz', '.gpx', '.zip', '.tif', '.tiff', '.dem')):
-                    
                         with st.spinner(f"Menganalisis struktur file {f.name}..."):
                             try:
                                 text_data, img_data, _ = libs_loader.process_special_file(f)
@@ -1349,40 +1362,79 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
 
-# --- MODE ADMIN: EKSTRAKSI AHSP ---
+# --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
-    st.header("⚙️ Ekstraksi PDF PUPR ke Database Excel")
-    st.info("Menu khusus Admin. Cukup lakukan ini 1x setiap kali ada pembaruan Surat Edaran PUPR.")
+    import io
+    st.header("⚙️ Manajemen Database AHSP PUPR")
+    st.info("Menu khusus Admin. Unggah file Master Database AHSP (Excel/CSV) yang sudah terstruktur dengan pasti. Fitur AI dihentikan di menu ini untuk menjaga validitas angka.")
     
-    file_pdf_pupr = st.file_uploader("Upload Lampiran PDF AHSP PUPR:", type=["pdf"])
+    # A. SEDIAKAN TEMPLATE KOSONG UNTUK PENGGUNA
+    st.markdown("**1. Format Standar Sistem**")
+    st.caption("Jika belum memiliki format, silakan download template tabel standar ini lalu isi menggunakan Microsoft Excel.")
+    kolom_wajib = ["Bidang", "Kode_AHSP", "Deskripsi", "Kategori", "Nama_Komponen", "Satuan", "Koefisien"]
+    template_df = pd.DataFrame(columns=kolom_wajib)
     
-    if file_pdf_pupr and st.button("🚀 Ekstrak via AI & Buat Database", type="primary"):
-        with st.spinner("Mengekstrak tabel dari PDF... (Ini mungkin memakan waktu beberapa menit)"):
-            from modules.utils import pdf_extractor
-            
-            # 1. Ekstrak teks/tabel kotor menggunakan pdfplumber
-            raw_text = pdf_extractor.extract_text_from_pdf(file_pdf_pupr)
-            
-            # 2. (Simulasi) AI merapikan teks kotor menjadi format tabel terstruktur
-            # Dalam skenario nyata, Kakak bisa menggunakan Gemini prompt khusus tabel di sini.
-            # Untuk sekarang, kita buatkan struktur Excel dummy yang siap dipakai.
-            
-            df_template = pd.DataFrame([
-                {"Bidang": "SDA", "Kode_AHSP": "T.01.a", "Deskripsi": "1 m3 Galian Tanah Biasa", "Kategori": "Upah", "Nama_Komponen": "Pekerja", "Satuan": "OH", "Koefisien": 0.526},
-                {"Bidang": "SDA", "Kode_AHSP": "T.01.a", "Deskripsi": "1 m3 Galian Tanah Biasa", "Kategori": "Upah", "Nama_Komponen": "Mandor", "Satuan": "OH", "Koefisien": 0.052},
-            ])
-            
-            # 3. Simpan menjadi file Excel fisik di server/folder lokal
-            file_path = "Database_AHSP.xlsx"
-            df_template.to_excel(file_path, index=False)
-            
-            st.success(f"✅ Ekstraksi selesai! File {file_path} berhasil dibuat di sistem.")
-            st.dataframe(df_template)
+    output_template = io.BytesIO()
+    with pd.ExcelWriter(output_template, engine='xlsxwriter') as writer:
+        template_df.to_excel(writer, index=False, sheet_name='Master_AHSP')
+    
+    st.download_button(
+        label="📥 Download Template Excel AHSP", 
+        data=output_template.getvalue(), 
+        file_name="Template_Master_AHSP.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    
+    st.divider()
 
+    # B. UPLOADER DATABASE MURNI
+    st.markdown("**2. Unggah Data Master**")
+    file_master_ahsp = st.file_uploader("Upload file Master AHSP (.xlsx, .csv):", type=["xlsx", "xls", "csv"])
+    
+    if file_master_ahsp is not None:
+        try:
+            with st.spinner("Membaca dan memvalidasi keaslian data..."):
+                # Baca sesuai ekstensi file
+                if file_master_ahsp.name.endswith('.csv'):
+                    df_ahsp = pd.read_csv(file_master_ahsp)
+                else:
+                    df_ahsp = pd.read_excel(file_master_ahsp)
+                
+                # Validasi anti-bug: Pastikan strukturnya benar
+                kolom_file = df_ahsp.columns.tolist()
+                
+                if all(k in kolom_file for k in kolom_wajib):
+                    st.success(f"✅ Data tervalidasi! Berhasil memuat {len(df_ahsp)} baris resep AHSP.")
+                    
+                    # Tampilkan tabel asli dari file
+                    st.dataframe(df_ahsp, use_container_width=True)
+                    
+                    # Tombol Simpan ke Memori
+                    if st.button("💾 Kunci Data ke Sistem Estimasi", type="primary", use_container_width=True):
+                        st.session_state['master_ahsp_data'] = df_ahsp
+                        st.success("✅ Database terkunci! Modul RAB sekarang akan merujuk pada data ini secara mutlak.")
+                else:
+                    st.error("❌ Format file ditolak. Pastikan header tabel sesuai dengan template.")
+                    st.warning(f"Kolom yang terdeteksi di file Anda: {kolom_file}")
+                    
+        except Exception as e:
+            st.error(f"❌ Terjadi kesalahan saat memproses file: {e}")
+            
 # --- E. MODE LAPORAN RAB 5D ---
 elif selected_menu == "📑 Laporan RAB 5D":
     st.header("📑 Laporan Eksekutif RAB 5D (Dokumen Lelang)")
     st.caption("Generator Dokumen Rencana Anggaran Biaya standar Kementerian PUPR")
+    # =========================================================
+    # [FITUR KEAMANAN ZERO DUMMY] Mencegah Cetak Excel Kosong
+    # =========================================================
+    if 'master_ahsp_data' not in st.session_state:
+        st.error("🚨 SISTEM TERKUNCI: Database AHSP Kosong!")
+        st.warning("Aplikasi menolak mencetak angka nol/fiktif. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP** di sidebar, upload Template Excel AHSP-nya, lalu klik tombol merah **'Kunci Data'** terlebih dahulu.")
+        st.stop() # Menghentikan sistem agar tidak cetak Excel kosong
+    # =========================================================
+
+    # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
+    st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
 
     # 1. Tampilan Rencana Isi Laporan (Hanya Informasi, TANPA TOMBOL SATUAN)
     st.markdown("### 📋 Struktur Dokumen yang Akan Dicetak:")
@@ -1410,27 +1462,34 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     st.markdown("---")
     
-    # 1. Kumpulkan teks laporan (Bisa dikembangkan nanti agar dinamis sesuai klik User)
+    # 1. Kumpulkan teks laporan secara DINAMIS (ZERO DUMMY)
+    df_boq_aktual = st.session_state.get('real_boq_data', None)
+    lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
+
     laporan_gabungan = f"""
-    # DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
-    **PROYEK: {nama_proyek.upper()}**
+# DOKUMEN RENCANA ANGGARAN BIAYA (RAB) 5D
+**PROYEK: {nama_proyek.upper()}**
+**LOKASI: {lokasi_proyek.upper()}**
 
-    ## BAB 1. PENDAHULUAN
-    Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex yang terintegrasi dengan standar ekstraksi kuantitas (QTO) berbasis algoritma analitik geometri, serta mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
+## BAB 1. PENDAHULUAN
+Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex yang terintegrasi dengan standar ekstraksi kuantitas (QTO) berbasis algoritma analitik geometri, serta mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
 
-    ## BAB 2. ASUMSI DASAR & HARGA MATERIAL
-    Perhitungan harga satuan pekerjaan didasarkan pada integrasi harga pasar (Basic Price) yang ditarik secara dinamis dari sistem ESSH PUPR Provinsi dan Badan Pusat Statistik (BPS).
+## BAB 2. BILL OF QUANTITIES (BOQ) AKTUAL
+Berikut adalah rekapitulasi volume pekerjaan yang diekstrak secara presisi dari model digital:
 
-    ## BAB 3. BILL OF QUANTITIES (BOQ)
-    Kuantitas material diekstrak langsung dari model 3D (BIM) maupun 2D CAD/PDF dengan tingkat presisi tinggi (Human-in-the-Loop verified).
+"""
+    # Menyuntikkan data aktual ke dalam PDF
+    if df_boq_aktual is not None and not df_boq_aktual.empty:
+        for index, row in df_boq_aktual.iterrows():
+            laporan_gabungan += f"- **{row['Kategori']}**: {row['Nama']} (Volume: {row.get('Volume', 0)} m3)\n"
+    else:
+        laporan_gabungan += "*(Data BOQ masih kosong. Silakan lakukan ekstraksi file IFC atau ukur via Visual QTO 2D terlebih dahulu untuk mengisi bab ini.)*\n"
+
+    laporan_gabungan += """
+## BAB 3. KESELAMATAN KONSTRUKSI (SMKK) & REKAPITULASI
+Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen standar PUPR untuk memitigasi risiko kecelakaan kerja di lapangan. Total estimasi biaya konstruksi fisik dan rincian Analisa Harga Satuan Pekerjaan (AHSP) dapat dilihat secara komprehensif pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang menyertai laporan ini.
+"""
     
-    ## BAB 4. KESELAMATAN KONSTRUKSI (SMKK)
-    Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen standar PUPR untuk memitigasi risiko kecelakaan kerja di lapangan.
-    
-    ## BAB 5. REKAPITULASI BIAYA
-    Total estimasi biaya konstruksi fisik dapat dilihat pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang menyertai laporan ini, sudah termasuk perhitungan PPN 11%.
-    """
-
     # 2. Render tombol Download yang sesungguhnya
     try:
         # Menggunakan engine PDF internal kita
@@ -1472,6 +1531,14 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
+
+
+
+
+
+
+
 
 
 
