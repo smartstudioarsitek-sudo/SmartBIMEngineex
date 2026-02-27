@@ -210,7 +210,6 @@ class Export_Engine:
         if df_boq is None or df_boq.empty:
             df_boq = pd.DataFrame([{"Kategori": "Data Manual", "Nama": "Item Kosong", "Volume": 0.0, "Referensi AHSP": ""}])
 
-        
         baris_terakhir_rab = 3
 
         for index, row in df_boq.iterrows():
@@ -327,6 +326,7 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
 
 
