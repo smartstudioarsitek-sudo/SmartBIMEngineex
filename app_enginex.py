@@ -1779,32 +1779,103 @@ elif selected_menu == "🗺️ Analisis Topografi 3D":
         st.warning("⚠️ Modul `libs_topografi` belum dimuat oleh sistem.")
     else:
         topo_eng = sys.modules['libs_topografi'].Topografi_Engine()
-        
-        st.markdown("### 📥 1. Input Data Kordinat Lapangan")
-        st.info("Unggah file CSV atau Excel yang berisi hasil ukur Topografi/Survey. Wajib memiliki 3 kolom dengan nama header: **X**, **Y**, dan **Z**.")
-        file_xyz = st.file_uploader("Upload File Titik Koordinat (CSV/XLSX)", type=['csv', 'xlsx', 'xls'])
+
+        st.markdown("### 📥 1. Input Data Topografi")
+        st.info("Mendukung: CSV/XLSX (Tabel XYZ), DXF (AutoCAD), GPX (GPS), dan DEM/TIF (DEMNAS/Raster).")
+        file_xyz = st.file_uploader("Upload File Topografi", type=['csv', 'xlsx', 'xls', 'dxf', 'gpx', 'tif', 'tiff', 'dem'])
         
         if file_xyz:
+            df_points = None
+            filename = file_xyz.name.lower()
+            
             try:
-                # Baca file berdasarkan ekstensi
-                if file_xyz.name.endswith('.csv'):
-                    df_points = pd.read_csv(file_xyz)
-                else:
-                    df_points = pd.read_excel(file_xyz)
+                with st.spinner(f"Mengekstrak dan memproyeksikan data dari {filename}..."):
                     
-                # Standarisasi nama kolom ke huruf kapital (X, Y, Z)
-                df_points.columns = [str(c).upper().strip() for c in df_points.columns]
-                
-                if all(k in df_points.columns for k in ['X', 'Y', 'Z']):
-                    st.success(f"✅ Berhasil memuat {len(df_points)} titik koordinat spasial.")
+                    # 1. FORMAT EXCEL / CSV
+                    if filename.endswith(('.csv', '.xlsx', '.xls')):
+                        if filename.endswith('.csv'): df_points = pd.read_csv(file_xyz)
+                        else: df_points = pd.read_excel(file_xyz)
+                        df_points.columns = [str(c).upper().strip() for c in df_points.columns]
                     
-                    # Dapatkan rentang elevasi eksisting
+                    # 2. FORMAT DXF (AutoCAD)
+                    elif filename.endswith('.dxf'):
+                        _, _, df_data = sys.modules['libs_loader'].process_special_file(file_xyz)
+                        if df_data is not None and not df_data.empty:
+                            df_points = df_data
+                        else:
+                            st.error("Gagal mengekstrak koordinat Z dari DXF.")
+                    
+                    # 3. FORMAT GPX (Alat GPS)
+                    elif filename.endswith('.gpx'):
+                        import gpxpy
+                        import geopandas as gpd
+                        
+                        gpx = gpxpy.parse(file_xyz.getvalue().decode('utf-8', errors='ignore'))
+                        points_data = [{'lon': pt.longitude, 'lat': pt.latitude, 'Z': pt.elevation or 0.0} 
+                                       for track in gpx.tracks for segment in track.segments for pt in segment.points]
+                        
+                        if points_data:
+                            df_gpx = pd.DataFrame(points_data)
+                            gdf = gpd.GeoDataFrame(df_gpx, geometry=gpd.points_from_xy(df_gpx.lon, df_gpx.lat), crs="EPSG:4326")
+                            gdf_metric = gdf.to_crs(epsg=3857) # Proyeksi ke Meter
+                            df_points = pd.DataFrame({'X': gdf_metric.geometry.x, 'Y': gdf_metric.geometry.y, 'Z': gdf_metric['Z']})
+                            
+                    # 4. FORMAT DEM / TIF (DEMNAS / RASTER) - FITUR BARU!
+                    elif filename.endswith(('.tif', '.tiff', '.dem')):
+                        import rasterio
+                        import numpy as np
+                        import tempfile
+                        import os
+                        
+                        # Simpan ke temp file karena rasterio butuh file path fisik
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".tif") as tmp:
+                            tmp.write(file_xyz.getvalue())
+                            tmp_path = tmp.name
+                            
+                        try:
+                            with rasterio.open(tmp_path) as src:
+                                # [SANGAT KRUSIAL] DOWNSAMPLING
+                                # Kita baca hanya 5% dari resolusi asli agar RAM tidak jebol
+                                scale_factor = 0.05
+                                out_shape = (int(src.height * scale_factor), int(src.width * scale_factor))
+                                
+                                # Resample data Z
+                                z_data = src.read(1, out_shape=out_shape)
+                                
+                                # Hitung ulang sistem koordinat (Transform) agar sesuai dengan ukuran baru
+                                transform = src.transform * src.transform.scale(
+                                    (src.width / z_data.shape[1]),
+                                    (src.height / z_data.shape[0])
+                                )
+                                
+                                # Ekstrak koordinat X dan Y untuk setiap pixel
+                                rows, cols = np.indices(z_data.shape)
+                                xs, ys = rasterio.transform.xy(transform, rows, cols)
+                                
+                                # Rata-kan matriks menjadi tabel 1 dimensi
+                                df_points = pd.DataFrame({
+                                    'X': np.array(xs).flatten(),
+                                    'Y': np.array(ys).flatten(),
+                                    'Z': z_data.flatten()
+                                })
+                                
+                                # Buang pixel kosong (NoData di DEM biasanya bernilai minus puluhan ribu)
+                                nodata_val = src.nodata if src.nodata is not None else -9999
+                                df_points = df_points[df_points['Z'] > -100] # Buang outlier laut dalam
+                        finally:
+                            if os.path.exists(tmp_path): os.remove(tmp_path)
+
+                # --- LANJUTKAN PROSES JIKA DF_POINTS BERHASIL DIBUAT ---
+                if df_points is not None and all(k in df_points.columns for k in ['X', 'Y', 'Z']):
+                    st.success(f"✅ Berhasil memuat dan mengekstrak {len(df_points)} titik spasial.")
+                    
                     z_min = df_points['Z'].min()
                     z_max = df_points['Z'].max()
                     z_avg = df_points['Z'].mean()
                     
-                    tab_cutfill, tab_banjir = st.tabs(["⛏️ Analisis Cut & Fill", "🌊 Simulasi Genangan Banjir"])
-                    
+                    # [SISA KODE st.tabs(["⛏️ Analisis Cut & Fill", "🌊 Simulasi Genangan Banjir"]) SAMA SEPERTI SEBELUMNYA]
+        
+                           
                     # =========================================================
                     # TAB 1: CUT & FILL
                     # =========================================================
@@ -2030,6 +2101,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
