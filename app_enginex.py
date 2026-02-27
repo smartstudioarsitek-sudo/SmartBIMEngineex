@@ -775,8 +775,15 @@ if selected_menu == "🤖 AI Assistant":
                     """
                     
                     try:
-                        import libs_tools # Import jembatan fungsi absolut SNI kita
-                        
+                        # [PENCARIAN JALUR FILE DINAMIS]
+                        try:
+                            import libs_tools # Jika file ada di luar (root)
+                        except ImportError:
+                            try:
+                                from modules.utils import libs_tools # Jika di dalam folder utils
+                            except ImportError:
+                                from core import libs_tools # Jika di dalam folder core
+                                
                         # Daftarkan fungsi matematika sebagai "Senjata" untuk Gemini
                         daftar_tools_sni = [
                             libs_tools.tool_hitung_balok,
@@ -787,10 +794,13 @@ if selected_menu == "🤖 AI Assistant":
                             libs_tools.tool_cek_talud,
                             libs_tools.tool_cari_dimensi_optimal
                         ]
-                    except ImportError:
+                        # Hapus pesan warning jika berhasil
+                        
+                    except Exception as e:
                         daftar_tools_sni = None
-                        st.warning("⚠️ libs_tools tidak ditemukan, AI berjalan tanpa pengaman matematis.")
-
+                        # Tampilkan pesan ERROR ASLI berwarna merah agar kita tahu penyakitnya
+                        st.error(f"🚨 Sistem Pengaman AI (Tool Calling) Gagal Dimuat. Detail Error: {e}")
+                    
                     # --- [AUTO-FALLBACK DENGAN PING KE GOOGLE] ---
                     chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
                     
@@ -2851,6 +2861,7 @@ Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah 
             )
         except Exception as e:
             st.error(f"Gagal render Excel: {e}")
+
 
 
 
