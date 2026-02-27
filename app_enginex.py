@@ -455,7 +455,8 @@ with st.sidebar:
             "🏗️ Audit Struktur",
             "🌾 Desain Irigasi (KP-01)",
             "🌊 Hidrolika Bendung (KP-02)",
-            "🌊 Analisis Hidrologi", 
+            "🌊 Analisis Hidrologi",
+            "🪨 Analisis Geoteknik & Lereng",
             "⚙️ Admin: Ekstraksi AHSP"
         ],
         label_visibility="collapsed"
@@ -1728,6 +1729,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
