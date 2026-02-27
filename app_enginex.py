@@ -457,6 +457,7 @@ with st.sidebar:
             "🌊 Hidrolika Bendung (KP-02)",
             "🌊 Analisis Hidrologi",
             "🪨 Analisis Geoteknik & Lereng",
+            "🏗️ Daya Dukung Pondasi",
             "⚙️ Admin: Ekstraksi AHSP"
         ],
         label_visibility="collapsed"
@@ -1654,6 +1655,114 @@ elif selected_menu == "🪨 Analisis Geoteknik & Lereng":
                         st.plotly_chart(fig_sensor, use_container_width=True)
                     except Exception as e:
                         st.error(f"Gagal memuat telemetri sensor: {e}")
+# --- I. MODE DAYA DUKUNG PONDASI ---
+elif selected_menu == "🏗️ Daya Dukung Pondasi":
+    st.header("🏗️ Analisis Kapasitas Daya Dukung Pondasi")
+    st.caption("Evaluasi Pondasi Dalam (Bore Pile) dan Pondasi Dangkal (Telapak & Batu Kali)")
+    
+    if 'libs_geoteknik' not in sys.modules or 'libs_pondasi' not in sys.modules:
+        st.warning("⚠️ Modul Geoteknik/Pondasi belum dimuat oleh sistem.")
+    else:
+        # Inisialisasi Engine
+        geo_eng = sys.modules['libs_geoteknik'].Geotech_Engine()
+        
+        # Buat 3 Tab Khusus
+        tab_borepile, tab_footplate, tab_batukali = st.tabs([
+            "🕳️ Pondasi Dalam (Bore Pile)", 
+            "🔲 Pondasi Telapak (Footplate)", 
+            "🧱 Pondasi Menerus (Batu Kali)"
+        ])
+        
+        # =========================================================
+        # TAB 1: BORE PILE
+        # =========================================================
+        with tab_borepile:
+            st.markdown("#### Analisis Kapasitas Bore Pile (Data N-SPT)")
+            st.write("Menghitung tahanan ujung (End Bearing) dan gesekan selimut (Friction) berdasarkan empiris nilai N-SPT.")
+            
+            with st.expander("⚙️ Parameter Tiang & Tanah", expanded=True):
+                c_bp1, c_bp2 = st.columns(2)
+                diameter = c_bp1.number_input("Diameter Tiang (D) [m]", value=0.6, step=0.1)
+                kedalaman = c_bp2.number_input("Kedalaman Tertanam (L) [m]", value=12.0, step=1.0)
+                
+                st.markdown("**Nilai N-SPT Lapangan:**")
+                c_bp3, c_bp4 = st.columns(2)
+                n_ujung = c_bp3.number_input("N-SPT Ujung Tiang (End Bearing)", value=40.0, step=5.0)
+                n_selimut = c_bp4.number_input("N-SPT Rata-rata Selimut (Friction)", value=15.0, step=2.0)
+                
+            if st.button("🚀 Hitung Kapasitas Bore Pile", type="primary", use_container_width=True):
+                with st.spinner("Mengkalkulasi tahanan ujung dan selimut..."):
+                    # Memanggil fungsi 4-return dari libs_geoteknik.py
+                    Qp, Qs, Q_ult, Q_allow = geo_eng.daya_dukung_bore_pile(diameter, kedalaman, n_ujung, n_selimut)
+                    
+                    st.success("✅ Analisis Bore Pile Selesai!")
+                    
+                    col_bp1, col_bp2, col_bp3 = st.columns(3)
+                    col_bp1.metric("Tahanan Ujung (Qp)", f"{Qp:.2f} kN")
+                    col_bp2.metric("Tahanan Selimut (Qs)", f"{Qs:.2f} kN")
+                    col_bp3.metric("Kapasitas Ultimate (Q_ult)", f"{Q_ult:.2f} kN")
+                    
+                    st.info(f"🛡️ **Kapasitas Izin (Q_allow) dengan SF 2.5:** **{Q_allow:.2f} kN** (Setara ~{Q_allow/9.81:.1f} Ton)")
+
+        # =========================================================
+        # TAB 2: PONDASI TELAPAK (FOOTPLATE)
+        # =========================================================
+        with tab_footplate:
+            st.markdown("#### Desain & Cek Keamanan Pondasi Telapak")
+            
+            with st.expander("⚙️ Parameter Beban & Dimensi", expanded=True):
+                c_beban1, c_beban2 = st.columns(2)
+                sigma_tanah = c_beban1.number_input("Daya Dukung Izin Tanah (\u03c3) [kPa]", value=150.0, step=10.0, help="Contoh: 150 kPa untuk tanah sedang")
+                beban_pu = c_beban2.number_input("Beban Aksial Kolom (Pu) [kN]", value=450.0, step=10.0)
+                
+                st.markdown("**Dimensi Rencana Pondasi (Cakar Ayam):**")
+                c_fp1, c_fp2, c_fp3 = st.columns(3)
+                lebar_b = c_fp1.number_input("Lebar (B) [m]", value=1.5, step=0.1)
+                panjang_l = c_fp2.number_input("Panjang (L) [m]", value=1.5, step=0.1)
+                tebal_h = c_fp3.number_input("Tebal / Tinggi (h) [mm]", value=300.0, step=50.0)
+                
+            if st.button("🛡️ Evaluasi Pondasi Telapak", type="primary", use_container_width=True):
+                # Inisialisasi engine spesifik untuk footplate
+                fdn_eng = sys.modules['libs_pondasi'].Foundation_Engine(sigma_tanah)
+                res_fp = fdn_eng.hitung_footplate(beban_pu, lebar_b, panjang_l, tebal_h)
+                
+                if "AMAN" in res_fp['status']:
+                    st.success(f"**STATUS: {res_fp['status']}** (Tegangan yang terjadi lebih kecil dari batas izin tanah)")
+                else:
+                    st.error(f"**STATUS: {res_fp['status']}**")
+                    
+                c_res1, c_res2 = st.columns(2)
+                c_res1.metric("Rasio Keamanan (Tegangan)", f"{res_fp['ratio_safety']:.2f}", delta="Harus > 1.0", delta_color="off")
+                c_res2.metric("Volume Beton Kebutuhan", f"{res_fp['vol_beton']:.2f} m³")
+                
+                st.caption(f"Estimasi Volume Galian: **{res_fp['vol_galian']:.2f} m³** | Estimasi Pembesian (Praktis): **{res_fp['berat_besi']:.1f} kg**")
+
+        # =========================================================
+        # TAB 3: PONDASI BATU KALI
+        # =========================================================
+        with tab_batukali:
+            st.markdown("#### Estimasi Volume Pondasi Menerus (Batu Kali)")
+            
+            with st.expander("⚙️ Parameter Geometri Pondasi", expanded=True):
+                c_bk1, c_bk2 = st.columns(2)
+                panjang_total = c_bk1.number_input("Total Panjang Pondasi Menerus [m]", value=50.0, step=5.0)
+                tinggi_bk = c_bk2.number_input("Tinggi Pondasi (t) [m]", value=0.8, step=0.1)
+                
+                st.markdown("**Profil Melintang (Trapesium):**")
+                c_bk3, c_bk4 = st.columns(2)
+                lebar_atas = c_bk3.number_input("Lebar Atas (a) [m]", value=0.3, step=0.05)
+                lebar_bawah = c_bk4.number_input("Lebar Bawah (b) [m]", value=0.6, step=0.1)
+                
+            if st.button("📏 Hitung Volume Batu Kali", type="primary", use_container_width=True):
+                # Init engine statis (nilai sigma tidak dipakai untuk fungsi ini)
+                fdn_eng_bk = sys.modules['libs_pondasi'].Foundation_Engine(100.0) 
+                res_bk = fdn_eng_bk.hitung_batu_kali(panjang_total, lebar_atas, lebar_bawah, tinggi_bk)
+                
+                st.success("✅ Perhitungan Ekstraksi Volume Selesai!")
+                m_bk1, m_bk2 = st.columns(2)
+                m_bk1.metric("Volume Pasangan Batu Kali", f"{res_bk['vol_pasangan']:.2f} m³")
+                m_bk2.metric("Volume Galian Tanah", f"{res_bk['vol_galian']:.2f} m³", delta="Toleransi ruang kerja sisi bawah", delta_color="off")
+
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
     import io
@@ -1823,6 +1932,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
