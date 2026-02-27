@@ -1466,33 +1466,36 @@ elif selected_menu == "📑 Laporan RAB 5D":
                                 
                                 for el in elements:
                                     # Buang elemen abstrak/ruang hampa saja
-                                    if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement", "IfcSpace"]:
+                                    if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement", "IfcSpace", "IfcAnnotation"]:
                                         kategori_ifc = el.is_a()
                                         
                                         # Terjemahkan jika ada di kamus, jika tidak pakai nama IFC asli
                                         nama_indo = KAMUS_IFC.get(kategori_ifc, kategori_ifc)
                                         
+                                        # Coba hitung volume pakai engine
                                         vol = engine_ifc.get_element_quantity(el)
-                                        vol_final = round(vol, 3) if vol and vol > 0 else 0.0
                                         
-                                        if vol_final > 0:
-                                            data_boq_raw.append({
-                                                "Kategori": nama_indo,
-                                                "Nama": kategori_ifc, # Simpan nama asli IFC sebagai referensi
-                                                "Volume": vol_final
-                                            })
+                                        # [PERBAIKAN ATAP HILANG]
+                                        # Jika volume 0 (karena BIM diexport tanpa BaseQuantities), kita paksa jadi 1.0 (Lumpsum)
+                                        vol_final = round(vol, 3) if vol and vol > 0 else 1.0
+                                        
+                                        data_boq_raw.append({
+                                            "Kategori": nama_indo,
+                                            "Nama": kategori_ifc, 
+                                            "Volume": vol_final
+                                        })
                                 
                                 if len(data_boq_raw) > 0:
                                     df_raw = pd.DataFrame(data_boq_raw)
-                                    # Grouping (Rekapitulasi) agar tidak ratusan baris
+                                    # Grouping (Rekapitulasi)
                                     df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
                                     
                                     # Simpan ke memori sementara (Raw Data)
                                     st.session_state['raw_ifc_data'] = df_grouped
-                                    st.success(f"✅ Berhasil mengekstrak {len(df_grouped)} grup elemen bangunan!")
-                                    st.rerun() # Refresh layar untuk memunculkan checklist
+                                    st.success(f"✅ Berhasil mengekstrak {len(df_grouped)} grup elemen bangunan (Atap sekarang ikut terbaca)!")
+                                    st.rerun() 
                                 else:
-                                    st.error("⚠️ File IFC terbaca, tapi tidak ditemukan elemen fisik yang memiliki Volume.")
+                                    st.error("⚠️ File IFC terbaca, tapi tidak ditemukan elemen fisik.")
                             else:
                                 st.error("❌ File IFC Rusak atau Tidak Valid.")
                         except Exception as e:
@@ -1643,6 +1646,7 @@ Berikut adalah rekapitulasi volume pekerjaan yang diverifikasi:
             st.warning("⚠️ Selesaikan pemetaan di Tab 2 terlebih dahulu.")
             st.button("📄 Download Laporan RAB (PDF)", disabled=True, use_container_width=True)
             st.button("📊 Download Excel RAB 7-Tab", disabled=True, use_container_width=True)
+
 
 
 
