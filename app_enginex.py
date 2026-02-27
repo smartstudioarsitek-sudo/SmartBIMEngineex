@@ -2651,7 +2651,10 @@ elif selected_menu == "📑 Laporan RAB 5D":
 ## BAB 1. PENDAHULUAN
 Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex yang terintegrasi dengan standar ekstraksi kuantitas (QTO) berbasis algoritma analitik geometri, serta mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
 
-## BAB 2. BILL OF QUANTITIES (BOQ) AKTUAL
+## BAB 2. ASUMSI DASAR & HARGA MATERIAL
+Perhitungan harga satuan pekerjaan mengacu pada indeks harga material regional untuk wilayah **{lokasi_proyek.upper()}**.
+
+## BAB 3. BILL OF QUANTITIES (BOQ) AKTUAL
 Berikut adalah rekapitulasi volume pekerjaan yang diekstrak secara presisi dari model digital:
 
 """
@@ -2663,9 +2666,16 @@ Berikut adalah rekapitulasi volume pekerjaan yang diekstrak secara presisi dari 
         laporan_gabungan += "*(Data BOQ masih kosong. Silakan lakukan ekstraksi file IFC atau ukur via Visual QTO 2D terlebih dahulu untuk mengisi bab ini.)*\n"
 
     laporan_gabungan += """
-## BAB 3. KESELAMATAN KONSTRUKSI (SMKK) & REKAPITULASI
-Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen standar PUPR untuk memitigasi risiko kecelakaan kerja di lapangan. Total estimasi biaya konstruksi fisik dan rincian Analisa Harga Satuan Pekerjaan (AHSP) dapat dilihat secara komprehensif pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang menyertai laporan ini.
+## BAB 4. KESELAMATAN KONSTRUKSI (SMKK)
+Sesuai Permen PUPR No. 10 Tahun 2021, alokasi biaya penerapan SMKK telah dihitung secara algoritmik menyesuaikan dengan skala proyek, meliputi penyediaan APD, BPJS, rambu keselamatan, dan fasilitas P3K.
+
+## BAB 5. ANALISIS TINGKAT KOMPONEN DALAM NEGERI (TKDN)
+Proyek ini mengutamakan penggunaan material pabrikan lokal dan tenaga kerja dalam negeri. Komponen bahan bangunan diestimasi memiliki kandungan lokal sebesar 85%, sedangkan komponen tenaga kerja dialokasikan 100% menggunakan sumber daya nasional.
+
+## BAB 6. REKAPITULASI & GRAND TOTAL
+Total estimasi biaya konstruksi fisik, persentase TKDN final, dan rincian Analisa Harga Satuan Pekerjaan (AHSP) dapat dilihat secara komprehensif pada dokumen lampiran Spreadsheet (Excel 7-Tab) yang dicetak bersamaan dengan laporan ini. Nilai akhir sudah termasuk PPN 11%.
 """
+    
     
     # 2. Render tombol Download yang sesungguhnya
     try:
@@ -2708,6 +2718,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
