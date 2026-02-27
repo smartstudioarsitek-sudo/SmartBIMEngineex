@@ -465,6 +465,7 @@ with st.sidebar:
             "🪨 Analisis Geoteknik & Lereng",
             "🏗️ Daya Dukung Pondasi",
             "🗺️ Analisis Topografi 3D",
+            "🌉 Audit Baja & Jembatan",
             "⚙️ Admin: Ekstraksi AHSP"
         ],
         label_visibility="collapsed"
@@ -1931,6 +1932,96 @@ elif selected_menu == "🗺️ Analisis Topografi 3D":
                 st.error(f"Gagal membaca file: {e}")
         else:
             st.info("💡 **Petunjuk:** Buat file Excel sederhana berisi 3 kolom (X, Y, Z), isi dengan titik kordinat hasil survey lapangan (atau hasil ekstraksi DXF dari AI Assistant), lalu unggah ke sini.")
+# --- K. MODE AUDIT BAJA & JEMBATAN ---
+elif selected_menu == "🌉 Audit Baja & Jembatan":
+    st.header("🌉 Audit Baja Struktural & Jembatan")
+    st.caption("Pengecekan Kapasitas Profil (SNI 1729:2020) & Pembebanan Jembatan (SNI 1725:2016)")
+    
+    if 'libs_baja' not in sys.modules or 'libs_bridge' not in sys.modules:
+        st.warning("⚠️ Modul `libs_baja` atau `libs_bridge` belum dimuat.")
+    else:
+        tab_baja, tab_jembatan = st.tabs(["🏗️ Audit Baja Gedung", "🛣️ Desain Gelagar Jembatan"])
+        
+        # =========================================================
+        # TAB 1: AUDIT BAJA GEDUNG (SNI 1729:2020)
+        # =========================================================
+        with tab_baja:
+            st.markdown("#### 1. Evaluasi Kapasitas Kolom Baja (AISC / SNI)")
+            with st.expander("⚙️ Parameter Profil & Beban", expanded=True):
+                c_bj1, c_bj2 = st.columns(2)
+                nama_profil = c_bj1.text_input("Nama Profil Baja", value="WF 300x150x6.5x9")
+                fy_baja = c_bj2.number_input("Mutu Baja (fy) [MPa]", value=240.0, step=10.0, help="Misal: 240 untuk BJ-37")
+                
+                c_bj3, c_bj4 = st.columns(2)
+                luas_ag = c_bj3.number_input("Luas Penampang (Ag) [cm²]", value=46.78, step=1.0)
+                beban_pu = c_bj4.number_input("Beban Aksial Terfaktor (Pu) [Ton]", value=75.0, step=5.0)
+                
+            if st.button("🛡️ Cek Kapasitas Kolom", type="primary", use_container_width=True):
+                # Memanggil fungsi check_steel_column dari libs_baja.py
+                hasil_kolom = sys.modules['libs_baja'].check_steel_column(beban_pu, luas_ag, fy_baja, nama_profil)
+                
+                if "AMAN" in hasil_kolom['Status']:
+                    st.success(f"**STATUS: {hasil_kolom['Status']}**")
+                else:
+                    st.error(f"**STATUS: {hasil_kolom['Status']}** (Perbesar profil atau gunakan mutu baja lebih tinggi)")
+                    
+                m_b1, m_b2, m_b3 = st.columns(3)
+                m_b1.metric("Kapasitas Desain (\u03c6 Pn)", f"{hasil_kolom['Capacity (phi Pn)']} Ton")
+                m_b2.metric("Beban Rencana (Pu)", f"{hasil_kolom['Demand (Pu)']} Ton")
+                m_b3.metric("DCR (Demand/Capacity Ratio)", f"{hasil_kolom['DCR Ratio']} x", delta="Harus < 1.0", delta_color="inverse")
+            
+            st.markdown("---")
+            st.markdown("#### 2. Reduksi Kekakuan Direct Analysis Method (DAM)")
+            st.caption("Pengecekan parameter reduksi inelastis ($\u03c4_b$) untuk analisis struktur lanjut.")
+            with st.expander("⚙️ Parameter Gaya & Geometri", expanded=False):
+                c_dam1, c_dam2 = st.columns(2)
+                p_req = c_dam1.number_input("Kekuatan Perlu / Beban (Pr) [kN]", value=1500.0)
+                p_yield = c_dam2.number_input("Kekuatan Leleh Aksial (Py) [kN]", value=3000.0)
+                
+                if st.button("🔄 Hitung Reduksi Kekakuan (Tau_b)"):
+                    baja_eng = sys.modules['libs_baja'].SNI_Steel_2020(fy=fy_baja)
+                    # Asumsi I dan A dummy untuk mendapatkan nilai Tau_b saja
+                    EI_red, EA_red, tau_b, trace = baja_eng.hitung_kekakuan_dam(I_profil=1000, A_profil=10, P_required=p_req, P_yield=p_yield)
+                    st.info(f"**Trace Perhitungan:** {trace}")
+                    st.metric("Faktor Reduksi (\u03c4_b)", f"{tau_b:.3f}")
+
+        # =========================================================
+        # TAB 2: JEMBATAN BAJA (SNI 1725:2016)
+        # =========================================================
+        with tab_jembatan:
+            st.markdown("#### Pembebanan Gelagar & Beban Lajur 'D' (SNI 1725:2016)")
+            
+            with st.expander("⚙️ Parameter Jembatan", expanded=True):
+                c_br1, c_br2, c_br3 = st.columns(3)
+                bentang_l = c_br1.number_input("Panjang Bentang (L) [m]", value=40.0, step=5.0)
+                jarak_gelagar = c_br2.number_input("Jarak Antar Gelagar [m]", value=1.8, step=0.1)
+                beban_mati_tmb = c_br3.number_input("Beban Mati Tambahan (SIDL) [kPa]", value=2.0, step=0.5)
+
+            if st.button("🏗️ Analisis Momen Gelagar", type="primary", use_container_width=True):
+                with st.spinner("Menghitung faktor dinamis & distribusi beban..."):
+                    bridge_eng = sys.modules['libs_bridge'].SNI_Bridge_Loader(bentang_L=bentang_l)
+                    res_bridge = bridge_eng.analisis_momen_gelagar(jarak_gelagar, beban_mati_tambahan_kpa=beban_mati_tmb)
+                    
+                    st.success("✅ Analisis Pembebanan SNI 1725 Selesai!")
+                    
+                    st.markdown("**1. Intensitas Beban Lajur 'D' & DLA**")
+                    col_L1, col_L2, col_L3 = st.columns(3)
+                    col_L1.metric("BTR (Beban Terbagi Rata)", f"{res_bridge['Detail']['q_btr']:.2f} kPa")
+                    col_L2.metric("BGT (Beban Garis Terpusat)", f"{res_bridge['Detail']['p_bgt']:.2f} kN/m")
+                    col_L3.metric("Faktor Beban Dinamis (DLA)", f"{res_bridge['DLA'] * 100}%")
+                    
+                    st.markdown("**2. Rekapitulasi Momen Ultimate 1 Gelagar Interior**")
+                    col_M1, col_M2, col_M3 = st.columns(3)
+                    col_M1.metric("Momen Beban Mati (M_DL)", f"{res_bridge['M_DL']:.1f} kNm")
+                    col_M2.metric("Momen Beban Hidup (M_LL)", f"{res_bridge['M_LL']:.1f} kNm", help="Sudah termasuk DLA")
+                    col_M3.metric("Momen Ultimate (Mu) Total", f"{res_bridge['Mu_Total']:.1f} kNm", delta="Kombinasi Kuat I", delta_color="off")
+                    
+                    # Menampilkan Database Profil Jembatan yang tersedia
+                    st.markdown("---")
+                    st.markdown("**📚 Database Profil Welded Beam (WB) Referensi:**")
+                    db_profil = sys.modules['libs_bridge'].Bridge_Profile_DB.get_profiles()
+                    df_profil = pd.DataFrame.from_dict(db_profil, orient='index')
+                    st.dataframe(df_profil, use_container_width=True)
 
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
@@ -2101,6 +2192,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
