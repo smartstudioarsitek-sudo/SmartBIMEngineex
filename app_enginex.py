@@ -467,6 +467,8 @@ with st.sidebar:
             "🗺️ Analisis Topografi 3D",
             "🌉 Audit Baja & Jembatan",
             "🛣️ Analisis Transportasi (Jalan)",
+            "💡 Kalkulator MEP (SNI)",           
+            "🌿 Green Building & Zonasi",      
             "⚙️ Admin: Ekstraksi AHSP"
         ],
         label_visibility="collapsed"
@@ -2227,6 +2229,186 @@ elif selected_menu == "🛣️ Analisis Transportasi (Jalan)":
                 st.markdown("**Potongan Melintang Jalan pada Daerah Tikungan Penuh (Full Superelevation):**")
                 fig_geo = trans_eng.gambar_profil_melintang(lebar_lajur, res_geo['Superelevasi_Desain_%'])
                 st.plotly_chart(fig_geo, use_container_width=True)
+# --- M. MODE MEP (MECHANICAL, ELECTRICAL, PLUMBING) ---
+elif selected_menu == "💡 Kalkulator MEP (SNI)":
+    st.header("💡 Kalkulator MEP Bangunan (SNI)")
+    st.caption("Desain Utilitas HVAC, Pencahayaan, dan Air Bersih")
+    
+    if 'libs_mep' not in sys.modules:
+        st.warning("⚠️ Modul `libs_mep` belum dimuat oleh sistem.")
+    else:
+        mep_eng = sys.modules['libs_mep'].MEP_Engine()
+        
+        tab_hvac, tab_listrik, tab_plumbing = st.tabs(["❄️ Tata Udara (HVAC)", "💡 Pencahayaan", "🚰 Plumbing (Air Bersih)"])
+        
+        # =========================================================
+        # TAB 1: HVAC (BEBAN PENDINGIN AC)
+        # =========================================================
+        with tab_hvac:
+            st.markdown("#### Estimasi Beban Pendingin Ruangan (BTU/hr ke PK)")
+            with st.expander("⚙️ Parameter Ruangan", expanded=True):
+                c_ac1, c_ac2, c_ac3 = st.columns(3)
+                p_ruang = c_ac1.number_input("Panjang [m]", value=5.0, step=0.5, key="ac_p")
+                l_ruang = c_ac2.number_input("Lebar [m]", value=4.0, step=0.5, key="ac_l")
+                t_ruang = c_ac3.number_input("Tinggi [m]", value=3.0, step=0.5, key="ac_t")
+                
+                c_ac4, c_ac5 = st.columns(2)
+                fungsi_ac = c_ac4.selectbox("Fungsi Ruang (AC)", ["Kamar Tidur (Residensial)", "Kantor / Ruang Kerja", "Ruang Rapat", "Ruang Kelas"])
+                jml_orang = c_ac5.number_input("Estimasi Penghuni [Orang]", value=2, step=1)
+                
+                terpapar = st.checkbox("☀️ Dinding terpapar sinar matahari langsung (Barat/Timur)?")
+                
+            if st.button("❄️ Hitung Kebutuhan AC", type="primary", use_container_width=True):
+                res_ac = mep_eng.hitung_kebutuhan_ac(p_ruang, l_ruang, t_ruang, fungsi_ac, jml_orang, terpapar)
+                
+                st.success(res_ac['Status'])
+                col_h1, col_h2, col_h3 = st.columns(3)
+                col_h1.metric("Total Beban Pendingin", f"{res_ac['Total_Beban_Pendingin_BTU']:,.0f} BTU/hr")
+                col_h2.metric("Rekomendasi Kapasitas AC", f"{res_ac['Kapasitas_AC_Rekomendasi_PK']} PK")
+                col_h3.metric("Estimasi Jumlah Unit", f"{res_ac['Jumlah_Unit_Estimasi']} Unit")
+
+        # =========================================================
+        # TAB 2: PENCAHAYAAN (LIGHTING)
+        # =========================================================
+        with tab_listrik:
+            st.markdown("#### Kebutuhan Titik Lampu (SNI 03-6197-2011)")
+            with st.expander("⚙️ Parameter Iluminasi", expanded=True):
+                c_lt1, c_lt2 = st.columns(2)
+                p_lampu = c_lt1.number_input("Panjang Ruang [m]", value=6.0, step=0.5)
+                l_lampu = c_lt2.number_input("Lebar Ruang [m]", value=5.0, step=0.5)
+                
+                fungsi_lampu = st.selectbox("Fungsi Ruangan (Target Lux)", list(mep_eng.std_lux.keys()), index=1)
+                
+                c_lt3, c_lt4 = st.columns(2)
+                watt_lamp = c_lt3.number_input("Daya Lampu LED [Watt]", value=15, step=1)
+                lumen_w = c_lt4.number_input("Efikasi Lampu [Lumen/Watt]", value=100, step=10, help="Standar LED biasanya 90-110 Lumen/Watt")
+                
+            if st.button("💡 Hitung Titik Lampu", type="primary", use_container_width=True):
+                res_lampu = mep_eng.hitung_titik_lampu(p_lampu, l_lampu, fungsi_lampu, lumen_w, watt_lamp)
+                
+                st.success(res_lampu['Status'])
+                col_l1, col_l2 = st.columns(2)
+                col_l1.metric("Target Pencahayaan (SNI)", f"{res_lampu['Target_Pencahayaan_Lux']} Lux")
+                col_l2.metric(f"Kebutuhan Titik Lampu ({watt_lamp}W)", f"{res_lampu['Jumlah_Titik_Lampu']} Buah")
+
+        # =========================================================
+        # TAB 3: PLUMBING (AIR BERSIH)
+        # =========================================================
+        with tab_plumbing:
+            st.markdown("#### Desain Dimensi Pipa Air Bersih Utama (SNI 03-7065-2005)")
+            with st.expander("⚙️ Parameter Kebutuhan Air", expanded=True):
+                c_pl1, c_pl2 = st.columns(2)
+                fungsi_gedung = c_pl1.selectbox("Klasifikasi Bangunan", list(mep_eng.std_air.keys()), index=2)
+                jml_penghuni = c_pl2.number_input("Total Penghuni Gedung", value=5, step=1)
+                
+                v_air = st.number_input("Kecepatan Aliran Pipa (v) [m/s]", value=1.5, step=0.1, help="Standar kecepatan air di pipa 1.0 - 2.0 m/s")
+                
+            if st.button("🚰 Desain Pipa Distribusi", type="primary", use_container_width=True):
+                res_pipa = mep_eng.hitung_pipa_air_bersih(fungsi_gedung, jml_penghuni, v_air)
+                
+                st.success(res_pipa['Status'])
+                col_p1, col_p2, col_p3 = st.columns(3)
+                col_p1.metric("Kebutuhan Harian", f"{res_pipa['Total_Kebutuhan_Harian_Liter']:,.0f} Liter/Hari")
+                col_p2.metric("Debit Puncak (Q)", f"{res_pipa['Debit_Puncak_L_s']} L/s")
+                col_p3.metric("Diameter Pipa Utama", f"{res_pipa['Diameter_Pipa_Utama_Inci']} Inci", delta="Minimum", delta_color="off")
+
+# --- N. MODE GREEN BUILDING & ZONASI ---
+elif selected_menu == "🌿 Green Building & Zonasi":
+    st.header("🌿 Audit Green Building & Zonasi Ruang")
+    st.caption("Pengecekan Tata Ruang, Panen Air Hujan, dan Jejak Karbon Material")
+    
+    if 'libs_green' not in sys.modules or 'libs_zoning' not in sys.modules:
+        st.warning("⚠️ Modul Green/Zonasi belum dimuat oleh sistem.")
+    else:
+        green_eng = sys.modules['libs_green'].Green_Building_Engine()
+        zone_eng = sys.modules['libs_zoning'].Zoning_Analyzer()
+        
+        tab_zonasi, tab_eco, tab_karbon = st.tabs(["🏙️ Zonasi (KDB/KLB)", "🌧️ Efisiensi Air & OTTV", "♻️ Jejak Karbon (Embodied)"])
+        
+        # =========================================================
+        # TAB 1: ZONASI & TATA RUANG
+        # =========================================================
+        with tab_zonasi:
+            st.markdown("#### Audit Intensitas Bangunan (KDB, KLB, RTH)")
+            with st.expander("⚙️ Parameter Lahan & Desain", expanded=True):
+                c_zn1, c_zn2 = st.columns(2)
+                zona_kota = c_zn1.selectbox("Klasifikasi Zona", ["R-1 (Kepadatan Rendah)", "R-2 (Kepadatan Sedang)", "K-1 (Komersial)"])
+                kode_zona = zona_kota.split()[0]
+                luas_lahan = c_zn2.number_input("Luas Lahan Total [m²]", value=200.0, step=10.0)
+                
+                c_zn3, c_zn4 = st.columns(2)
+                luas_dasar = c_zn3.number_input("Luas Dasar Bangunan (Tapak) [m²]", value=130.0, step=10.0)
+                luas_lantai_tot = c_zn4.number_input("Total Luas Lantai (Semua Tingkat) [m²]", value=250.0, step=10.0)
+            
+            if st.button("🏙️ Evaluasi Tata Ruang", type="primary", use_container_width=True):
+                res_zonasi = zone_eng.cek_intensitas_bangunan(luas_lahan, luas_lantai_tot, luas_dasar, kode_zona)
+                st.info(res_zonasi)
+                
+                # Insight Investasi Lahan
+                st.markdown("**Analisis Nilai Aset Kasar:**")
+                res_invest = zone_eng.hitung_potensi_harga_lahan(luas_lahan, njop_meter=2500000, harga_pasar_meter=4000000)
+                m_v1, m_v2, m_v3 = st.columns(3)
+                m_v1.metric("Estimasi NJOP Total", res_invest['Nilai Aset (NJOP)'])
+                m_v2.metric("Estimasi Nilai Pasar", res_invest['Nilai Pasar Estimasi'])
+                m_v3.metric("Gap Profit", res_invest['Gap Profit'])
+
+        # =========================================================
+        # TAB 2: PANEN AIR HUJAN & OTTV
+        # =========================================================
+        with tab_eco:
+            st.markdown("#### Rainwater Harvesting & OTTV Fasad")
+            with st.expander("⚙️ Parameter Ekologi", expanded=True):
+                c_ec1, c_ec2 = st.columns(2)
+                luas_atap = c_ec1.number_input("Luas Atap Penampung Air [m²]", value=100.0, step=10.0)
+                ch_tahunan = c_ec2.number_input("Curah Hujan Tahunan Wilayah [mm]", value=2500.0, step=100.0, help="Rata-rata Indonesia 2000-3000 mm")
+                
+                c_ec3, c_ec4 = st.columns(2)
+                luas_dinding = c_ec3.number_input("Luas Dinding Fasad Luar [m²]", value=80.0, step=5.0)
+                wwr_persen = c_ec4.number_input("Window to Wall Ratio (WWR) [%]", value=30.0, step=5.0, help="Persentase luasan kaca terhadap dinding")
+                
+            if st.button("🌱 Audit Efisiensi Ekologi", type="primary", use_container_width=True):
+                # 1. Air Hujan
+                res_hujan = green_eng.hitung_panen_hujan(luas_atap, ch_tahunan)
+                st.markdown("**1. Potensi Panen Air Hujan:**")
+                col_e1, col_e2 = st.columns(2)
+                col_e1.metric("Potensi Tangkapan Tahunan", res_hujan['Potensi Air Hujan'])
+                col_e2.metric("Penghematan Air Harian", res_hujan['Penghematan Harian'], delta=res_hujan['Rekomendasi'], delta_color="normal")
+                
+                st.markdown("---")
+                # 2. OTTV
+                res_ottv = green_eng.hitung_ottv_sederhana(luas_dinding, wwr_persen)
+                st.markdown("**2. Estimasi Overall Thermal Transfer Value (OTTV):**")
+                
+                if "LULUS" in res_ottv['Status_SNI']:
+                    st.success(f"OTTV: **{res_ottv['Nilai_OTTV_W_m2']} W/m²** \u2192 {res_ottv['Status_SNI']}")
+                else:
+                    st.error(f"OTTV: **{res_ottv['Nilai_OTTV_W_m2']} W/m²** \u2192 {res_ottv['Status_SNI']}")
+                    st.caption("Kurangi rasio luasan kaca atau gunakan kaca tipe Low-E/Double Glass.")
+
+        # =========================================================
+        # TAB 3: JEJAK KARBON (EMBODIED CARBON)
+        # =========================================================
+        with tab_karbon:
+            st.markdown("#### Kalkulator Jejak Karbon Material (Embodied Carbon)")
+            st.write("Menghitung estimasi emisi $CO_2$ dari material struktur utama dan konversi kebutuhan pohon penyeimbang.")
+            
+            with st.expander("⚙️ Volume Material Struktur", expanded=True):
+                c_co1, c_co2 = st.columns(2)
+                vol_beton = c_co1.number_input("Total Volume Beton [m³]", value=150.0, step=10.0)
+                berat_baja = c_co2.number_input("Total Berat Baja Tulangan/Profil [kg]", value=25000.0, step=1000.0)
+                
+            if st.button("♻️ Hitung Jejak Karbon", type="primary", use_container_width=True):
+                res_co2 = green_eng.hitung_jejak_karbon_struktur(vol_beton, berat_baja)
+                
+                st.success(res_co2['Status'])
+                m_co1, m_co2 = st.columns(2)
+                
+                # Emisi Karbon
+                emisi_ton = res_co2['Total_Emisi_kgCO2'] / 1000
+                m_co1.metric("Total Emisi Gas Rumah Kaca", f"{emisi_ton:,.1f} Ton CO\u2082e", delta="Embodied Carbon", delta_color="inverse")
+                
+                # Kompensasi Pohon
+                m_co2.metric("Kompensasi Deforestasi Ekologis", f"{res_co2['Kompensasi_Pohon_Dibutuhkan']} Pohon Dewasa", help="Jumlah pohon yang dibutuhkan untuk menyerap emisi ini dalam 1 tahun")
 
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
@@ -2397,6 +2579,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
