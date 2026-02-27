@@ -762,44 +762,40 @@ if selected_menu == "🤖 AI Assistant":
                 try:
                     persona_instr = gems_persona.get(target_expert, gems_persona["👑 The GEMS Grandmaster"])
                     
+
                     # =================================================================
                     # [PERBAIKAN AUDIT FASE 3: DOKTRIN TOOL CALLING]
                     # =================================================================
                     SYS = persona_instr + """
                     \n[INSTRUKSI WAJIB - MODE DETERMINISTIK]:
                     1. Gunakan Bahasa Indonesia Baku dan Formal (EYD).
-                    2. DILARANG KERAS menulis/membuat blok kode skrip Python (```python).
-                    3. Anda WAJIB MENGGUNAKAN TOOLS (Function Calling) yang disediakan untuk SETIAP permintaan perhitungan (Gempa, Baja, Beton, Pondasi, dll).
-                    4. Narasikan hasil komputasi dari Tools tersebut dengan gaya bahasa ahli teknik profesional. Jangan berhalusinasi angka!
-                    5. Format Laporan mengikuti standar Dokumen Lelang teknis.
+                    2. DILARANG KERAS menulis blok kode skrip Python (```python).
+                    3. Anda WAJIB MENGGUNAKAN TOOLS (Function Calling) untuk menghitung. Dilarang keras berasumsi angka sendiri.
+                    4. Narasikan hasil komputasi dari Tools tersebut dengan gaya profesional.
                     """
                     
                     try:
-                        # [PENCARIAN JALUR FILE DINAMIS]
-                        try:
-                            import libs_tools # Jika file ada di luar (root)
-                        except ImportError:
-                            try:
-                                from modules.utils import libs_tools # Jika di dalam folder utils
-                            except ImportError:
-                                from core import libs_tools # Jika di dalam folder core
-                                
-                        # Daftarkan fungsi matematika sebagai "Senjata" untuk Gemini
+                        import sys
+                        import os
+                        sys.path.append(os.getcwd()) # Paksa baca dari folder utama aplikasi
+                        
+                        import libs_tools
+                        
                         daftar_tools_sni = [
+                            libs_tools.tool_hitung_gempa_v,
                             libs_tools.tool_hitung_balok,
                             libs_tools.tool_cek_baja_wf,
                             libs_tools.tool_hitung_pondasi,
                             libs_tools.tool_estimasi_biaya,
-                            libs_tools.tool_hitung_gempa_v,
                             libs_tools.tool_cek_talud,
                             libs_tools.tool_cari_dimensi_optimal
                         ]
-                        # Hapus pesan warning jika berhasil
-                        
                     except Exception as e:
                         daftar_tools_sni = None
-                        # Tampilkan pesan ERROR ASLI berwarna merah agar kita tahu penyakitnya
-                        st.error(f"🚨 Sistem Pengaman AI (Tool Calling) Gagal Dimuat. Detail Error: {e}")
+                        st.error(f"🚨 SYSTEM ERROR ASLI: File 'libs_tools.py' gagal dimuat. Detail: {e}")
+                        st.warning("Pastikan file 'libs_tools.py' sudah ter-upload di GitHub pada folder paling luar (root).")
+                        st.stop()
+                    
                     
                     # --- [AUTO-FALLBACK DENGAN PING KE GOOGLE] ---
                     chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
@@ -2861,6 +2857,7 @@ Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah 
             )
         except Exception as e:
             st.error(f"Gagal render Excel: {e}")
+
 
 
 
