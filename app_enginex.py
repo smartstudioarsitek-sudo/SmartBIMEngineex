@@ -1940,8 +1940,13 @@ elif selected_menu == "🌉 Audit Baja & Jembatan":
     if 'libs_baja' not in sys.modules or 'libs_bridge' not in sys.modules:
         st.warning("⚠️ Modul `libs_baja` atau `libs_bridge` belum dimuat.")
     else:
-        tab_baja, tab_jembatan, tab_truss = st.tabs(["🏗️ Audit Baja Gedung", "🛣️ Desain Gelagar Jembatan", "🔺 Kalkulator Truss 2D (OpenSees)"])
-               
+        tab_baja, tab_jembatan, tab_truss, tab_portal = st.tabs([
+            "🏗️ Audit Baja Gedung", 
+            "🛣️ Desain Gelagar Jembatan", 
+            "🔺 Kalkulator Truss (Sendi)", 
+            "🏭 Portal WF Gudang (Kaku)" # <--- TAB BARU
+        ])
+                       
         # =========================================================
         # TAB 1: AUDIT BAJA GEDUNG (SNI 1729:2020)
         # =========================================================
@@ -2075,6 +2080,45 @@ elif selected_menu == "🌉 Audit Baja & Jembatan":
                             st.error(fig_truss) # Jika error, pesan errornya tersimpan di return kedua
                     except Exception as e:
                         st.error(f"Gagal menjalankan mesin: {e}")
+        # =========================================================
+        # TAB 4: PORTAL GUDANG WF (GABLE FRAME)
+        # =========================================================
+        with tab_portal:
+            st.markdown("#### Kalkulator Portal Baja WF (Gable Frame)")
+            st.write("Analisis struktur sambungan kaku (Rigid) untuk menghitung Momen Lentur & Aksial pada Kolom dan Rafter.")
+            
+            with st.expander("⚙️ Geometri Gudang & Beban", expanded=True):
+                c_por1, c_por2, c_por3 = st.columns(3)
+                span_portal = c_por1.number_input("Lebar Bentang Gudang (L) [m]", value=20.0, step=1.0)
+                tinggi_kolom = c_por2.number_input("Tinggi Kolom (H1) [m]", value=6.0, step=0.5)
+                tinggi_atap = c_por3.number_input("Tinggi Segitiga Atap (H2) [m]", value=2.5, step=0.5)
+                
+                beban_q = st.number_input("Beban Merata Rafter (q) [kN/m]", value=8.5, step=0.5, help="Beban atap + gording + angin")
+                
+            if st.button("🏗️ Analisis Momen Portal WF", type="primary", use_container_width=True):
+                with st.spinner("OpenSees sedang menghitung matriks gaya dalam 3 Derajat Kebebasan..."):
+                    try:
+                        portal_eng = sys.modules['libs_fem'].OpenSeesPortal2D()
+                        df_por, fig_por, insight = portal_eng.build_and_analyze(span_portal, tinggi_kolom, tinggi_atap, beban_q)
+                        
+                        if df_por is not None:
+                            st.success("✅ Analisis Portal Linear Selesai!")
+                            
+                            col_p1, col_p2 = st.columns([1, 1.2])
+                            with col_p1:
+                                st.markdown("**Rekapitulasi Gaya Dalam (Envelopes):**")
+                                st.dataframe(df_por, height=200, use_container_width=True)
+                                
+                                st.info(f"💡 **Panduan Desain WF:**\n"
+                                        f"1. Rafter memikul Momen sangat besar (**{insight['momen_rafter']} kNm**). Cek profil WF di Tab 1.\n"
+                                        f"2. Kolom memikul Aksial sebesar (**{insight['aksial_kolom']} kN**).")
+                                
+                            with col_p2:
+                                st.plotly_chart(fig_por, use_container_width=True)
+                        else:
+                            st.error(fig_por)
+                    except Exception as e:
+                        st.error(f"Gagal menghitung Portal: {e}")
 
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
@@ -2245,6 +2289,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
