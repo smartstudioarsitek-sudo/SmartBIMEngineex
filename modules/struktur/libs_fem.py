@@ -160,3 +160,179 @@ if __name__ == "__main__":
     # Asumsi: V_statik = 2000 kN, V_din_x = 1800 kN (Gagal), V_din_y = 2100 kN (Lulus)
     df_scale = engine.check_base_shear_scaling(V_statik=2000, V_dinamik_x=1800, V_dinamik_y=2100)
     print(df_scale)
+
+class OpenSeesTruss2D:
+    """
+    Engine OpenSees khusus 2D untuk Kalkulator Rangka Atap (Truss).
+    Membangun Geometri, Meshing, dan Analisis secara Otomatis.
+    """
+    def __init__(self):
+        self.nodes = {}
+        self.elements = []
+        
+    def build_and_analyze(self, span, height, num_panels, point_load_kn):
+        if not HAS_OPENSEES:
+            return None, "Error: Library openseespy belum terinstall."
+            
+        try:
+            import openseespy.opensees as ops
+            import pandas as pd
+            
+            # Sapu bersih memori dari analisis sebelumnya
+            ops.wipe()
+            # Set mode 2D (ndm=2 koordinat X,Y) dan 2 Derajat Kebebasan (ndf=2 untuk Truss murni)
+            ops.model('basic', '-ndm', 2, '-ndf', 2) 
+            
+            # Material Baja (Elastis Linear)
+            E = 200000.0 # MPa
+            A = 0.002    # m2 (Area dummy statik penentu distribusi gaya)
+            mat_tag = 1
+            ops.uniaxialMaterial('Elastic', mat_tag, E)
+            
+            # 1. AUTO-GEOMETRY (Nodes)
+            # Pastikan jumlah panel genap agar bentuk atap simetris
+            if num_panels % 2 != 0: num_panels += 1 
+                
+            dx = span / num_panels
+            node_tag = 1
+            
+            # Node Batang Bawah (Bottom Chords)
+            bottom_nodes = []
+            for i in range(num_panels + 1):
+                x = i * dx
+                y = 0.0
+                ops.node(node_tag, x, y)
+                self.nodes[node_tag] = (x, y)
+                bottom_nodes.append(node_tag)
+                node_tag += 1
+                
+            # Node Batang Atas (Top Chords)
+            top_nodes = []
+            for i in range(1, num_panels):
+                x = i * dx
+                # Bentuk Segitiga: Naik sampai tengah (puncak), lalu turun
+                if i <= num_panels / 2:
+                    y = x * (height / (span / 2))
+                else:
+                    y = (span - x) * (height / (span / 2))
+                
+                ops.node(node_tag, x, y)
+                self.nodes[node_tag] = (x, y)
+                top_nodes.append(node_tag)
+                node_tag += 1
+                
+            # 2. BOUNDARY CONDITIONS (Tumpuan)
+            # Sendi di ujung kiri, Rol di ujung kanan
+            ops.fix(bottom_nodes[0], 1, 1) # Sendi (Tahan X, Y)
+            ops.fix(bottom_nodes[-1], 0, 1) # Rol (Tahan Y saja)
+            
+            # 3. AUTO-MESHING (Elements) tipe Howe Truss
+            ele_tag = 1
+            def add_ele(n1, n2, type_name):
+                nonlocal ele_tag
+                ops.element('Truss', ele_tag, n1, n2, A, mat_tag)
+                self.elements.append({'id': ele_tag, 'n1': n1, 'n2': n2, 'type': type_name})
+                ele_tag += 1
+
+            # A. Batang Bawah
+            for i in range(len(bottom_nodes) - 1): add_ele(bottom_nodes[i], bottom_nodes[i+1], 'Batang Bawah')
+                
+            # B. Batang Atas
+            add_ele(bottom_nodes[0], top_nodes[0], 'Batang Atas')
+            for i in range(len(top_nodes) - 1): add_ele(top_nodes[i], top_nodes[i+1], 'Batang Atas')
+            add_ele(top_nodes[-1], bottom_nodes[-1], 'Batang Atas')
+            
+            # C. Batang Vertikal
+            for i in range(len(top_nodes)): add_ele(bottom_nodes[i+1], top_nodes[i], 'Vertikal')
+                
+            # D. Batang Diagonal (Pola Howe)
+            mid_idx = int(num_panels / 2)
+            for i in range(mid_idx - 1): add_ele(bottom_nodes[i+1], top_nodes[i+1], 'Diagonal') # Kiri
+            for i in range(mid_idx, num_panels - 1): add_ele(bottom_nodes[i+1], top_nodes[i-1], 'Diagonal') # Kanan
+
+            # 4. APLIKASI BEBAN TITIK (LOADS)
+            ops.timeSeries('Linear', 1)
+            ops.pattern('Plain', 1, 1)
+            
+            # Taruh beban merata ke semua simpul atas (Y negatif = arah gravitasi ke bawah)
+            for tn in top_nodes: ops.load(tn, 0.0, -point_load_kn)
+            # Tumpuan ujung biasanya memikul setengah beban
+            ops.load(bottom_nodes[0], 0.0, -point_load_kn/2)
+            ops.load(bottom_nodes[-1], 0.0, -point_load_kn/2)
+
+            # 5. SOLVER ANALISIS STATIK
+            ops.system('BandSPD')
+            ops.numberer('RCM')
+            ops.constraints('Plain')
+            ops.integrator('LoadControl', 1.0)
+            ops.algorithm('Linear')
+            ops.analysis('Static')
+            ops.analyze(1)
+            
+            # 6. EKSTRAKSI HASIL (Gaya Aksial)
+            data_hasil = []
+            for el in self.elements:
+                forces = ops.basicForce(el['id'])
+                axial = forces[0] # Positif = Tarik, Negatif = Tekan
+                
+                status = "Tarik (Tension)" if axial > 0.001 else ("Tekan (Compression)" if axial < -0.001 else "Nol")
+                
+                data_hasil.append({
+                    "ID": f"E-{el['id']}",
+                    "Tipe Batang": el['type'],
+                    "Gaya Aksial (kN)": round(abs(axial), 2),
+                    "Sifat Gaya": status
+                })
+                el['force'] = axial # Simpan untuk rendering warna
+                
+            df_hasil = pd.DataFrame(data_hasil)
+            fig = self.render_plotly_truss()
+            
+            return df_hasil, fig
+            
+        except Exception as e:
+            return None, f"Gagal mengeksekusi OpenSees: {e}"
+
+    def render_plotly_truss(self):
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        
+        # Gambar Batang (Warna dinamis)
+        for el in self.elements:
+            n1 = self.nodes[el['n1']]
+            n2 = self.nodes[el['n2']]
+            force = el.get('force', 0)
+            
+            # Logika Warna: Biru = Tarik, Merah = Tekan, Abu-abu = Nol
+            if force > 0.1:
+                color, width = '#3b82f6', 4  # Biru Tarik
+            elif force < -0.1:
+                color, width = '#ef4444', 4  # Merah Tekan
+            else:
+                color, width = '#9ca3af', 2  # Abu Nol
+                
+            fig.add_trace(go.Scatter(
+                x=[n1[0], n2[0]], y=[n1[1], n2[1]],
+                mode='lines', line=dict(color=color, width=width),
+                hoverinfo='text',
+                text=f"{el['type']} [ID:{el['id']}]<br>Gaya: {abs(force):.2f} kN ({'Tarik' if force>0 else 'Tekan'})",
+                showlegend=False
+            ))
+            
+        # Gambar Simpul (Buhul)
+        nx = [pos[0] for pos in self.nodes.values()]
+        ny = [pos[1] for pos in self.nodes.values()]
+        fig.add_trace(go.Scatter(
+            x=nx, y=ny, mode='markers',
+            marker=dict(size=10, color='#1f2937', line=dict(color='white', width=2)),
+            hoverinfo='none', showlegend=False
+        ))
+        
+        fig.update_layout(
+            title="Peta Gaya Dalam Rangka Kuda-Kuda (Metode Elemen Hingga)",
+            xaxis_title="Panjang Bentang (m)", yaxis_title="Tinggi (m)",
+            yaxis=dict(scaleanchor="x", scaleratio=1), # Mengunci skala agar segitiga proporsional (tidak gepeng)
+            plot_bgcolor='whitesmoke',
+            margin=dict(l=20, r=20, t=50, b=20)
+        )
+        return fig
