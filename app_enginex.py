@@ -1560,6 +1560,100 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                     
                     st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
 
+# --- H. MODE GEOTEKNIK & STABILITAS LERENG ---
+elif selected_menu == "🪨 Analisis Geoteknik & Lereng":
+    st.header("🪨 Analisis Geoteknik & Stabilitas Lereng")
+    st.caption("Evaluasi Kestabilan Bendungan Urugan & Instrumen Keamanan (Dam Safety)")
+    
+    if 'libs_geoteknik' not in sys.modules:
+        st.warning("⚠️ Modul `libs_geoteknik` belum dimuat oleh sistem.")
+    else:
+        geo_eng = sys.modules['libs_geoteknik'].Geotech_Engine()
+        
+        tab_bishop, tab_sensor = st.tabs(["⛰️ Analisis Stabilitas (Bishop)", "📡 Instrumentasi Dam Safety"])
+        
+        # =========================================================
+        # TAB 1: ANALISIS BISHOP
+        # =========================================================
+        with tab_bishop:
+            st.markdown("#### Metode Irisan Bishop Sederhana (Simplified Bishop)")
+            st.write("Menghitung Safety Factor (FS) secara iteratif dan merender bidang gelincir kritis.")
+            
+            with st.expander("⚙️ Parameter Geometri & Tanah", expanded=True):
+                c_geo1, c_geo2 = st.columns(2)
+                tinggi_lereng = c_geo1.number_input("Tinggi Lereng / Bendungan (H) [m]", value=15.0, step=1.0)
+                sudut_lereng = c_geo2.number_input("Sudut Kemiringan Lereng (\u03b2) [\u00b0]", value=35.0, step=1.0, help="Diukur dari bidang horizontal")
+                
+                st.markdown("**Properti Mekanika Tanah:**")
+                c_geo3, c_geo4, c_geo5 = st.columns(3)
+                kohesi_c = c_geo3.number_input("Kohesi (c) [kPa]", value=12.0, step=1.0)
+                sudut_geser_phi = c_geo4.number_input("Sudut Geser Dalam (\u03c6) [\u00b0]", value=22.0, step=1.0)
+                berat_volume_gamma = c_geo5.number_input("Berat Volume Tanah (\u03b3) [kN/m³]", value=18.5, step=0.5)
+            
+            if st.button("🚀 Iterasi & Temukan Bidang Gelincir", type="primary", use_container_width=True):
+                with st.spinner("Melakukan iterasi numerik Bishop untuk mencari FS..."):
+                    try:
+                        # Panggil fungsi dari backend
+                        hasil_bishop, fig_bishop = geo_eng.analisis_stabilitas_bishop(
+                            tinggi_lereng, sudut_lereng, kohesi_c, sudut_geser_phi, berat_volume_gamma
+                        )
+                        
+                        st.success("✅ Iterasi Konvergen Selesai!")
+                        
+                        # Tampilkan Metrik
+                        m_fs1, m_fs2 = st.columns(2)
+                        m_fs1.metric("Faktor Keamanan (Safety Factor - FS)", f"{hasil_bishop['Safety_Factor_FS']:.3f}", 
+                                     delta="Batas Aman: FS \u2265 1.5", delta_color="off")
+                        
+                        status = hasil_bishop['Status_Keamanan']
+                        if "AMAN" in status:
+                            m_fs2.success(f"**STATUS: {status}**")
+                        else:
+                            m_fs2.error(f"**STATUS: {status}**")
+                            
+                        # Render Grafik 2D Plotly Bidang Gelincir
+                        st.plotly_chart(fig_bishop, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Terjadi kesalahan saat merender Bishop: {e}")
+
+        # =========================================================
+        # TAB 2: INSTRUMENTASI DAM SAFETY
+        # =========================================================
+        with tab_sensor:
+            st.markdown("#### Dashboard Pemantauan Real-Time (Telemetri Sensor)")
+            st.write("Simulasi pemantauan tekanan air pori (Piezometer) dan pergerakan tanah lateral (Inclinometer).")
+            
+            with st.expander("⚙️ Pengaturan Sensor", expanded=True):
+                c_sens1, c_sens2 = st.columns(2)
+                kedalaman = c_sens1.number_input("Kedalaman Lubang Bor Inclinometer [m]", value=25, step=1)
+                hari = c_sens2.number_input("Rentang Hari Pengamatan", value=30, step=5)
+            
+            if st.button("📡 Tarik Data Sensor Terkini", type="secondary", use_container_width=True):
+                with st.spinner("Menghubungkan ke server telemetri Dam Safety..."):
+                    try:
+                        hasil_sensor, fig_sensor = geo_eng.simulasi_dam_safety_dashboard(
+                            kedalaman_lubang_m=kedalaman, hari_pengamatan=hari
+                        )
+                        
+                        # Render Metrik
+                        sm1, sm2, sm3 = st.columns(3)
+                        
+                        # Indikator warna dinamis
+                        delta_color_piezo = "inverse" if "SIAGA" in hasil_sensor['Status_Piezometer'] else "normal"
+                        delta_color_inclino = "inverse" if "WASPADA" in hasil_sensor['Status_Inclinometer'] else "normal"
+                        
+                        sm1.metric("Tekanan Air Pori (PWP) Max", f"{hasil_sensor['Piezometer_PWP_kPa']} kPa", 
+                                   delta=hasil_sensor['Status_Piezometer'], delta_color=delta_color_piezo)
+                        
+                        sm2.metric("Pergerakan Lateral Max", f"{hasil_sensor['Inclinometer_Pergerakan_Max_mm']} mm", 
+                                   delta=hasil_sensor['Status_Inclinometer'], delta_color=delta_color_inclino)
+                        
+                        sm3.metric("Lokasi Kritis Pergerakan", f"Kedalaman {hasil_sensor['Lokasi_Kritis_Kedalaman_m']} m")
+                        
+                        # Render Dashboard Plotly
+                        st.plotly_chart(fig_sensor, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Gagal memuat telemetri sensor: {e}")
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
     import io
@@ -1729,6 +1823,7 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
+
 
 
 
