@@ -1278,88 +1278,6 @@ elif selected_menu == "🌾 Desain Irigasi (KP-01)":
                         
                     except Exception as e:
                         st.error(f"Gagal menyusun skema: {e}")
-        # =========================================================
-        # TAB 2: AUDIT POMPA JIAT (FITUR BARU)
-        # =========================================================
-        with tab_jiat:
-            st.markdown("Kalibrasi **Sistem Head (Hazen-Williams)** vs **Kinerja Pompa (Performance Curve)**")
-            
-            with st.expander("⚙️ Parameter Jaringan Irigasi Air Tanah (JIAT)", expanded=True):
-                c_j1, c_j2, c_j3 = st.columns(3)
-                q_target = c_j1.number_input("Debit Kebutuhan Irigasi (L/s)", value=15.0, step=1.0)
-                h_statik = c_j2.number_input("Head Statis / Elevasi (m)", value=45.0, step=5.0)
-                l_pipa = c_j3.number_input("Panjang Jalur Pipa (m)", value=1200.0, step=50.0)
-                
-                c_j4, c_j5, c_j6 = st.columns(3)
-                d_pipa = c_j4.number_input("Diameter Pipa Dalam (mm)", value=100.0, step=10.0)
-                c_hazen = c_j5.number_input("Koef. Hazen-Williams (C)", value=130, step=5)
-                sf_pompa = c_j6.number_input("Safety Factor Pompa (%)", value=15, step=5)
-
-            if st.button("🚀 Render Kurva Kalibrasi Pompa", type="primary", use_container_width=True):
-                with st.spinner("Menghitung intersepsi matriks hidrolika..."):
-                    
-                    # 1. Eksekusi Engine JIAT
-                    df_pump, h_target = jiat_eng.generate_pump_system_curve(q_target, h_statik, l_pipa, d_pipa, c_hazen)
-                    rek_pompa = jiat_eng.rekomendasi_pompa(q_target, h_statik, l_pipa, d_pipa)
-                    
-                    st.divider()
-                    st.subheader("📊 Metrik Evaluasi Hidraulika")
-                    
-                    m_p1, m_p2, m_p3 = st.columns(3)
-                    m_p1.metric("Head Statik Murni", f"{h_statik} m")
-                    m_p2.metric("Total Dynamic Head (TDH)", f"{rek_pompa['Head_Total_m']} m", delta=f"+ {rek_pompa['Head_Total_m'] - h_statik:.2f} m (Friction Loss)", delta_color="inverse")
-                    m_p3.metric("Kebutuhan Daya Pompa", f"{rek_pompa['Power_kW']} kW", delta=f"{rek_pompa['Power_HP']} HP", delta_color="off")
-
-                    st.subheader("📈 Kurva Operasi Pompa (Operating/Duty Point)")
-                    
-                    # 2. Visualisasi Kurva Ganda dengan Plotly
-                    fig_pump = go.Figure()
-                    
-                    # A. Plot System Head Curve (Kurva Sistem Pipa - Eksponensial Naik)
-                    fig_pump.add_trace(go.Scatter(
-                        x=df_pump["Debit (L/s)"], y=df_pump["System Head (m)"],
-                        mode='lines', name='Kurva Sistem (Friction)',
-                        line=dict(color='blue', width=3)
-                    ))
-                    
-                    # B. Plot Pump Performance Curve (Kurva Kinerja Pompa - Parabola Turun)
-                    fig_pump.add_trace(go.Scatter(
-                        x=df_pump["Debit (L/s)"], y=df_pump["Pump Head (m)"],
-                        mode='lines', name='Kurva Kapasitas Pompa',
-                        line=dict(color='red', width=3)
-                    ))
-                    
-                    # C. Tandai Titik Kerja (Duty Point)
-                    # Menambahkan margin sesuai input Safety Factor
-                    q_duty = q_target * (1 + (sf_pompa/100))
-                    h_duty = h_target * (1 + (sf_pompa/100))
-                    
-                    fig_pump.add_trace(go.Scatter(
-                        x=[q_target], y=[h_target],
-                        mode='markers+text', name='Titik Kebutuhan Dasar',
-                        marker=dict(color='orange', size=10, symbol='diamond'),
-                        text=[f"Q:{q_target} L/s<br>H:{h_target:.1f} m"], textposition="bottom right"
-                    ))
-
-                    fig_pump.add_trace(go.Scatter(
-                        x=[q_duty], y=[h_duty],
-                        mode='markers+text', name='Titik Operasi (Duty Point)',
-                        marker=dict(color='green', size=14, symbol='star'),
-                        text=[f"Duty Point<br>Q:{q_duty:.1f} L/s<br>H:{h_duty:.1f} m"], textposition="top right"
-                    ))
-
-                    fig_pump.update_layout(
-                        title="Perpotongan Karakteristik Sistem Pipa vs Kapasitas Pompa Sentrifugal",
-                        xaxis_title="Kapasitas Debit - Q (Liter / Detik)",
-                        yaxis_title="Total Head - H (Meter)",
-                        hovermode="x unified",
-                        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
-                    )
-                    
-                    st.plotly_chart(fig_pump, use_container_width=True)
-                    
-                    st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
-
 # --- G. MODE HIDROLIKA BENDUNG & KANTONG LUMPUR ---
 elif selected_menu == "🌊 Hidrolika Bendung (KP-02)":
     st.header("🌊 Analisis Hidrolika Bendung & Kantong Lumpur")
@@ -1559,7 +1477,88 @@ elif selected_menu == "🌊 Analisis Hidrologi":
                 fig_hss.add_vline(x=tp_val, line_dash="dash", line_color="red")
                 st.plotly_chart(fig_hss, use_container_width=True)
 
-        
+        # =========================================================
+        # TAB 2: AUDIT POMPA JIAT (FITUR BARU)
+        # =========================================================
+        with tab_jiat:
+            st.markdown("Kalibrasi **Sistem Head (Hazen-Williams)** vs **Kinerja Pompa (Performance Curve)**")
+            
+            with st.expander("⚙️ Parameter Jaringan Irigasi Air Tanah (JIAT)", expanded=True):
+                c_j1, c_j2, c_j3 = st.columns(3)
+                q_target = c_j1.number_input("Debit Kebutuhan Irigasi (L/s)", value=15.0, step=1.0)
+                h_statik = c_j2.number_input("Head Statis / Elevasi (m)", value=45.0, step=5.0)
+                l_pipa = c_j3.number_input("Panjang Jalur Pipa (m)", value=1200.0, step=50.0)
+                
+                c_j4, c_j5, c_j6 = st.columns(3)
+                d_pipa = c_j4.number_input("Diameter Pipa Dalam (mm)", value=100.0, step=10.0)
+                c_hazen = c_j5.number_input("Koef. Hazen-Williams (C)", value=130, step=5)
+                sf_pompa = c_j6.number_input("Safety Factor Pompa (%)", value=15, step=5)
+
+            if st.button("🚀 Render Kurva Kalibrasi Pompa", type="primary", use_container_width=True):
+                with st.spinner("Menghitung intersepsi matriks hidrolika..."):
+                    
+                    # 1. Eksekusi Engine JIAT
+                    df_pump, h_target = jiat_eng.generate_pump_system_curve(q_target, h_statik, l_pipa, d_pipa, c_hazen)
+                    rek_pompa = jiat_eng.rekomendasi_pompa(q_target, h_statik, l_pipa, d_pipa)
+                    
+                    st.divider()
+                    st.subheader("📊 Metrik Evaluasi Hidraulika")
+                    
+                    m_p1, m_p2, m_p3 = st.columns(3)
+                    m_p1.metric("Head Statik Murni", f"{h_statik} m")
+                    m_p2.metric("Total Dynamic Head (TDH)", f"{rek_pompa['Head_Total_m']} m", delta=f"+ {rek_pompa['Head_Total_m'] - h_statik:.2f} m (Friction Loss)", delta_color="inverse")
+                    m_p3.metric("Kebutuhan Daya Pompa", f"{rek_pompa['Power_kW']} kW", delta=f"{rek_pompa['Power_HP']} HP", delta_color="off")
+
+                    st.subheader("📈 Kurva Operasi Pompa (Operating/Duty Point)")
+                    
+                    # 2. Visualisasi Kurva Ganda dengan Plotly
+                    fig_pump = go.Figure()
+                    
+                    # A. Plot System Head Curve (Kurva Sistem Pipa - Eksponensial Naik)
+                    fig_pump.add_trace(go.Scatter(
+                        x=df_pump["Debit (L/s)"], y=df_pump["System Head (m)"],
+                        mode='lines', name='Kurva Sistem (Friction)',
+                        line=dict(color='blue', width=3)
+                    ))
+                    
+                    # B. Plot Pump Performance Curve (Kurva Kinerja Pompa - Parabola Turun)
+                    fig_pump.add_trace(go.Scatter(
+                        x=df_pump["Debit (L/s)"], y=df_pump["Pump Head (m)"],
+                        mode='lines', name='Kurva Kapasitas Pompa',
+                        line=dict(color='red', width=3)
+                    ))
+                    
+                    # C. Tandai Titik Kerja (Duty Point)
+                    # Menambahkan margin sesuai input Safety Factor
+                    q_duty = q_target * (1 + (sf_pompa/100))
+                    h_duty = h_target * (1 + (sf_pompa/100))
+                    
+                    fig_pump.add_trace(go.Scatter(
+                        x=[q_target], y=[h_target],
+                        mode='markers+text', name='Titik Kebutuhan Dasar',
+                        marker=dict(color='orange', size=10, symbol='diamond'),
+                        text=[f"Q:{q_target} L/s<br>H:{h_target:.1f} m"], textposition="bottom right"
+                    ))
+
+                    fig_pump.add_trace(go.Scatter(
+                        x=[q_duty], y=[h_duty],
+                        mode='markers+text', name='Titik Operasi (Duty Point)',
+                        marker=dict(color='green', size=14, symbol='star'),
+                        text=[f"Duty Point<br>Q:{q_duty:.1f} L/s<br>H:{h_duty:.1f} m"], textposition="top right"
+                    ))
+
+                    fig_pump.update_layout(
+                        title="Perpotongan Karakteristik Sistem Pipa vs Kapasitas Pompa Sentrifugal",
+                        xaxis_title="Kapasitas Debit - Q (Liter / Detik)",
+                        yaxis_title="Total Head - H (Meter)",
+                        hovermode="x unified",
+                        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+                    )
+                    
+                    st.plotly_chart(fig_pump, use_container_width=True)
+                    
+                    st.success(f"**Kesimpulan Audit TPA:** Pompa JIAT wajib dikalibrasi untuk beroperasi pada Titik Kerja (Duty Point) di kapasitas **{q_duty:.1f} L/s** dengan dorongan Head **{h_duty:.1f} meter** untuk mengakomodasi kerugian gesekan pipa sepanjang {l_pipa} meter dan Safety Factor {sf_pompa}%.")
+
 # --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
     import io
@@ -1729,7 +1728,6 @@ Biaya penerapan SMKK telah dihitung secara proporsional sesuai dengan 9 komponen
 
     except Exception as e:
         st.error(f"⚠️ Gagal merender dokumen: {e}")
-
 
 
 
