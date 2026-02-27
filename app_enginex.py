@@ -758,22 +758,43 @@ if selected_menu == "🤖 AI Assistant":
                     st.session_state.processed_files.add(f.name)
         
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
+            with st.spinner("Menganalisis dan memproses komputasi..."):
                 try:
                     persona_instr = gems_persona.get(target_expert, gems_persona["👑 The GEMS Grandmaster"])
-                    # [AUDIT FIX] System Prompt Diperketat untuk Output SIMBG
+                    
+                    # =================================================================
+                    # [PERBAIKAN AUDIT FASE 3: DOKTRIN TOOL CALLING]
+                    # =================================================================
                     SYS = persona_instr + """
-                    \n[INSTRUKSI WAJIB UNTUK PROYEK PEMERINTAH]:
+                    \n[INSTRUKSI WAJIB - MODE DETERMINISTIK]:
                     1. Gunakan Bahasa Indonesia Baku dan Formal (EYD).
-                    2. Kode Python WAJIB menggunakan 'parse_rupiah()' untuk input harga string.
-                    3. Format Laporan mengikuti standar Dokumen Lelang (Bab I, II, III...).
-                    4. Tampilkan Tabel menggunakan st.table() atau st.dataframe().
+                    2. DILARANG KERAS menulis/membuat blok kode skrip Python (```python).
+                    3. Anda WAJIB MENGGUNAKAN TOOLS (Function Calling) yang disediakan untuk SETIAP permintaan perhitungan (Gempa, Baja, Beton, Pondasi, dll).
+                    4. Narasikan hasil komputasi dari Tools tersebut dengan gaya bahasa ahli teknik profesional. Jangan berhalusinasi angka!
+                    5. Format Laporan mengikuti standar Dokumen Lelang teknis.
                     """
-                    # --- [FITUR BARU] AUTO-FALLBACK DENGAN PING KE GOOGLE ---
+                    
+                    try:
+                        import libs_tools # Import jembatan fungsi absolut SNI kita
+                        
+                        # Daftarkan fungsi matematika sebagai "Senjata" untuk Gemini
+                        daftar_tools_sni = [
+                            libs_tools.tool_hitung_balok,
+                            libs_tools.tool_cek_baja_wf,
+                            libs_tools.tool_hitung_pondasi,
+                            libs_tools.tool_estimasi_biaya,
+                            libs_tools.tool_hitung_gempa_v,
+                            libs_tools.tool_cek_talud,
+                            libs_tools.tool_cari_dimensi_optimal
+                        ]
+                    except ImportError:
+                        daftar_tools_sni = None
+                        st.warning("⚠️ libs_tools tidak ditemukan, AI berjalan tanpa pengaman matematis.")
+
+                    # --- [AUTO-FALLBACK DENGAN PING KE GOOGLE] ---
                     chat_hist = [{"role": "user" if h['role']=="user" else "model", "parts": [h['content']]} for h in history if h['content'] != prompt]
                     
                     try:
-                        # Tarik daftar model resmi dari Google
                         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                         priorities = ["models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-pro"]
                         
@@ -782,7 +803,7 @@ if selected_menu == "🤖 AI Assistant":
                             if p in available_models:
                                 selected_model = p.replace("models/", "")
                                 break
-                        
+                                
                         # Fallback darurat
                         if not selected_model and available_models:
                             for v in available_models:
@@ -794,17 +815,26 @@ if selected_menu == "🤖 AI Assistant":
                             st.error("🚨 API Key tidak memiliki akses ke model teks.")
                             st.stop()
                             
-                        # Jalankan chat dengan model yang sudah pasti valid
-                        model = genai.GenerativeModel(selected_model, system_instruction=SYS)
-                        chat = model.start_chat(history=chat_hist)
+                        # =================================================================
+                        # [PUNCAK PERBAIKAN]: Injeksi tools ke dalam otak AI
+                        # =================================================================
+                        model = genai.GenerativeModel(
+                            selected_model, 
+                            system_instruction=SYS,
+                            tools=daftar_tools_sni # Memaksa AI memakai rumus SNI dari server lokal
+                        )
+                        
+                        # enable_automatic_function_calling=True -> Server Streamlit akan otomatis
+                        # menjalankan fungsi Python jika AI memintanya, lalu mengembalikan hasilnya ke AI.
+                        chat = model.start_chat(history=chat_hist, enable_automatic_function_calling=True)
                         
                     except Exception as e:
-                        st.error(f"🚨 Gagal menghubungi server Google: {e}")
+                        st.error(f"🚨 Gagal menghubungi server Google atau inisialisasi Tools: {e}")
                         st.stop()
                     # ---------------------------------------------------------               
-                    chat = model.start_chat(history=chat_hist)
+                    
                     response = chat.send_message(full_prompt)
-
+        
                     # --- [UPGRADE: HITL] JARING PENANGKAP AI-QS VISION ---
                     import json
                     boq_match = re.search(r'```json\n(.*?"Kategori".*?)\n```', response.text, re.DOTALL | re.IGNORECASE)
@@ -2821,6 +2851,7 @@ Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah 
             )
         except Exception as e:
             st.error(f"Gagal render Excel: {e}")
+
 
 
 
