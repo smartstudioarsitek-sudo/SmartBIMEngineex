@@ -1410,10 +1410,136 @@ elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
 # --- E. MODE LAPORAN RAB 5D (WEB-BASED ONLINE) ---
 elif selected_menu == "📑 Laporan RAB 5D":
     st.header("📑 Modul RAB 5D (Sistem Hitung Online)")
-    ... (blok terus ke bawah melewati semua kode Tab 1 / tab_input) ...
+    st.caption("Alur Kerja: 1. Input Volume -> 2. Verifikasi & Isi Harga -> 3. Cetak Dokumen")
+
+    # =========================================================
+    # [FITUR KEAMANAN] Pastikan Master AHSP Sudah Diupload
+    # =========================================================
+    if 'master_ahsp_data' not in st.session_state:
+        st.error("🚨 SISTEM TERKUNCI: Database AHSP Kosong!")
+        st.warning("Aplikasi membutuhkan Master AHSP. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP** di sidebar, upload Template Excel AHSP-nya, lalu klik tombol merah **'Kunci Data'** terlebih dahulu.")
+        st.stop()
+    # =========================================================
+
+    # Membuat 3 Tab Alur Kerja
+    tab_input, tab_verifikasi, tab_export = st.tabs([
+        "📥 1. Input & Ekstrak Volume", 
+        "📝 2. Verifikasi BOQ & Harga", 
+        "🖨️ 3. Cetak Laporan Final"
+    ])
+
+    # ---------------------------------------------------------
+    # TAB 1: INPUT DATA (EKSTRAKSI IFC & CHECKLIST USER)
+    # ---------------------------------------------------------
+    with tab_input:
+        st.subheader("1. Sumber Data Volume (BOQ)")
+        sumber_opsi = st.radio("Pilih Sumber Data:", ["Ekstrak dari Model BIM (IFC)", "Input Manual / Data Visual QTO"], horizontal=True)
+        
+        if sumber_opsi == "Ekstrak dari Model BIM (IFC)":
+            ifc_file = st.file_uploader("Upload File .ifc:", type=['ifc'], key="ifc_rab_online")
+            
+            if ifc_file:
+                if st.button("🔄 Ekstrak Seluruh Elemen BIM", type="primary"):
+                    with st.spinner("Membedah seluruh elemen IFC... (Zero Filter)"):
+                        import tempfile
+                        from modules.utils import libs_bim_importer
+                        
+                        # Mapping Bahasa Indonesia agar rapi
+                        KAMUS_IFC = {
+                            "IfcWall": "Pekerjaan Dinding", "IfcWallStandardCase": "Pekerjaan Dinding",
+                            "IfcSlab": "Pekerjaan Pelat Lantai", "IfcRoof": "Pekerjaan Atap",
+                            "IfcBeam": "Pekerjaan Balok", "IfcColumn": "Pekerjaan Kolom",
+                            "IfcWindow": "Pekerjaan Jendela", "IfcDoor": "Pekerjaan Pintu",
+                            "IfcCovering": "Pekerjaan Finishing/Plafon", "IfcFooting": "Pekerjaan Pondasi",
+                            "IfcMember": "Pekerjaan Rangka/Profil", "IfcStair": "Pekerjaan Tangga"
+                        }
+                        
+                        try:
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+                                tmp.write(ifc_file.getvalue())
+                                tmp_path = tmp.name
+
+                            engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
+                            if engine_ifc.valid:
+                                elements = engine_ifc.model.by_type("IfcProduct")
+                                data_boq_raw = []
+                                
+                                for el in elements:
+                                    # Buang elemen abstrak/ruang hampa saja
+                                    if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement", "IfcSpace", "IfcAnnotation"]:
+                                        kategori_ifc = el.is_a()
+                                        
+                                        # Terjemahkan jika ada di kamus, jika tidak pakai nama IFC asli
+                                        nama_indo = KAMUS_IFC.get(kategori_ifc, kategori_ifc)
+                                        
+                                        # Coba hitung volume pakai engine
+                                        vol = engine_ifc.get_element_quantity(el)
+                                        
+                                        # [PERBAIKAN ATAP HILANG]
+                                        # Jika volume 0 (karena BIM diexport tanpa BaseQuantities), kita paksa jadi 1.0 (Lumpsum)
+                                        vol_final = round(vol, 3) if vol and vol > 0 else 1.0
+                                        
+                                        data_boq_raw.append({
+                                            "Kategori": nama_indo,
+                                            "Nama": kategori_ifc, 
+                                            "Volume": vol_final
+                                        })
+                                
+                                if len(data_boq_raw) > 0:
+                                    df_raw = pd.DataFrame(data_boq_raw)
+                                    # Grouping (Rekapitulasi)
+                                    df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
+                                    
+                                    # Simpan ke memori sementara (Raw Data)
+                                    st.session_state['raw_ifc_data'] = df_grouped
+                                    st.success(f"✅ Berhasil mengekstrak {len(df_grouped)} grup elemen bangunan (Atap sekarang ikut terbaca)!")
+                                    st.rerun() 
+                                else:
+                                    st.error("⚠️ File IFC terbaca, tapi tidak ditemukan elemen fisik.")
+                            else:
+                                st.error("❌ File IFC Rusak atau Tidak Valid.")
+                        except Exception as e:
+                            st.error(f"❌ Gagal Ekstrak: {e}")
+
+            # --- [FITUR BARU] CHECKLIST VERIFIKASI USER ---
+            if 'raw_ifc_data' in st.session_state and not st.session_state['raw_ifc_data'].empty:
+                st.markdown("### 🗂️ Saringan Elemen BIM (Checklist)")
+                st.info("💡 **Tindakan Diperlukan:** Beri centang pada elemen yang ingin dihitung RAB-nya. Buang centang pada elemen yang tidak perlu (misal: Perabot/Sofa/Pohon).")
+                
+                df_raw = st.session_state['raw_ifc_data'].copy()
+                # Tambahkan kolom Checkbox 'Masuk RAB' di posisi paling kiri, default True
+                if 'Masuk RAB' not in df_raw.columns:
+                    df_raw.insert(0, 'Masuk RAB', True) 
+                
+                # Tampilkan tabel interaktif (Data Editor)
+                edited_df = st.data_editor(
+                    df_raw,
+                    column_config={
+                        "Masuk RAB": st.column_config.CheckboxColumn("Masuk RAB?", default=True),
+                        "Volume": st.column_config.NumberColumn("Volume Total", format="%.2f")
+                    },
+                    disabled=["Kategori", "Nama"], # User dilarang ubah nama asli IFC
+                    hide_index=True,
+                    use_container_width=True
+                )
+                
+                # Tombol Kunci Data
+                if st.button("💾 Kunci Pilihan & Lanjut ke Tab 2 (RAB)", type="primary"):
+                    # Buang baris yang tidak dicentang
+                    df_final = edited_df[edited_df['Masuk RAB'] == True].drop(columns=['Masuk RAB'])
+                    # Simpan sebagai BOQ Resmi
+                    st.session_state['real_boq_data'] = df_final
+                    st.success("✅ BOQ Final berhasil dikunci! Silakan buka **Tab 2. Verifikasi BOQ & Harga**.")
+
+        else:
+            st.info("Gunakan data dari menu Visual QTO 2D, atau masukkan data testing sementara.")
+            if st.button("➕ Buat Tabel BOQ Manual (Testing)"):
+                dummy_boq = pd.DataFrame([
+                    {"Kategori": "Pekerjaan Persiapan", "Nama": "Pembuatan Pagar Proyek", "Volume": 15.0},
+                    {"Kategori": "Pekerjaan Beton", "Nama": "Pekerjaan Kolom Beton (K-300)", "Volume": 5.5}
+                ])
                 st.session_state['real_boq_data'] = dummy_boq
                 st.success("Tabel BOQ Manual berhasil dibuat! Silakan lanjut ke Tab 2.")
-
 
     # ---------------------------------------------------------
     # TAB 2: VERIFIKASI & HARGA (JANTUNG APLIKASI)
@@ -1519,6 +1645,7 @@ Berikut adalah rekapitulasi volume pekerjaan yang diverifikasi:
             st.warning("⚠️ Selesaikan pemetaan di Tab 2 terlebih dahulu.")
             st.button("📄 Download Laporan RAB (PDF)", disabled=True, use_container_width=True)
             st.button("📊 Download Excel RAB 7-Tab", disabled=True, use_container_width=True)
+
 
 
 
