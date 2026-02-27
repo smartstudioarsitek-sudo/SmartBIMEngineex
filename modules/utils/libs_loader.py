@@ -231,7 +231,105 @@ def process_special_file(uploaded_file):
 
     return text_info, image_buf, df_data
 
+class DXF_QTO_Engine:
+    """
+    Mesin Quantity Take-Off (QTO) 2D berbasis Vektor.
+    Membaca file DXF dan mengekstrak Luasan (Area) serta Panjang (Length)
+    secara otomatis berdasarkan pengelompokan Layer CAD.
+    """
+    def __init__(self):
+        self.engine_name = "SmartBIM Vector QTO Engine"
 
+    def calculate_polygon_area(self, points):
+        """Menghitung luasan poligon menggunakan Shoelace Formula (Algoritma Tali Sepatu)"""
+        import numpy as np
+        x = np.array([p[0] for p in points])
+        y = np.array([p[1] for p in points])
+        # Rumus Shoelace: 0.5 * |sum(x_i * y_i+1 - x_i+1 * y_i)|
+        return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
+    def calculate_line_length(self, points):
+        """Menghitung total panjang dari rangkaian titik Polyline/Line"""
+        import math
+        length = 0.0
+        for i in range(len(points) - 1):
+            length += math.dist((points[i][0], points[i][1]), (points[i+1][0], points[i+1][1]))
+        return length
+
+    def extract_qto_from_dxf(self, file_stream):
+        import ezdxf
+        import pandas as pd
+        import tempfile
+        import os
+        import math
+
+        # 1. Simpan stream DXF sementara ke disk
+        file_stream.seek(0)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp:
+            tmp.write(file_stream.read())
+            tmp_path = tmp.name
+
+        try:
+            doc = ezdxf.readfile(tmp_path)
+            msp = doc.modelspace()
+            
+            qto_data = []
+
+            # 2. Iterasi semua entitas di Modelspace CAD
+            for entity in msp:
+                layer_name = entity.dxf.layer
+                dxftype = entity.dxftype()
+
+                # Abaikan layer standar yang tidak butuh dihitung (seperti dimensi atau teks)
+                if any(abaikan in layer_name.lower() for abaikan in ['dim', 'text', 'defpoints', '0', 'grid', 'as']):
+                    continue
+
+                if dxftype == 'LWPOLYLINE':
+                    points = list(entity.get_points(format='xy'))
+                    if len(points) < 2: continue
+                    
+                    # Cek apakah poligon tertutup (Area) atau terbuka (Panjang)
+                    if entity.is_closed or points[0] == points[-1]:
+                        area = self.calculate_polygon_area(points)
+                        if area > 0: qto_data.append({"Layer (Item Pekerjaan)": layer_name, "Kategori": "Luasan (m2)", "Volume": area})
+                    else:
+                        length = self.calculate_line_length(points)
+                        if length > 0: qto_data.append({"Layer (Item Pekerjaan)": layer_name, "Kategori": "Panjang (m)", "Volume": length})
+
+                elif dxftype == 'LINE':
+                    start = entity.dxf.start
+                    end = entity.dxf.end
+                    length = math.dist((start.x, start.y), (end.x, end.y))
+                    if length > 0: qto_data.append({"Layer (Item Pekerjaan)": layer_name, "Kategori": "Panjang (m)", "Volume": length})
+
+                elif dxftype == 'CIRCLE':
+                    radius = entity.dxf.radius
+                    area = math.pi * (radius**2)
+                    if area > 0: qto_data.append({"Layer (Item Pekerjaan)": layer_name, "Kategori": "Luasan (m2)", "Volume": area})
+                
+                # Fitur Lanjut: Extrak luas dari objek HATCH
+                elif dxftype == 'HATCH':
+                    # Hatch di ezdxf kadang kompleks, tapi kalau punya properti area bisa ditarik
+                    try:
+                        area = entity.get_area()
+                        if area > 0: qto_data.append({"Layer (Item Pekerjaan)": layer_name, "Kategori": "Luasan (m2) [Hatch]", "Volume": area})
+                    except: pass
+
+            os.remove(tmp_path)
+
+            if not qto_data:
+                return None, "File DXF terbaca, tetapi tidak ada entitas Poligon/Garis yang bisa dihitung pada layer konstruksi."
+
+            # 3. Rekapitulasi Data (Group By Layer)
+            df = pd.DataFrame(qto_data)
+            df_rekap = df.groupby(['Layer (Item Pekerjaan)', 'Kategori'])['Volume'].sum().reset_index()
+            df_rekap['Volume'] = df_rekap['Volume'].round(3)
+
+            return df_rekap, "Sukses"
+
+        except Exception as e:
+            if os.path.exists(tmp_path): os.remove(tmp_path)
+            return None, f"Gagal memproses DXF: {str(e)}"
 # ==============================================================================
 # END OF FILE
 # ==============================================================================
