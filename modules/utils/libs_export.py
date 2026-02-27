@@ -210,13 +210,19 @@ class Export_Engine:
         if df_boq is None or df_boq.empty:
             df_boq = pd.DataFrame([{"Kategori": "Data Manual", "Nama": "Item Kosong", "Volume": 0.0, "Referensi AHSP": ""}])
 
+        
         baris_terakhir_rab = 3
 
         for index, row in df_boq.iterrows():
             row_excel = index + 3 
             nama_elemen = str(row.get('Nama', ''))
             vol_elemen = float(row.get('Volume', 0))
+            
+            # [PERBAIKAN AUDIT - PENYAMBUNG LINK]: 
+            # Jika 'Referensi AHSP' kosong, paksa pakai 'Nama' sebagai kata kunci pencarian
             ref_ahsp = str(row.get('Referensi AHSP', ''))
+            if not ref_ahsp or ref_ahsp.lower() == 'nan':
+                ref_ahsp = nama_elemen
             
             ws_rab.write(row_excel, 0, index + 1, fmt_border)
             ws_rab.write(row_excel, 1, nama_elemen, fmt_border)
@@ -224,15 +230,21 @@ class Export_Engine:
             ws_rab.write(row_excel, 3, 'm3', fmt_border)
             ws_rab.write(row_excel, 4, ref_ahsp, fmt_border)
             
-            # LINK TEMBAK LANGSUNG KE REKAP TAB 4
-            if ref_ahsp in map_baris_rekap:
-                ws_rab.write_formula(row_excel, 5, f"='4. AHSP S2 30 2025'!J{map_baris_rekap[ref_ahsp]}", fmt_currency)
-            else:
-                ws_rab.write(row_excel, 5, 0, fmt_currency)
+            # LINK TEMBAK LANGSUNG KE REKAP TAB 4 (Toleransi Huruf Besar/Kecil & Spasi)
+            matched = False
+            for kunci_ahsp, baris in map_baris_rekap.items():
+                if ref_ahsp.strip().lower() == kunci_ahsp.strip().lower():
+                    ws_rab.write_formula(row_excel, 5, f"='4. AHSP S2 30 2025'!J{baris}", fmt_currency)
+                    matched = True
+                    break
+                    
+            if not matched:
+                ws_rab.write(row_excel, 5, 0, fmt_currency) # Harga tetap 0 HANYA JIKA benar-benar tidak ada di Master
                 
             ws_rab.write_formula(row_excel, 6, f"=C{row_excel+1}*F{row_excel+1}", fmt_currency)
             baris_terakhir_rab = row_excel
-
+        
+        
         # =======================================================
         # TAB 5: SMKK (DIBUAT DINAMIS BERDASARKAN SKALA PROYEK)
         # =======================================================
@@ -315,6 +327,7 @@ class Export_Engine:
 
         workbook.close()
         return output.getvalue()
+
 
 
 
