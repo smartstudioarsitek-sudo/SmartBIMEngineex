@@ -670,66 +670,52 @@ if selected_menu == "🤖 AI Assistant":
                         with st.spinner(f"🏗️ Membedah hierarki dan elemen dari {f.name}..."):
                             import tempfile
                             try:
-                                with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
-                                    tmp.write(f.getvalue())
-                                    tmp_path = tmp.name
-                                
-                                engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
-                                if engine_ifc.valid:
-                                    elements = engine_ifc.model.by_type("IfcProduct")
-                                    ifc_summary = f"Total Elemen Fisik: {len(elements)}\nSampel Elemen:\n"
-                                    
-                                    for el in elements[:100]:
-                                        vol = engine_ifc.get_element_quantity(el)
-                                        vol_text = f", Volume: {vol:.3f} m3" if vol > 0 else ""
-                                        ifc_summary += f"- [{el.is_a()}] ID: {el.GlobalId}, Nama: {el.Name}{vol_text}\n"
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+                                tmp.write(ifc_file.getvalue())
+                                tmp_path = tmp.name
 
-                                    # --- [UPDATE] SIMPAN DATA ASLI UNTUK EXCEL ---
-                                    # [AUDIT PATCH]: Daftar Hitam (Blacklist) Aset Visual & Rendering
-                                    blacklist_kata = ['enscape', 'tree', 'plant', 'sofa', 'standing', 'sitting', 'car ', 'people', 'person', 'bush', 'shrub', 'vehicle', 'grass', 'flower']
-                                    
-                                    # [AUDIT PATCH FINAL]: Filter Aset, Translasi SNI & Grouping
-                                    data_boq_asli = []
-                                    for el in elements:
-                                        if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
-                                            kategori_ifc = str(el.is_a()).lower()
-                                            nama_raw = str(el.Name).lower() if el.Name else ""
-                                            blacklist = ['enscape', 'tree', 'plant', 'sofa', 'car', 'generic models', 'proxy', 'lines']
-                                            if any(b in nama_raw for b in blacklist): continue
-                                            
-                                            nama_sni = None
-                                            if "ifccolumn" in kategori_ifc: nama_sni = "Pekerjaan Kolom Beton (K-300)"
-                                            elif "ifcbeam" in kategori_ifc: nama_sni = "Pekerjaan Balok Beton (K-300)"
-                                            elif "ifcslab" in kategori_ifc: nama_sni = "Pekerjaan Pelat Lantai Beton (K-300)"
-                                            elif "ifcwall" in kategori_ifc: nama_sni = "Pekerjaan Pasangan Dinding Bata"
-                                            elif "ifcdoor" in kategori_ifc or "ifcwindow" in kategori_ifc: nama_sni = "Pekerjaan Pintu dan Jendela"
-                                            elif "ifcfooting" in kategori_ifc or "ifcpile" in kategori_ifc: nama_sni = "Pekerjaan Pondasi Beton"
-                                            
-                                            if not nama_sni: continue
-                                                
-                                            vol = engine_ifc.get_element_quantity(el)
-                                            vol_final = round(vol, 3) if vol and vol > 0 else 0.0
-                                            
-                                            if vol_final > 0:
-                                                data_boq_asli.append({"Kategori": "Pekerjaan Struktur", "Nama": nama_sni, "Volume": vol_final})
-                                    
-                                    if len(data_boq_asli) > 0:
-                                        df_raw = pd.DataFrame(data_boq_asli)
-                                        df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
-                                        st.session_state['real_boq_data'] = df_grouped
-                                    # ---------------------------------------------
-                                                                                    
-                                    if len(elements) > 100:
-                                        ifc_summary += f"\n... dan {len(elements) - 100} elemen lainnya disembunyikan untuk menghemat memori."
+                            engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
+                            if engine_ifc.valid:
+                                elements = engine_ifc.model.by_type("IfcProduct")
+                                data_boq_raw = []
+                                
+                                for el in elements:
+                                    # Buang elemen abstrak/ruang hampa saja
+                                    if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement", "IfcSpace", "IfcAnnotation"]:
+                                        kategori_ifc = el.is_a()
                                         
-                                    full_prompt[0] += f"\n\n[FILE MODEL BIM IFC: {f.name}]\n{ifc_summary}"
+                                        # Terjemahkan jika ada di kamus, jika tidak pakai nama IFC asli
+                                        nama_indo = KAMUS_IFC.get(kategori_ifc, kategori_ifc)
+                                        
+                                        # Coba hitung volume pakai engine
+                                        vol = engine_ifc.get_element_quantity(el)
+                                        
+                                        # [PERBAIKAN ATAP HILANG]
+                                        # Jika volume 0 (karena BIM diexport tanpa BaseQuantities), kita paksa jadi 1.0 (Lumpsum)
+                                        # Ini agar elemennya TIDAK HILANG dan user bisa mengedit volumenya manual di layar Web
+                                        vol_final = round(vol, 3) if vol and vol > 0 else 1.0
+                                        
+                                        data_boq_raw.append({
+                                            "Kategori": nama_indo,
+                                            "Nama": kategori_ifc, 
+                                            "Volume": vol_final
+                                        })
+                                
+                                if len(data_boq_raw) > 0:
+                                    df_raw = pd.DataFrame(data_boq_raw)
+                                    # Grouping (Rekapitulasi)
+                                    df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
                                     
-                                    with st.chat_message("user"):
-                                        st.success(f"✅ Data IFC berhasil diekstrak! ({len(elements)} elemen)")
+                                    # Simpan ke memori sementara (Raw Data)
+                                    st.session_state['raw_ifc_data'] = df_grouped
+                                    st.success(f"✅ Berhasil mengekstrak {len(df_grouped)} grup elemen bangunan (Atap sekarang ikut terbaca)!")
+                                    st.rerun() 
                                 else:
-                                    st.error("File IFC tidak valid atau rusak.")
-                            except Exception as e:
-                                st.error(f"Gagal memproses IFC: {e}")
+                                    st.error("⚠️ File IFC terbaca, tapi tidak ditemukan elemen fisik.")
+                            else:
+                                st.error("❌ File IFC Rusak atau Tidak Valid.")
+                        except Exception as e:
+                            st.error(f"❌ Gagal Ekstrak: {e}")
                                 
                     # Tandai file sudah diproses agar tidak diulang-ulang
                     st.session_state.processed_files.add(f.name)
@@ -1657,6 +1643,7 @@ Berikut adalah rekapitulasi volume pekerjaan yang diverifikasi:
             st.warning("⚠️ Selesaikan pemetaan di Tab 2 terlebih dahulu.")
             st.button("📄 Download Laporan RAB (PDF)", disabled=True, use_container_width=True)
             st.button("📊 Download Excel RAB 7-Tab", disabled=True, use_container_width=True)
+
 
 
 
