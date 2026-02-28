@@ -485,3 +485,122 @@ class OpenSeesPortal2D:
             margin=dict(l=20, r=20, t=50, b=20)
         )
         return fig
+class OpenSeesTemplateGenerator:
+    """
+    Engine Generator Template Parametrik ala SAP2000 v7.
+    Otomatis merakit Node, Boundary Conditions, dan Elemen berdasarkan input loop.
+    """
+    def __init__(self):
+        self.nodes = {}
+        self.elements = []
+        
+    def generate_2d_portal(self, num_stories, num_bays, story_height, bay_width):
+        if not HAS_OPENSEES:
+            return None, "Error: Library openseespy belum terinstall."
+            
+        try:
+            import openseespy.opensees as ops
+            import pandas as pd
+            import plotly.graph_objects as go
+            
+            ops.wipe()
+            ops.model('basic', '-ndm', 2, '-ndf', 3)
+            
+            self.nodes.clear()
+            self.elements.clear()
+
+            # 1. AUTO-GEOMETRY (Generasi Nodes & Tumpuan)
+            node_tag = 1
+            for y in range(num_stories + 1):
+                for x in range(num_bays + 1):
+                    x_coord = x * bay_width
+                    y_coord = y * story_height
+                    
+                    ops.node(node_tag, x_coord, y_coord)
+                    self.nodes[node_tag] = (x_coord, y_coord)
+                    
+                    # Kondisi Batas: Jepit di lantai dasar (Y = 0)
+                    if y == 0:
+                        ops.fix(node_tag, 1, 1, 1) # Jepit: Tahan UX, UY, RZ
+                        
+                    node_tag += 1
+
+            # 2. AUTO-MESHING (Generasi Elemen Balok & Kolom)
+            # Properti Dummy Elastis untuk keperluan rendering awal
+            A = 0.01; E = 200e9; I = 0.0001 
+            transf_tag = 1
+            ops.geomTransf('Linear', transf_tag)
+            
+            ele_tag = 1
+            
+            # A. Looping Kolom (Vertikal)
+            for x in range(num_bays + 1):
+                for y in range(num_stories):
+                    # Rumus indeks node berdasarkan grid
+                    nI = x + y * (num_bays + 1) + 1
+                    nJ = nI + (num_bays + 1)
+                    
+                    ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, I, transf_tag)
+                    self.elements.append({'id': ele_tag, 'Tipe': 'Kolom', 'n1': nI, 'n2': nJ, 'L': story_height})
+                    ele_tag += 1
+
+            # B. Looping Balok (Horizontal)
+            for y in range(1, num_stories + 1):
+                for x in range(num_bays):
+                    nI = x + y * (num_bays + 1) + 1
+                    nJ = nI + 1
+                    
+                    ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, I, transf_tag)
+                    self.elements.append({'id': ele_tag, 'Tipe': 'Balok', 'n1': nI, 'n2': nJ, 'L': bay_width})
+                    ele_tag += 1
+
+            # 3. VISUALISASI PLOTLY INSTAN
+            fig = go.Figure()
+            
+            # Gambar Elemen
+            for el in self.elements:
+                n1 = self.nodes[el['n1']]
+                n2 = self.nodes[el['n2']]
+                # Bedakan warna balok dan kolom
+                color = '#dc2626' if el['Tipe'] == 'Kolom' else '#2563eb' 
+                width = 4 if el['Tipe'] == 'Kolom' else 3
+                
+                fig.add_trace(go.Scatter(
+                    x=[n1[0], n2[0]], y=[n1[1], n2[1]],
+                    mode='lines', line=dict(color=color, width=width),
+                    hoverinfo='text',
+                    text=f"{el['Tipe']} [ID:{el['id']}]<br>Panjang: {el['L']} m",
+                    showlegend=False
+                ))
+                
+            # Gambar Nodes
+            nx = [pos[0] for pos in self.nodes.values()]
+            ny = [pos[1] for pos in self.nodes.values()]
+            fig.add_trace(go.Scatter(
+                x=nx, y=ny, mode='markers',
+                marker=dict(size=8, color='gold', line=dict(color='black', width=1)),
+                hoverinfo='text',
+                text=[f"Node {k}: ({v[0]}, {v[1]})" for k, v in self.nodes.items()],
+                showlegend=False
+            ))
+
+            # Gambar Simbol Jepit (Sederhana) di dasar
+            for x in range(num_bays + 1):
+                fig.add_trace(go.Scatter(
+                    x=[x * bay_width], y=[0], mode='markers',
+                    marker=dict(size=14, symbol='triangle-up', color='black'),
+                    hoverinfo='none', showlegend=False
+                ))
+
+            fig.update_layout(
+                title=f"Geometri Portal 2D ({num_stories} Lantai, {num_bays} Bentang)",
+                xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)",
+                yaxis=dict(scaleanchor="x", scaleratio=1), # Wajib agar skala X dan Y tidak distorsi
+                plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20)
+            )
+
+            df_elemen = pd.DataFrame(self.elements)
+            return fig, df_elemen
+            
+        except Exception as e:
+            return None, f"Gagal mengeksekusi Template Generator: {e}"
