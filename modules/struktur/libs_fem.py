@@ -874,5 +874,207 @@ class OpenSeesTemplateGenerator:
             
         except Exception as e:
             return None, f"Error saat analisis OpenSees: {e}"
-    
+def generate_3d_frame(self, num_stories, num_bays_x, num_bays_z, story_height, bay_width_x, bay_width_z):
+        """Generator untuk Model Gedung 3 Dimensi (3D Building Frame)"""
+        if not HAS_OPENSEES: return None, "Error: Library openseespy belum terinstall."
+        try:
+            import openseespy.opensees as ops
+            import pandas as pd
+            import plotly.graph_objects as go
+            
+            ops.wipe()
+            # 3D membutuhkan NDM=3 (X,Y,Z) dan NDF=6 (6 Derajat Kebebasan per Node)
+            ops.model('basic', '-ndm', 3, '-ndf', 6)
+            self.nodes.clear()
+            self.elements.clear()
+
+            # 1. GENERASI NODES 3D
+            node_tag = 1
+            for y in range(num_stories + 1):
+                for z in range(num_bays_z + 1):
+                    for x in range(num_bays_x + 1):
+                        x_coord = x * bay_width_x
+                        y_coord = y * story_height  # Y adalah sumbu vertikal/tinggi
+                        z_coord = z * bay_width_z
+                        
+                        ops.node(node_tag, x_coord, y_coord, z_coord)
+                        self.nodes[node_tag] = (x_coord, y_coord, z_coord)
+                        
+                        # Tumpuan Jepit di dasar (Y = 0)
+                        if y == 0:
+                            ops.fix(node_tag, 1, 1, 1, 1, 1, 1) # Tahan 6 arah
+                        node_tag += 1
+
+            # 2. GENERASI ELEMEN 3D
+            A = 0.04; E = 200e9; G = 77e9; J = 0.0001; Iy = 0.0002; Iz = 0.0002
+            
+            # Transformasi Koordinat Lokal (Sangat penting di 3D)
+            ops.geomTransf('Linear', 1, 0, 0, 1) # Untuk Kolom
+            ops.geomTransf('Linear', 2, 0, 1, 0) # Untuk Balok Arah X
+            ops.geomTransf('Linear', 3, 0, 1, 0) # Untuk Balok Arah Z
+
+            ele_tag = 1
+            
+            # Helper untuk menemukan Node Tag berdasarkan posisi Grid
+            def get_node(ix, iy, iz):
+                return 1 + ix + iz * (num_bays_x + 1) + iy * (num_bays_x + 1) * (num_bays_z + 1)
+
+            # A. Kolom (Vertikal sejajar Y)
+            for y in range(num_stories):
+                for z in range(num_bays_z + 1):
+                    for x in range(num_bays_x + 1):
+                        nI = get_node(x, y, z)
+                        nJ = get_node(x, y+1, z)
+                        ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, G, J, Iy, Iz, 1)
+                        self.elements.append({'id': ele_tag, 'Tipe': 'Kolom', 'n1': nI, 'n2': nJ, 'L': story_height})
+                        ele_tag += 1
+
+            # B. Balok Arah X
+            for y in range(1, num_stories + 1):
+                for z in range(num_bays_z + 1):
+                    for x in range(num_bays_x):
+                        nI = get_node(x, y, z)
+                        nJ = get_node(x+1, y, z)
+                        ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, G, J, Iy, Iz, 2)
+                        self.elements.append({'id': ele_tag, 'Tipe': 'Balok X', 'n1': nI, 'n2': nJ, 'L': bay_width_x})
+                        ele_tag += 1
+
+            # C. Balok Arah Z
+            for y in range(1, num_stories + 1):
+                for z in range(num_bays_z):
+                    for x in range(num_bays_x + 1):
+                        nI = get_node(x, y, z)
+                        nJ = get_node(x, y, z+1)
+                        ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, G, J, Iy, Iz, 3)
+                        self.elements.append({'id': ele_tag, 'Tipe': 'Balok Z', 'n1': nI, 'n2': nJ, 'L': bay_width_z})
+                        ele_tag += 1
+
+            # 3. VISUALISASI PLOTLY 3D (Bisa diputar)
+            fig = go.Figure()
+            for el in self.elements:
+                n1 = self.nodes[el['n1']]
+                n2 = self.nodes[el['n2']]
+                
+                if el['Tipe'] == 'Kolom': color = '#dc2626' # Merah
+                elif el['Tipe'] == 'Balok X': color = '#2563eb' # Biru
+                else: color = '#10b981' # Hijau (Balok Z)
+                
+                fig.add_trace(go.Scatter3d(
+                    x=[n1[0], n2[0]], y=[n1[1], n2[1]], z=[n1[2], n2[2]],
+                    mode='lines', line=dict(color=color, width=4),
+                    hoverinfo='text', text=f"{el['Tipe']} [ID:{el['id']}]", showlegend=False
+                ))
+
+            # Render Nodes
+            nx = [p[0] for p in self.nodes.values()]
+            ny = [p[1] for p in self.nodes.values()]
+            nz = [p[2] for p in self.nodes.values()]
+            fig.add_trace(go.Scatter3d(
+                x=nx, y=ny, z=nz, mode='markers',
+                marker=dict(size=3, color='gold', line=dict(color='black', width=1)),
+                hoverinfo='none', showlegend=False
+            ))
+
+            fig.update_layout(
+                title="Geometri 3D Building Frame",
+                scene=dict(
+                    xaxis_title="Sumbu X (m)", yaxis_title="Tinggi Y (m)", zaxis_title="Sumbu Z (m)",
+                    aspectmode='data' # Skala nyata, kotak tidak akan gepeng
+                ),
+                margin=dict(l=0, r=0, b=0, t=40)
+            )
+
+            df_elemen = pd.DataFrame(self.elements)
+            return fig, df_elemen
+
+        except Exception as e:
+            return None, f"Error Generate 3D: {e}"
+
+    def apply_loads_and_analyze_3d(self, q_load_kNm, p_load_kn):
+        """Mesin Solver Khusus 3D (Beban Y gravitasi, Beban X angin/gempa)"""
+        try:
+            import openseespy.opensees as ops
+            import pandas as pd
+            import plotly.graph_objects as go
+            
+            ops.timeSeries('Linear', 1)
+            ops.pattern('Plain', 1, 1)
+            
+            # A. Beban Merata
+            for el in self.elements:
+                if 'Balok' in el['Tipe']:
+                    # 3D butuh parameter wy, wz, wx (Wy arah gravitasi Y ke bawah)
+                    ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -q_load_kNm, 0.0, 0.0)
+                    
+            # B. Beban Lateral (Tembak ke dinding X=0 bagian luar)
+            for n_id, pos in self.nodes.items():
+                if pos[0] == 0 and pos[1] > 0:
+                    # Beban 3D NDF=6 (Fx, Fy, Fz, Mx, My, Mz)
+                    ops.load(n_id, p_load_kn, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+            ops.system('BandGeneral')
+            ops.numberer('RCM')
+            ops.constraints('Plain')
+            ops.integrator('LoadControl', 1.0)
+            ops.algorithm('Linear')
+            ops.analysis('Static')
+            ops.analyze(1)
+
+            scale_factor = 20.0 # Skala lebih besar agar lenturan 3D jelas
+            fig = go.Figure()
+            hasil_elemen = []
+            
+            for el in self.elements:
+                forces = ops.basicForce(el['id'])
+                # Output Force 3D berjumlah 12 item. 
+                # Aksial index 0, Momen Y index 4, Momen Z index 5
+                axial = forces[0]
+                m_y_i, m_z_i = forces[4], forces[5]
+                m_y_j, m_z_j = forces[10], forces[11]
+                
+                max_momen = max(abs(m_y_i), abs(m_z_i), abs(m_y_j), abs(m_z_j))
+                
+                hasil_elemen.append({
+                    "Elemen ID": el['id'],
+                    "Tipe": el['Tipe'],
+                    "Aksial (kN)": round(axial, 2),
+                    "Momen Max (kNm)": round(max_momen, 2)
+                })
+
+                n1, n2 = el['n1'], el['n2']
+                x1, y1, z1 = self.nodes[n1]
+                x2, y2, z2 = self.nodes[n2]
+                
+                d1, d2 = ops.nodeDisp(n1), ops.nodeDisp(n2)
+                
+                # Kalkulasi Posisi Deformasi
+                xd1 = x1 + d1[0] * scale_factor; yd1 = y1 + d1[1] * scale_factor; zd1 = z1 + d1[2] * scale_factor
+                xd2 = x2 + d2[0] * scale_factor; yd2 = y2 + d2[1] * scale_factor; zd2 = z2 + d2[2] * scale_factor
+                
+                # Garis Asli (Bayangan)
+                fig.add_trace(go.Scatter3d(x=[x1, x2], y=[y1, y2], z=[z1, z2], mode='lines', line=dict(color='lightgray', width=2, dash='dot'), hoverinfo='none', showlegend=False))
+                
+                # Garis Deformasi
+                if el['Tipe'] == 'Kolom': color = '#ef4444'
+                elif el['Tipe'] == 'Balok X': color = '#2563eb'
+                else: color = '#10b981'
+                
+                hover_text = f"{el['Tipe']} {el['id']}<br>Momen Max: {max_momen:.2f} kNm<br>Aksial: {axial:.2f} kN"
+                fig.add_trace(go.Scatter3d(
+                    x=[xd1, xd2], y=[yd1, yd2], z=[zd1, zd2],
+                    mode='lines+markers', line=dict(color=color, width=5),
+                    marker=dict(size=2, color='black'),
+                    text=hover_text, hoverinfo='text', showlegend=False
+                ))
+
+            fig.update_layout(
+                title=f"Bentuk Deformasi 3D & Momen (Skala: {scale_factor}x)",
+                scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z", aspectmode='data'),
+                margin=dict(l=0, r=0, b=0, t=40)
+            )
+            
+            return pd.DataFrame(hasil_elemen), fig
+            
+        except Exception as e:
+            return None, f"Error 3D Analysis: {e}"    
 
