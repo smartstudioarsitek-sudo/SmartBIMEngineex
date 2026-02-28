@@ -889,9 +889,18 @@ class OpenSeesTemplateGenerator:
             
             for el in self.elements:
                 forces = ops.basicForce(el['id'])
-                axial = forces[0]
-                m_y_i, m_z_i = forces[4], forces[5]
-                m_y_j, m_z_j = forces[10], forces[11]
+                
+                # [PERBAIKAN BUG]: basicForce 3D mengembalikan tepat 6 item:
+                # [Aksial, Torsi, Mz_I, Mz_J, My_I, My_J]
+                if len(forces) >= 6:
+                    axial = forces[0]
+                    m_z_i = forces[2]
+                    m_z_j = forces[3]
+                    m_y_i = forces[4]
+                    m_y_j = forces[5]
+                else:
+                    axial = forces[0] if len(forces) > 0 else 0
+                    m_y_i = m_z_i = m_y_j = m_z_j = 0
                 
                 max_momen = max(abs(m_y_i), abs(m_z_i), abs(m_y_j), abs(m_z_j))
                 hasil_elemen.append({"Elemen ID": el['id'], "Tipe": el['Tipe'], "Aksial (kN)": round(axial, 2), "Momen Max (kNm)": round(max_momen, 2)})
@@ -917,4 +926,5 @@ class OpenSeesTemplateGenerator:
             return pd.DataFrame(hasil_elemen), fig
         except Exception as e:
             return None, f"Error 3D Analysis: {e}"
+    
 
