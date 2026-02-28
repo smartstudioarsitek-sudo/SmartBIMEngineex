@@ -485,7 +485,6 @@ class OpenSeesPortal2D:
             margin=dict(l=20, r=20, t=50, b=20)
         )
         return fig
-
 class OpenSeesTemplateGenerator:
     """
     Engine Generator Template Parametrik ala SAP2000 v7.
@@ -504,36 +503,33 @@ class OpenSeesTemplateGenerator:
             import pandas as pd
             import plotly.graph_objects as go
             
+            # Pastikan parameter berupa integer/float yang benar
+            num_stories = int(num_stories)
+            num_bays = int(num_bays)
+            story_height = float(story_height)
+            bay_width = float(bay_width)
+            
             ops.wipe()
             ops.model('basic', '-ndm', 2, '-ndf', 3)
             
             self.nodes.clear()
             self.elements.clear()
 
-            # 1. AUTO-GEOMETRY (Generasi Nodes & Tumpuan)
             node_tag = 1
             for y in range(num_stories + 1):
                 for x in range(num_bays + 1):
                     x_coord = x * bay_width
                     y_coord = y * story_height
-                    
                     ops.node(node_tag, x_coord, y_coord)
                     self.nodes[node_tag] = (x_coord, y_coord)
-                    
-                    # Kondisi Batas: Jepit di lantai dasar (Y = 0)
-                    if y == 0:
-                        ops.fix(node_tag, 1, 1, 1) # Jepit: Tahan UX, UY, RZ
-                        
+                    if y == 0: ops.fix(node_tag, 1, 1, 1) 
                     node_tag += 1
 
-            # 2. AUTO-MESHING (Generasi Elemen Balok & Kolom)
             A = 0.01; E = 200e9; I = 0.0001 
             transf_tag = 1
             ops.geomTransf('Linear', transf_tag)
             
             ele_tag = 1
-            
-            # A. Looping Kolom
             for x in range(num_bays + 1):
                 for y in range(num_stories):
                     nI = x + y * (num_bays + 1) + 1
@@ -542,7 +538,6 @@ class OpenSeesTemplateGenerator:
                     self.elements.append({'id': ele_tag, 'Tipe': 'Kolom', 'n1': nI, 'n2': nJ, 'L': story_height})
                     ele_tag += 1
 
-            # B. Looping Balok
             for y in range(1, num_stories + 1):
                 for x in range(num_bays):
                     nI = x + y * (num_bays + 1) + 1
@@ -551,28 +546,20 @@ class OpenSeesTemplateGenerator:
                     self.elements.append({'id': ele_tag, 'Tipe': 'Balok', 'n1': nI, 'n2': nJ, 'L': bay_width})
                     ele_tag += 1
 
-            # 3. VISUALISASI PLOTLY INSTAN
             fig = go.Figure()
-            
             for el in self.elements:
-                n1 = self.nodes[el['n1']]
-                n2 = self.nodes[el['n2']]
+                n1, n2 = self.nodes[el['n1']], self.nodes[el['n2']]
                 color = '#dc2626' if el['Tipe'] == 'Kolom' else '#2563eb' 
                 width = 4 if el['Tipe'] == 'Kolom' else 3
                 fig.add_trace(go.Scatter(x=[n1[0], n2[0]], y=[n1[1], n2[1]], mode='lines', line=dict(color=color, width=width), hoverinfo='text', text=f"{el['Tipe']} [ID:{el['id']}]<br>Panjang: {el['L']} m", showlegend=False))
                 
-            nx = [pos[0] for pos in self.nodes.values()]
-            ny = [pos[1] for pos in self.nodes.values()]
+            nx, ny = [pos[0] for pos in self.nodes.values()], [pos[1] for pos in self.nodes.values()]
             fig.add_trace(go.Scatter(x=nx, y=ny, mode='markers', marker=dict(size=8, color='gold', line=dict(color='black', width=1)), hoverinfo='text', text=[f"Node {k}: ({v[0]}, {v[1]})" for k, v in self.nodes.items()], showlegend=False))
-
             for x in range(num_bays + 1):
                 fig.add_trace(go.Scatter(x=[x * bay_width], y=[0], mode='markers', marker=dict(size=14, symbol='triangle-up', color='black'), hoverinfo='none', showlegend=False))
 
             fig.update_layout(title=f"Geometri Portal 2D ({num_stories} Lantai, {num_bays} Bentang)", xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20))
-
-            df_elemen = pd.DataFrame(self.elements)
-            return fig, df_elemen
-            
+            return fig, pd.DataFrame(self.elements)
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator: {e}"
 
@@ -583,6 +570,7 @@ class OpenSeesTemplateGenerator:
             import pandas as pd
             import plotly.graph_objects as go
             
+            num_spans = int(num_spans); span_length = float(span_length)
             ops.wipe()
             ops.model('basic', '-ndm', 2, '-ndf', 3)
             self.nodes.clear()
@@ -593,7 +581,6 @@ class OpenSeesTemplateGenerator:
                 x_coord = x * span_length
                 ops.node(node_tag, x_coord, 0.0)
                 self.nodes[node_tag] = (x_coord, 0.0)
-                
                 if x == 0: ops.fix(node_tag, 1, 1, 0)
                 else: ops.fix(node_tag, 0, 1, 0)
                 node_tag += 1
@@ -604,26 +591,20 @@ class OpenSeesTemplateGenerator:
             
             ele_tag = 1
             for x in range(num_spans):
-                nI = x + 1
-                nJ = x + 2
+                nI = x + 1; nJ = x + 2
                 ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, I, transf_tag)
                 self.elements.append({'id': ele_tag, 'Tipe': 'Balok Menerus', 'n1': nI, 'n2': nJ, 'L': span_length})
                 ele_tag += 1
 
             fig = go.Figure()
             for el in self.elements:
-                n1 = self.nodes[el['n1']]
-                n2 = self.nodes[el['n2']]
+                n1, n2 = self.nodes[el['n1']], self.nodes[el['n2']]
                 fig.add_trace(go.Scatter(x=[n1[0], n2[0]], y=[n1[1], n2[1]], mode='lines', line=dict(color='#10b981', width=5), hoverinfo='text', text=f"Bentang {el['id']}<br>L: {el['L']} m", showlegend=False))
                 
-            nx = [pos[0] for pos in self.nodes.values()]
-            ny = [pos[1] for pos in self.nodes.values()]
+            nx, ny = [pos[0] for pos in self.nodes.values()], [pos[1] for pos in self.nodes.values()]
             fig.add_trace(go.Scatter(x=nx, y=ny, mode='markers', marker=dict(size=14, symbol='triangle-up', color='#ef4444'), hoverinfo='text', text=[f"Tumpuan Node {k}" for k in self.nodes.keys()], showlegend=False))
-
             fig.update_layout(title=f"Geometri Balok Menerus ({num_spans} Bentang)", xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20), yaxis_range=[-2, 2])
-
-            df_elemen = pd.DataFrame(self.elements)
-            return fig, df_elemen
+            return fig, pd.DataFrame(self.elements)
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator: {e}"
 
@@ -634,6 +615,7 @@ class OpenSeesTemplateGenerator:
             import pandas as pd
             import plotly.graph_objects as go
             
+            span = float(span); height = float(height); num_panels = int(num_panels)
             ops.wipe()
             ops.model('basic', '-ndm', 2, '-ndf', 3) 
             self.nodes.clear()
@@ -688,20 +670,15 @@ class OpenSeesTemplateGenerator:
 
             fig = go.Figure()
             for el in self.elements:
-                n1 = self.nodes[el['n1']]
-                n2 = self.nodes[el['n2']]
+                n1, n2 = self.nodes[el['n1']], self.nodes[el['n2']]
                 color = '#3b82f6' if 'Balok' in el['Tipe'] else '#9ca3af'
                 fig.add_trace(go.Scatter(x=[n1[0], n2[0]], y=[n1[1], n2[1]], mode='lines', line=dict(color=color, width=3), text=f"{el['Tipe']} [ID:{el['id']}]<br>L: {el['L']}m", hoverinfo='text', showlegend=False))
             
-            nx = [pos[0] for pos in self.nodes.values()]
-            ny = [pos[1] for pos in self.nodes.values()]
+            nx, ny = [pos[0] for pos in self.nodes.values()], [pos[1] for pos in self.nodes.values()]
             fig.add_trace(go.Scatter(x=nx, y=ny, mode='markers', marker=dict(size=8, color='gold', line=dict(color='black', width=1)), hoverinfo='none', showlegend=False))
             fig.add_trace(go.Scatter(x=[0, span], y=[0, 0], mode='markers', marker=dict(size=14, symbol='triangle-up', color='#ef4444'), hoverinfo='none', showlegend=False))
-            
             fig.update_layout(title=f"Geometri 2D Truss ({num_panels} Panel)", xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20))
-            
-            df_elemen = pd.DataFrame(self.elements)
-            return fig, df_elemen
+            return fig, pd.DataFrame(self.elements)
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator Truss: {e}"
 
@@ -711,6 +688,10 @@ class OpenSeesTemplateGenerator:
             import openseespy.opensees as ops
             import pandas as pd
             import plotly.graph_objects as go
+            
+            # Konversi eksplisit untuk keamanan loop
+            num_stories = int(num_stories); num_bays_x = int(num_bays_x); num_bays_z = int(num_bays_z)
+            story_height = float(story_height); bay_width_x = float(bay_width_x); bay_width_z = float(bay_width_z)
             
             ops.wipe()
             ops.model('basic', '-ndm', 3, '-ndf', 6)
@@ -742,7 +723,6 @@ class OpenSeesTemplateGenerator:
             def get_node(ix, iy, iz):
                 return 1 + ix + iz * (num_bays_x + 1) + iy * (num_bays_x + 1) * (num_bays_z + 1)
 
-            # Kolom
             for y in range(num_stories):
                 for z in range(num_bays_z + 1):
                     for x in range(num_bays_x + 1):
@@ -751,7 +731,6 @@ class OpenSeesTemplateGenerator:
                         self.elements.append({'id': ele_tag, 'Tipe': 'Kolom', 'n1': nI, 'n2': nJ, 'L': story_height})
                         ele_tag += 1
 
-            # Balok X
             for y in range(1, num_stories + 1):
                 for z in range(num_bays_z + 1):
                     for x in range(num_bays_x):
@@ -760,7 +739,6 @@ class OpenSeesTemplateGenerator:
                         self.elements.append({'id': ele_tag, 'Tipe': 'Balok X', 'n1': nI, 'n2': nJ, 'L': bay_width_x})
                         ele_tag += 1
 
-            # Balok Z
             for y in range(1, num_stories + 1):
                 for z in range(num_bays_z):
                     for x in range(num_bays_x + 1):
@@ -772,22 +750,17 @@ class OpenSeesTemplateGenerator:
             # 3. VISUALISASI PLOTLY 3D
             fig = go.Figure()
             for el in self.elements:
-                n1 = self.nodes[el['n1']]
-                n2 = self.nodes[el['n2']]
+                n1, n2 = self.nodes[el['n1']], self.nodes[el['n2']]
                 if el['Tipe'] == 'Kolom': color = '#dc2626' 
                 elif el['Tipe'] == 'Balok X': color = '#2563eb' 
                 else: color = '#10b981' 
                 fig.add_trace(go.Scatter3d(x=[n1[0], n2[0]], y=[n1[1], n2[1]], z=[n1[2], n2[2]], mode='lines', line=dict(color=color, width=4), hoverinfo='text', text=f"{el['Tipe']} [ID:{el['id']}]", showlegend=False))
 
-            nx = [p[0] for p in self.nodes.values()]
-            ny = [p[1] for p in self.nodes.values()]
-            nz = [p[2] for p in self.nodes.values()]
+            nx, ny, nz = [p[0] for p in self.nodes.values()], [p[1] for p in self.nodes.values()], [p[2] for p in self.nodes.values()]
             fig.add_trace(go.Scatter3d(x=nx, y=ny, z=nz, mode='markers', marker=dict(size=3, color='gold', line=dict(color='black', width=1)), hoverinfo='none', showlegend=False))
-
             fig.update_layout(title="Geometri 3D Building Frame", scene=dict(xaxis_title="Sumbu X (m)", yaxis_title="Tinggi Y (m)", zaxis_title="Sumbu Z (m)", aspectmode='data'), margin=dict(l=0, r=0, b=0, t=40))
 
-            df_elemen = pd.DataFrame(self.elements)
-            return fig, df_elemen
+            return fig, pd.DataFrame(self.elements)
         except Exception as e:
             return None, f"Error Generate 3D: {e}"
 
@@ -802,7 +775,7 @@ class OpenSeesTemplateGenerator:
             
             for el in self.elements:
                 if 'Balok' in el['Tipe']:
-                    ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -q_load_kNm)
+                    ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -float(q_load_kNm))
                     
             lateral_nodes = [n_id for n_id, pos in self.nodes.items() if pos[0] == 0 and pos[1] > 0]
             if not lateral_nodes:
@@ -810,15 +783,18 @@ class OpenSeesTemplateGenerator:
                 lateral_nodes = [n_id for n_id, pos in self.nodes.items() if abs(pos[1] - max_y) < 0.001]
                 
             for n_id in lateral_nodes:
-                ops.load(n_id, p_load_kn, 0.0, 0.0) 
+                ops.load(n_id, float(p_load_kn), 0.0, 0.0) 
 
-            ops.system('BandGeneral')
+            ops.system('UmfPack') # UmfPack lebih stabil dari BandGeneral
             ops.numberer('RCM')
             ops.constraints('Plain')
             ops.integrator('LoadControl', 1.0)
             ops.algorithm('Linear')
             ops.analysis('Static')
-            ops.analyze(1) 
+            
+            ok = ops.analyze(1)
+            if ok != 0:
+                return None, "Solver OpenSees Gagal Konvergen. Pastikan struktur stabil."
             
             scale_factor = 10.0 
             fig = go.Figure()
@@ -827,11 +803,9 @@ class OpenSeesTemplateGenerator:
             for el in self.elements:
                 forces = ops.basicForce(el['id']) 
                 if len(forces) >= 6:
-                    axial = forces[0]
-                    momen_kiri = forces[2]
-                    momen_kanan = forces[5]
+                    axial = forces[0]; momen_kiri = forces[2]; momen_kanan = forces[5]
                 else:
-                    axial = forces[0]
+                    axial = forces[0] if len(forces) > 0 else 0
                     momen_kiri = forces[1] if len(forces) > 1 else 0
                     momen_kanan = forces[2] if len(forces) > 2 else 0
                     
@@ -839,22 +813,23 @@ class OpenSeesTemplateGenerator:
                 hasil_elemen.append({"Elemen ID": el['id'], "Tipe": el['Tipe'], "Aksial (kN)": round(axial, 2), "Momen Max (kNm)": round(max_momen, 2)})
                 
                 n1, n2 = el['n1'], el['n2']
-                x1, y1 = self.nodes[n1]
-                x2, y2 = self.nodes[n2]
+                x1, y1 = self.nodes[n1]; x2, y2 = self.nodes[n2]
+                
                 d1, d2 = ops.nodeDisp(n1), ops.nodeDisp(n2)
+                # JARING PENGAMAN: Cegah list index error
+                if not d1 or len(d1) < 2: d1 = [0.0, 0.0, 0.0]
+                if not d2 or len(d2) < 2: d2 = [0.0, 0.0, 0.0]
                 
                 xd1 = x1 + d1[0] * scale_factor; yd1 = y1 + d1[1] * scale_factor
                 xd2 = x2 + d2[0] * scale_factor; yd2 = y2 + d2[1] * scale_factor
                 
                 fig.add_trace(go.Scatter(x=[x1, x2], y=[y1, y2], mode='lines', line=dict(color='lightgray', width=1, dash='dot'), hoverinfo='none', showlegend=False))
-                
                 color = '#ef4444' if 'Kolom' in el['Tipe'] or 'Tekan' in el['Tipe'] else '#2563eb'
                 hover_text = f"{el['Tipe']} {el['id']}<br>Momen Max: {max_momen:.2f} kNm<br>Aksial: {axial:.2f} kN"
                 fig.add_trace(go.Scatter(x=[xd1, xd2], y=[yd1, yd2], mode='lines+markers', line=dict(color=color, width=3), marker=dict(size=4, color='black'), text=hover_text, hoverinfo='text', showlegend=False))
                 
-            df_hasil = pd.DataFrame(hasil_elemen)
             fig.update_layout(title=f"Bentuk Deformasi & Gaya Dalam (Faktor Skala Visual: {scale_factor}x)", xaxis_title="Sumbu X", yaxis_title="Elevasi Y", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=60, b=20))
-            return df_hasil, fig
+            return pd.DataFrame(hasil_elemen), fig
         except Exception as e:
             return None, f"Error saat analisis OpenSees: {e}"
 
@@ -869,19 +844,22 @@ class OpenSeesTemplateGenerator:
             
             for el in self.elements:
                 if 'Balok' in el['Tipe']:
-                    ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -q_load_kNm, 0.0, 0.0)
+                    ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -float(q_load_kNm), 0.0, 0.0)
                     
             for n_id, pos in self.nodes.items():
                 if pos[0] == 0 and pos[1] > 0:
-                    ops.load(n_id, p_load_kn, 0.0, 0.0, 0.0, 0.0, 0.0)
+                    ops.load(n_id, float(p_load_kn), 0.0, 0.0, 0.0, 0.0, 0.0)
 
-            ops.system('BandGeneral')
+            ops.system('UmfPack') # UmfPack lebih stabil untuk model 3D
             ops.numberer('RCM')
             ops.constraints('Plain')
             ops.integrator('LoadControl', 1.0)
             ops.algorithm('Linear')
             ops.analysis('Static')
-            ops.analyze(1)
+            
+            ok = ops.analyze(1)
+            if ok != 0:
+                return None, "Solver 3D OpenSees Gagal Konvergen. Model mungkin tidak stabil."
 
             scale_factor = 20.0 
             fig = go.Figure()
@@ -890,14 +868,9 @@ class OpenSeesTemplateGenerator:
             for el in self.elements:
                 forces = ops.basicForce(el['id'])
                 
-                # [PERBAIKAN BUG]: basicForce 3D mengembalikan tepat 6 item:
-                # [Aksial, Torsi, Mz_I, Mz_J, My_I, My_J]
+                # JARING PENGAMAN: Cegah list index out of range
                 if len(forces) >= 6:
-                    axial = forces[0]
-                    m_z_i = forces[2]
-                    m_z_j = forces[3]
-                    m_y_i = forces[4]
-                    m_y_j = forces[5]
+                    axial = forces[0]; m_z_i = forces[2]; m_z_j = forces[3]; m_y_i = forces[4]; m_y_j = forces[5]
                 else:
                     axial = forces[0] if len(forces) > 0 else 0
                     m_y_i = m_z_i = m_y_j = m_z_j = 0
@@ -906,9 +879,13 @@ class OpenSeesTemplateGenerator:
                 hasil_elemen.append({"Elemen ID": el['id'], "Tipe": el['Tipe'], "Aksial (kN)": round(axial, 2), "Momen Max (kNm)": round(max_momen, 2)})
 
                 n1, n2 = el['n1'], el['n2']
-                x1, y1, z1 = self.nodes[n1]
-                x2, y2, z2 = self.nodes[n2]
+                x1, y1, z1 = self.nodes[n1]; x2, y2, z2 = self.nodes[n2]
+                
                 d1, d2 = ops.nodeDisp(n1), ops.nodeDisp(n2)
+                
+                # JARING PENGAMAN: Pastikan array disp memiliki 6 elemen untuk 3D
+                if not d1 or len(d1) < 3: d1 = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                if not d2 or len(d2) < 3: d2 = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
                 
                 xd1 = x1 + d1[0] * scale_factor; yd1 = y1 + d1[1] * scale_factor; zd1 = z1 + d1[2] * scale_factor
                 xd2 = x2 + d2[0] * scale_factor; yd2 = y2 + d2[1] * scale_factor; zd2 = z2 + d2[2] * scale_factor
