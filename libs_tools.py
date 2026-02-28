@@ -136,6 +136,41 @@ def tool_hitung_balok(b_mm: float, h_mm: float, fc: float, fy: float, mu_kNm: fl
     except Exception as e:
         return f"ERROR Hitung Balok: {str(e)}. Periksa input parameter."
 
+# --- TOOL 1B: EVALUASI KAPASITAS BALOK (ANALISIS) ---
+def tool_evaluasi_kapasitas_balok(b_mm: float, h_mm: float, fc: float, fy: float, as_tulangan_mm2: float) -> str:
+    """
+    Menghitung kapasitas momen lentur ultimate (Phi Mn) dari penampang balok beton yang sudah diketahui ukuran dan luas tulangannya.
+    Gunakan tool ini jika pengguna meminta nilai kapasitas momen ultimit dari balok yang sudah ada tulangan terpasangnya (misal ada soal mencari Momen).
+    
+    Args:
+        b_mm: Lebar balok dalam milimeter (mm).
+        h_mm: Tinggi balok dalam milimeter (mm).
+        fc: Mutu kuat tekan beton (MPa).
+        fy: Mutu baja tulangan (MPa).
+        as_tulangan_mm2: Luas total baja tulangan tarik yang sudah terpasang di balok (mm2).
+    """
+    try:
+        # Import fungsi analyze_beam_flexure dari libs_beton
+        try:
+            from modules.struktur.libs_beton import SNIBeton2019
+        except ImportError:
+            from libs_beton import SNIBeton2019
+            
+        # Kita set Mu_input = 0 karena kita hanya ingin mencari Kapasitas Momennya saja
+        res = SNIBeton2019.analyze_beam_flexure(b_mm, h_mm, fc, fy, As_bottom=as_tulangan_mm2, Mu_input=0)
+        
+        report = (
+            f"EVALUASI KAPASITAS LENTUR BALOK {b_mm}x{h_mm}\n"
+            f"----------------------------------------------------\n"
+            f"- Luas Tulangan Terpasang (As): {as_tulangan_mm2} mm2\n"
+            f"- Kapasitas Momen Desain (Phi Mn): {res['Kapasitas_Momen (kNm)']} kNm\n"
+            f"- Status Geometri: {res['Status']}\n"
+            f"- Referensi Perhitungan: {res['Ref_SNI']}\n"
+        )
+        return report
+    except Exception as e:
+        return f"ERROR Evaluasi Kapasitas Balok: {str(e)}"
+
 # --- TOOL 2: STRUKTUR BAJA (SNI 1729:2020) ---
 def tool_cek_baja_wf(mu_kNm: float, bentang_m: float) -> str:
     """
