@@ -608,6 +608,7 @@ if selected_menu == "🤖 AI Assistant":
     st.markdown(f'<div class="main-header">{nama_proyek} <span class="audit-badge">WIP</span></div>', unsafe_allow_html=True)
     st.markdown(f'<div class="sub-header">Ahli Aktif: <b>{st.session_state.current_expert_active}</b></div>', unsafe_allow_html=True)
 
+    
     # History
     history = db.get_chat_history(nama_proyek, st.session_state.current_expert_active)
     download_btn_counter = 0
@@ -632,18 +633,88 @@ if selected_menu == "🤖 AI Assistant":
                         st.warning("⚠️ STATUS: Database Master AHSP KOSONG. AI berpotensi halusinasi. Silakan ke menu Admin untuk mengunci data.")
                     # ---------------------------------------
 
-    # Input User
-    prompt = st.chat_input("Ketik perintah desain, hitungan, atau analisa...")
+    # =================================================================
+    # [PERBAIKAN AUDIT FASE 5: HYBRID UI - GUIDED PROMPT FORMS]
+    # =================================================================
+    guided_prompt = None
+    target_expert = st.session_state.current_expert_active
+    
+    with st.expander("🎯 Form Instruksi Terpandu (Klik untuk menggunakan Template AI)", expanded=False):
+        st.caption("Gunakan form ini jika Anda tidak ingin mengetik perintah secara manual.")
+        
+        # 1. Tampilan Form khusus Ahli Struktur / Gempa
+        if "Struktur" in target_expert or "Gempa" in target_expert or "Grandmaster" in target_expert:
+            mode_hitung = st.radio("Pilih Analisis Struktur:", 
+                ["Hitung Base Shear Gempa (SNI 1726)", "Cek Kapasitas Balok Beton (SNI 2847)", "Cek Profil Baja WF (SNI 1729)", "Optimasi Dimensi Balok Termurah"],
+                horizontal=True)
+                
+            if "Gempa" in mode_hitung:
+                col_g1, col_g2 = st.columns(2)
+                berat = col_g1.number_input("Berat Total Bangunan (kN)", value=1500.0, step=100.0)
+                tanah = col_g2.selectbox("Kelas Situs Tanah", ["lunak", "sedang", "keras", "khusus"])
+                if st.button("🚀 Kirim Analisis Gempa", type="primary"):
+                    guided_prompt = f"Tolong hitung gaya geser dasar (Base Shear) gempa untuk bangunan dengan berat total {berat} kN di atas tanah {tanah}."
+            
+            elif "Balok Beton" in mode_hitung:
+                col_b1, col_b2, col_b3 = st.columns(3)
+                b_balok = col_b1.number_input("Lebar b (mm)", value=300.0)
+                h_balok = col_b2.number_input("Tinggi h (mm)", value=500.0)
+                mu_balok = col_b3.number_input("Momen Ultimate (kNm)", value=150.0)
+                
+                col_b4, col_b5 = st.columns(2)
+                fc_mutu = col_b4.number_input("Mutu Beton fc' (MPa)", value=30.0)
+                fy_mutu = col_b5.number_input("Mutu Baja fy (MPa)", value=420.0)
+                if st.button("🚀 Kirim Analisis Balok", type="primary"):
+                    guided_prompt = f"Evaluasi kapasitas lentur dan geser balok beton dengan dimensi {b_balok}x{h_balok} mm, mutu beton {fc_mutu} MPa, baja {fy_mutu} MPa untuk menahan momen {mu_balok} kNm."
+                    
+            elif "Baja WF" in mode_hitung:
+                col_wf1, col_wf2 = st.columns(2)
+                mu_wf = col_wf1.number_input("Momen Ultimate (kNm)", value=120.0)
+                L_wf = col_wf2.number_input("Panjang Bentang (m)", value=6.0)
+                if st.button("🚀 Kirim Analisis Baja", type="primary"):
+                    guided_prompt = f"Cek keamanan profil baja WF 300x150 dengan panjang bentang {L_wf} meter terhadap momen lentur sebesar {mu_wf} kNm."
+            
+            elif "Optimasi" in mode_hitung:
+                col_op1, col_op2 = st.columns(2)
+                mu_op = col_op1.number_input("Momen Rencana (kNm)", value=250.0)
+                L_op = col_op2.number_input("Panjang Bentang (m)", value=8.0)
+                if st.button("🚀 Cari Dimensi Termurah", type="primary"):
+                    guided_prompt = f"Tolong carikan dimensi balok beton yang paling murah dan optimal untuk bentang {L_op} meter yang memikul momen {mu_op} kNm."
+
+        # 2. Tampilan Form khusus Ahli Geoteknik
+        elif "Geotech" in target_expert:
+            mode_geo = st.radio("Pilih Analisis Geoteknik:", ["Daya Dukung Pondasi Tapak", "Stabilitas Talud Batu Kali"], horizontal=True)
+            if "Pondasi" in mode_geo:
+                c_p1, c_p2 = st.columns(2)
+                pu_beban = c_p1.number_input("Beban Aksial (kN)", value=500.0)
+                lebar_p = c_p2.number_input("Lebar Tapak (m)", value=1.5)
+                if st.button("🚀 Kirim Analisis Pondasi", type="primary"):
+                    guided_prompt = f"Hitung kapasitas pondasi telapak ukuran {lebar_p}x{lebar_p} meter yang memikul beban aksial sebesar {pu_beban} kN."
+            elif "Talud" in mode_geo:
+                tinggi_t = st.number_input("Tinggi Talud (m)", value=3.0)
+                if st.button("🚀 Kirim Analisis Talud", type="primary"):
+                    guided_prompt = f"Tolong cek stabilitas guling untuk talud pasangan batu kali dengan tinggi {tinggi_t} meter."
+
+        # 3. Tampilan Default (Jika Persona lain terpilih)
+        else:
+            st.info(f"Form terpandu untuk spesialisasi '{target_expert}' sedang dalam tahap pengembangan. Silakan gunakan kotak chat di bawah.")
+
+    # =================================================================
+    # KOTAK CHAT MANUAL (HYBRID FALLBACK)
+    # =================================================================
+    manual_prompt = st.chat_input("Atau ketik perintah bebas / ngobrol dengan AI di sini...")
+    
+    # Tangkap prompt dari mana pun asalnya (Form atau Ketik Manual)
+    prompt = guided_prompt if guided_prompt else manual_prompt
 
     if prompt:
-        target_expert = st.session_state.current_expert_active
         if use_auto_pilot: target_expert = st.session_state.current_expert_active 
 
         db.simpan_chat(nama_proyek, target_expert, "user", prompt)
         with st.chat_message("user"): st.markdown(prompt)
 
         full_prompt = [prompt]
-
+    
         # =================================================================
         # [INJEKSI DATA MASTER AHSP KE OTAK AI - ZERO DUMMY]
         # Posisinya dipindah ke luar agar selalu terbaca AI setiap saat!
@@ -2857,6 +2928,7 @@ Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah 
             )
         except Exception as e:
             st.error(f"Gagal render Excel: {e}")
+
 
 
 
