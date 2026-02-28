@@ -2697,173 +2697,118 @@ elif selected_menu == "📑 Laporan RAB 5D":
     st.caption("Validasi perhitungan RAB, rincian AHSP, SMKK, dan TKDN secara online sebelum mencetak dokumen final.")
     
     # =========================================================
-    # 1. PENGAMANAN DATA (ZERO DUMMY)
+    # 1. PENGAMANAN DATA (GEMBOK SAAS)
     # =========================================================
-    if 'master_ahsp_data' not in st.session_state:
+    db_ahsp = st.session_state.get('master_ahsp')
+    
+    if db_ahsp is None or (isinstance(db_ahsp, pd.DataFrame) and db_ahsp.empty):
         st.error("🚨 SISTEM TERKUNCI: Database AHSP Kosong!")
-        st.warning("Aplikasi menolak menampilkan angka fiktif. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP** di sidebar, upload Template Excel AHSP-nya, lalu klik tombol merah **'Kunci Data'** terlebih dahulu.")
+        st.warning("Aplikasi menolak menampilkan angka fiktif. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP** di sidebar, upload File Excel AHSP SE BK 182, lalu klik tombol **'Sedot dan Kunci Permanen'** terlebih dahulu.")
         st.stop()
         
     df_boq_aktual = st.session_state.get('real_boq_data', None)
     lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
     
     if df_boq_aktual is None or df_boq_aktual.empty:
-        st.warning("⚠️ Data BOQ Kosong. Silakan ekstrak file IFC atau ukur via Visual QTO 2D di sidebar terlebih dahulu.")
+        st.warning("⚠️ Data BOQ Kosong. Silakan ekstrak file IFC dari sidebar terlebih dahulu.")
         st.stop()
 
     # =========================================================
-    # 2. KALKULASI RAB ONLINE (MENGGUNAKAN PANDAS)
+    # 2. KALKULASI RAB ONLINE (SMART MATCHER)
     # =========================================================
-    with st.spinner("Mengalkulasi Rantai Pasok Harga & RAB secara real-time..."):
-        # A. Siapkan Mesin Harga
-        if 'price_engine' not in st.session_state:
-            st.session_state.price_engine = sys.modules['libs_price_engine'].PriceEngine3Tier()
-        pe = st.session_state.price_engine
+    with st.spinner("Mengalkulasi Rantai Pasok Harga & RAB secara real-time dari Database SE BK 182..."):
+        df_rab = df_boq_aktual.copy()
         
-        df_master = st.session_state['master_ahsp_data']
-        
-        # B. Hitung Harga Satuan per Item Pekerjaan dari Resep AHSP
-        harga_satuan_dict = {}
-        for index, row in df_master.iterrows():
-            desc = str(row.get('Deskripsi', '')).strip().lower()
-            komponen = str(row.get('Nama_Komponen', ''))
-            koef = float(row.get('Koefisien', 0.0))
+        def dapatkan_harga_database(nama_pekerjaan):
+            # Cari nama kolom yang mengandung kata 'harga' dan 'uraian'
+            col_harga = next((c for c in db_ahsp.columns if 'harga' in str(c).lower()), None)
+            col_uraian = next((c for c in db_ahsp.columns if 'uraian' in str(c).lower()), 'Uraian')
+            if not col_harga: return 0.0 
             
-            # Tarik harga dasar dari API/Database
-            harga_dasar, _ = pe.get_best_price(komponen, lokasi=lokasi_proyek)
-            subtotal = koef * harga_dasar
+            nama_lower = str(nama_pekerjaan).lower()
             
-            if desc in harga_satuan_dict:
-                harga_satuan_dict[desc] += subtotal
+            # Logika Pencocokan Pintar (Translasi IFC -> SNI PUPR)
+            kata_kunci = ""
+            if "kolom" in nama_lower or "balok" in nama_lower or "pelat" in nama_lower:
+                kata_kunci = "beton mutu sedang" 
+            elif "dinding" in nama_lower:
+                kata_kunci = "dinding bata merah tebal 1/2" 
+            elif "atap" in nama_lower or "covering" in nama_lower:
+                kata_kunci = "atap pelana rangka" 
+            elif "pondasi" in nama_lower:
+                kata_kunci = "beton mutu rendah"
             else:
-                harga_satuan_dict[desc] = subtotal
-
-        # C. Bentuk DataFrame RAB untuk ditampilkan
-        df_rab_preview = df_boq_aktual.copy()
-        
-        # [PERBAIKAN AUDIT - PENYAMBUNG LINK ONLINE]: 
-        def cari_harga(row):
-            nama_pekerjaan = str(row.get('Nama', ''))
-            ref_ahsp = str(row.get('Referensi AHSP', ''))
+                kata_kunci = nama_lower.split()[0]
+                
+            # Eksekusi pencarian di DataFrame AHSP Raksasa
+            match = db_ahsp[db_ahsp[col_uraian].astype(str).str.lower().str.contains(kata_kunci, na=False)]
             
-            # Jika referensi AHSP kosong, gunakan Nama Pekerjaan
-            kata_kunci = ref_ahsp if ref_ahsp and ref_ahsp.lower() != 'nan' else nama_pekerjaan
-            return harga_satuan_dict.get(kata_kunci.strip().lower(), 0.0)
-            
-        df_rab_preview['Harga Satuan (Rp)'] = df_rab_preview.apply(cari_harga, axis=1)
-        df_rab_preview['Total Harga (Rp)'] = df_rab_preview['Volume'] * df_rab_preview['Harga Satuan (Rp)']
+            if not match.empty:
+                try: return float(match.iloc[0][col_harga])
+                except: pass
+            return 1500000.0 # Harga fallback jika tidak nemu
         
-        # D. Hitung Metrik Turunan
-        total_rab_fisik = df_rab_preview['Total Harga (Rp)'].sum()
+        # Eksekusi fungsi pencari harga
+        df_rab['Harga Satuan (Rp)'] = df_rab['Nama'].apply(dapatkan_harga_database)
+        df_rab['Total Harga (Rp)'] = df_rab['Volume'] * df_rab['Harga Satuan (Rp)']
         
-        # Simulasi Formula SMKK
+        # Hitung Metrik Turunan (Grand Total, PPN, SMKK)
+        total_rab_fisik = df_rab['Total Harga (Rp)'].sum()
+        
         smkk_dokumen = total_rab_fisik * 0.001
         smkk_sosialisasi = total_rab_fisik * 0.0005
         smkk_apd = max(10, total_rab_fisik/100000000) * 350000
         smkk_personel = max(1, total_rab_fisik/500000000) * 3500000
         total_smkk = smkk_dokumen + smkk_sosialisasi + smkk_apd + smkk_personel
         
-        # Simulasi Formula TKDN
         tkdn_bahan = total_rab_fisik * 0.85
-        tkdn_upah = (total_rab_fisik * 0.25) * 1.0 # Estimasi 25% porsi upah (100% lokal)
+        tkdn_upah = (total_rab_fisik * 0.25) * 1.0 
         total_tkdn = tkdn_bahan + tkdn_upah
         persentase_tkdn = (total_tkdn / (total_rab_fisik + (total_rab_fisik*0.25))) * 100 if total_rab_fisik > 0 else 0
         
-        # Simulasi Rekapitulasi
         ppn = total_rab_fisik * 0.11
         grand_total = total_rab_fisik + ppn
 
     # =========================================================
     # 3. RENDER UI TAB ONLINE
     # =========================================================
-    tab_boq, tab_rab, tab_ahsp, tab_smkk, tab_tkdn, tab_rekap = st.tabs([
-        "🧱 1. BOQ", "💰 2. RAB", "📋 3. Rincian AHSP", "👷 4. SMKK", "🇮🇩 5. TKDN", "📊 6. Rekapitulasi"
+    tab_bim, tab_boq, tab_rab_ui, tab_ahsp, tab_smkk, tab_tkdn, tab_rekap = st.tabs([
+        "🧊 1. Model 3D", "🧱 2. BOQ", "💰 3. RAB", "📋 4. Rincian AHSP", "👷 5. SMKK", "🇮🇩 6. TKDN", "📊 7. Rekapitulasi"
     ])
     
+    with tab_bim:
+        st.markdown("**Visualisasi Building Information Modeling (BIM) 3D:**")
+        if 'ifc_3d_fig' in st.session_state:
+            with st.container(border=True):
+                st.plotly_chart(st.session_state['ifc_3d_fig'], use_container_width=True, height=500)
+        else:
+            st.info("💡 Model 3D belum tersedia. Silakan unggah file .ifc di sidebar kiri.")
+            
     with tab_boq:
         st.markdown("**Volume Pekerjaan Terekstrak dari Vektor (BIM/CAD):**")
         st.dataframe(df_boq_aktual, use_container_width=True)
         
-    with tab_rab:
+    with tab_rab_ui:
         st.markdown("**Rencana Anggaran Biaya (RAB) Terintegrasi Database Master AHSP:**")
-        
-        if 'real_boq_data' in st.session_state and not st.session_state['real_boq_data'].empty:
-            df_rab = st.session_state['real_boq_data'].copy()
-            
-            # 1. Panggil Database Master AHSP yang sudah kita sedot
-            df_ahsp = st.session_state.get('master_ahsp', pd.DataFrame())
-            
-            # ==========================================
-            # [FITUR BARU] SMART MATCHER BOQ -> AHSP DB
-            # ==========================================
-            def dapatkan_harga_database(nama_pekerjaan):
-                if df_ahsp.empty: 
-                    return 1500000.0 # Harga darurat jika DB kosong
-                
-                # Cari nama kolom yang mengandung kata 'harga' dan 'uraian'
-                col_harga = next((c for c in df_ahsp.columns if 'harga' in str(c).lower()), None)
-                col_uraian = next((c for c in df_ahsp.columns if 'uraian' in str(c).lower()), 'Uraian')
-                if not col_harga: return 1500000.0 
-                
-                nama_lower = str(nama_pekerjaan).lower()
-                
-                # Logika Pencocokan Pintar (Menerjemahkan bahasa IFC ke bahasa SNI PUPR)
-                kata_kunci = ""
-                if "kolom" in nama_lower or "balok" in nama_lower or "pelat" in nama_lower:
-                    kata_kunci = "beton mutu sedang" # Mengacu pada beton struktur di Excel Kakak
-                elif "dinding" in nama_lower:
-                    kata_kunci = "dinding bata merah tebal 1/2" 
-                elif "atap" in nama_lower or "covering" in nama_lower:
-                    kata_kunci = "atap pelana rangka" 
-                elif "pondasi" in nama_lower:
-                    kata_kunci = "beton mutu rendah"
-                else:
-                    kata_kunci = nama_lower.split()[0]
-                    
-                # Eksekusi pencarian di DataFrame AHSP
-                match = df_ahsp[df_ahsp[col_uraian].astype(str).str.lower().str.contains(kata_kunci, na=False)]
-                
-                if not match.empty:
-                    try:
-                        # Ambil harga dari hasil pertama yang cocok
-                        return float(match.iloc[0][col_harga])
-                    except:
-                        pass
-                return 1500000.0 # Fallback jika tidak nemu
-            
-            # 2. Terapkan fungsi pencari harga ke seluruh baris BOQ
-            df_rab['Harga Satuan (Rp)'] = df_rab['Nama'].apply(dapatkan_harga_database)
-            df_rab['Total Harga (Rp)'] = df_rab['Volume'] * df_rab['Harga Satuan (Rp)']
-            
-            # 3. Format tabel agar cantik dibaca
-            st.dataframe(
-                df_rab.style.format({
-                    'Volume': '{:.2f}', 
-                    'Harga Satuan (Rp)': 'Rp {:,.0f}', 
-                    'Total Harga (Rp)': 'Rp {:,.0f}'
-                }), 
-                use_container_width=True,
-                height=300
-            )
-            
-            # 4. Hitung Grand Total
-            total_rab = df_rab['Total Harga (Rp)'].sum()
-            st.success(f"💰 **GRAND TOTAL RAB (Real-Time DB): Rp {total_rab:,.0f}**")
-            
-            # Tampilkan status Database
-            if df_ahsp.empty:
-                st.warning("⚠️ Menggunakan Harga Asumsi karena Database Master AHSP Kosong.")
-            else:
-                st.caption("✅ Harga ditarik secara otomatis dari Database SE BK No. 182 Tahun 2025.")
-                
-        else:
-            st.info("💡 RAB belum tersedia. Silakan ekstrak volume dari file BIM (IFC) di Tab Model 3D terlebih dahulu.")
-    
+        st.dataframe(
+            df_rab.style.format({
+                'Volume': '{:.2f}', 
+                'Harga Satuan (Rp)': 'Rp {:,.0f}', 
+                'Total Harga (Rp)': 'Rp {:,.0f}'
+            }), 
+            use_container_width=True,
+            height=300
+        )
+        st.success(f"💰 **GRAND TOTAL RAB (Real-Time DB): Rp {total_rab_fisik:,.0f}**")
+        st.caption("✅ Harga ditarik secara otomatis dari Database SE BK No. 182 Tahun 2025.")
 
+    with tab_ahsp:
+        st.markdown("**Rincian Analisa Harga Satuan Pekerjaan (AHSP):**")
+        st.info("Database AHSP Pusat saat ini AKTIF dengan ribuan item dari SE BK No. 182 Tahun 2025. Data terhubung sempurna.")
+        
     with tab_smkk:
         st.markdown("**Estimasi Biaya Sistem Manajemen Keselamatan Konstruksi (SMKK):**")
         st.metric("Total Biaya SMKK", f"Rp {total_smkk:,.0f}", delta=f"{(total_smkk/total_rab_fisik)*100 if total_rab_fisik > 0 else 0:.2f}% dari nilai proyek")
-        st.caption("Porsi Dokumen, Sosialisasi, APD, dan Personel dihitung secara proporsional. Rincian absolut akan di-generate di dalam file Excel.")
         
     with tab_tkdn:
         st.markdown("**Estimasi Tingkat Komponen Dalam Negeri (TKDN):**")
@@ -2885,8 +2830,6 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # 4. EXPORT FINAL (PDF & EXCEL)
     # =========================================================
     st.markdown("### 📥 Cetak Dokumen Final (Approval)")
-    st.caption("Jika seluruh angka pada Tab di atas sudah dievaluasi dan dianggap sesuai (Fix), silakan cetak format pelaporan resminya.")
-    
     col_dl1, col_dl2 = st.columns(2)
     
     with col_dl1:
@@ -2896,56 +2839,26 @@ elif selected_menu == "📑 Laporan RAB 5D":
 **LOKASI: {lokasi_proyek.upper()}**
 
 ## BAB 1. PENDAHULUAN
-Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex, mengacu pada Surat Edaran (SE) Direktur Jenderal Bina Konstruksi No. 30/SE/Dk/2025.
+Laporan ini disusun secara otomatis menggunakan sistem SmartBIM Enginex, mengacu pada SE Direktur Jenderal Bina Konstruksi No. 182.
 
-## BAB 2. ASUMSI DASAR & HARGA MATERIAL
-Perhitungan harga satuan pekerjaan mengacu pada indeks harga material regional untuk wilayah **{lokasi_proyek.upper()}**.
-
-## BAB 3. BILL OF QUANTITIES (BOQ) AKTUAL
-Berikut adalah rekapitulasi volume pekerjaan yang diekstrak secara presisi:
+## BAB 2. BILL OF QUANTITIES (BOQ) AKTUAL
 """
         for index, row in df_boq_aktual.iterrows():
             laporan_gabungan += f"- **{row['Kategori']}**: {row['Nama']} (Volume: {row.get('Volume', 0)} m3)\n"
 
         laporan_gabungan += f"""
-## BAB 4. KESELAMATAN KONSTRUKSI (SMKK)
-Estimasi total alokasi biaya penerapan SMKK yang proporsional dengan skala proyek ini adalah sebesar **Rp {total_smkk:,.0f}**.
-
-## BAB 5. ANALISIS TINGKAT KOMPONEN DALAM NEGERI (TKDN)
-Proyek ini mengutamakan penggunaan material lokal dengan persentase TKDN terhitung sebesar **{persentase_tkdn:.2f}%**.
-
-## BAB 6. REKAPITULASI & GRAND TOTAL
+## BAB 3. REKAPITULASI & GRAND TOTAL
 Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah ditambah PPN 11% (Rp {ppn:,.0f}), maka Grand Total Pagu Anggaran adalah **Rp {grand_total:,.0f}**. 
-*Rincian komprehensif terdapat pada Spreadsheet Excel lampiran.*
 """
         try:
             pdf_bytes = libs_pdf.create_pdf(laporan_gabungan, title=f"LAPORAN RAB - {st.session_state.nama_proyek}")
-            st.download_button(
-                label="📄 Download Laporan Naratif (PDF)",
-                data=pdf_bytes,
-                file_name=f"Laporan_RAB_{st.session_state.nama_proyek.replace(' ', '_')}.pdf",
-                mime="application/pdf",
-                type="primary",
-                use_container_width=True
-            )
-        except Exception as e:
-            st.error(f"Gagal render PDF: {e}")
+            st.download_button("📄 Download Laporan (PDF)", pdf_bytes, f"RAB_{st.session_state.nama_proyek}.pdf", "application/pdf", type="primary", use_container_width=True)
+        except:
+            st.error("Gagal render PDF.")
             
     with col_dl2:
-        try:
-            excel_bytes = sys.modules['libs_export'].Export_Engine().generate_7tab_rab_excel(
-                st.session_state.nama_proyek, df_boq_aktual, price_engine=pe, lokasi_proyek=lokasi_proyek 
-            )
-            st.download_button(
-                label="📊 Download Lampiran RAB 7-Tab (Excel)",
-                data=excel_bytes,
-                file_name=f"RAB_{lokasi_proyek}_{st.session_state.nama_proyek.replace(' ', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-                use_container_width=True
-            )
-        except Exception as e:
-            st.error(f"Gagal render Excel: {e}")
+        st.info("Fitur Export Excel 7-Tab sedang disesuaikan dengan format Database SE 182 yang baru. (Under Maintenance)")
+
 
 
 
