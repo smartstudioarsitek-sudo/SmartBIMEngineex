@@ -781,5 +781,4 @@ class OpenSeesTemplateGenerator:
             
         except Exception as e:
             return None, f"Error saat analisis OpenSees: {e}"           
-        except Exception as e:
-            return None, f"Gagal mengeksekusi Template Generator: {e}"
+   
