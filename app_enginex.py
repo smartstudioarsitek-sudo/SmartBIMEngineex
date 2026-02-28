@@ -1338,18 +1338,71 @@ elif selected_menu == "🏛️ Template Struktur (Klasik)":
                 c_act1, c_act2 = st.columns(2)
                 
                 if c_act1.button("⚖️ Lanjut: Define Beban & Kombinasi", use_container_width=True):
-                    st.info("🚧 Modul **Pemberian Beban (Load Pattern)** sedang disiapkan. Nantinya Anda bisa memasukkan Beban Merata (q) dan Beban Titik (P) ke elemen yang baru saja Anda generate!")
-                    st.balloons() 
+                    # Membuka gerbang UI pembebanan
+                    st.session_state['mode_pembebanan'] = True
+                    st.rerun()
                     
                 if c_act2.button("💾 Simpan ke Database Proyek", type="secondary", use_container_width=True):
                     st.session_state['model_ready_to_analyze'] = True
                     st.toast("✅ Geometri struktur berhasil dikunci ke dalam CDE (Common Data Environment) Proyek Anda!", icon="💾")
+                    
             else:
-                st.info("👈 Masukkan parameter di sebelah kiri dan klik **Generate**.")
+                st.info("👈 Masukkan parameter di sebelah kiri dan klik **Generate Model**.")
                 with st.container(border=True):
                     st.markdown("<div style='height: 400px; display: flex; align-items: center; justify-content: center; color: gray;'>Ruang Gambar Geometri</div>", unsafe_allow_html=True)
 
-# --- C. MODE AUDIT STRUKTUR ---
+        # ==========================================
+        # ZONA 4: PEMBEBANAN & ANALISIS (FITUR BARU)
+        # ==========================================
+        if st.session_state.get('mode_pembebanan', False):
+            st.markdown("---")
+            st.markdown("### ⚖️ Definisi Beban & Jalankan Analisis (OpenSees Solver)")
+            st.info("Masukkan intensitas beban. Sistem akan merakit ulang matriks kekakuan dan mengeksekusi analisis secara *real-time*.")
+            
+            c_beban1, c_beban2, c_beban3 = st.columns([1, 1, 1])
+            q_load = c_beban1.number_input("Beban Merata Balok (q) [kN/m]", min_value=0.0, value=15.0, step=1.0)
+            p_load = c_beban2.number_input("Beban Titik Lateral (P) [kN]", min_value=0.0, value=25.0, step=5.0, help="Bekerja pada kolom paling luar sebelah kiri")
+            
+            with c_beban3:
+                st.write("") # Spacer agar tombol sejajar
+                st.write("")
+                if st.button("▶️ JALANKAN SOLVER", type="primary", use_container_width=True):
+                    with st.spinner("OpenSees menyelesaikan persamaan matriks statik..."):
+                        generator = sys.modules['libs_fem'].OpenSeesTemplateGenerator()
+                        
+                        # 1. Rakit Ulang Geometri berdasarkan input di memory
+                        if tipe_template == "2D Portal Frame (Gedung)":
+                            generator.generate_2d_portal(st.session_state['tmpl_portal_lantai'], st.session_state['tmpl_portal_bentang'], st.session_state['tmpl_portal_tinggi'], st.session_state['tmpl_portal_lebar'])
+                        elif tipe_template == "Continuous Beam (Menerus)":
+                            generator.generate_continuous_beam(st.session_state['tmpl_beam_bentang'], st.session_state['tmpl_beam_panjang'])
+                            
+                        # 2. Tembakkan Beban & Analisis
+                        df_forces, fig_deform = generator.apply_loads_and_analyze(q_load, p_load)
+                        
+                        if df_forces is not None:
+                            st.session_state['hasil_df'] = df_forces
+                            st.session_state['hasil_fig'] = fig_deform
+                            st.success("✅ Analisis Konvergen & Selesai!")
+                        else:
+                            st.error(fig_deform)
+
+            # Menampilkan Hasil Akhir di bawahnya
+            if 'hasil_fig' in st.session_state:
+                st.markdown("#### 📈 Hasil Deformasi & Gaya Dalam (Post-Processing)")
+                col_hasil1, col_hasil2 = st.columns([1, 1.5])
+                
+                with col_hasil1:
+                    st.markdown("**Rekapitulasi Gaya Dalam Maksimum**")
+                    # Tampilkan tabel yang di-highlight nilai ekstremnya
+                    st.dataframe(st.session_state['hasil_df'].style.highlight_max(subset=['Momen Max (kNm)', 'Aksial (kN)'], color='lightcoral'), use_container_width=True, height=450)
+                
+                with col_hasil2:
+                    with st.container(border=True):
+                        # Grafik deformasi dengan garis putus-putus untuk posisi awal
+                        st.plotly_chart(st.session_state['hasil_fig'], use_container_width=True)
+                        st.caption("💡 *Arahkan kursor mouse (hover) ke garis elemen merah/biru untuk melihat nilai Momen dan Gaya Aksial pada elemen tersebut.*")
+                
+                
         
 # --- C. MODE AUDIT STRUKTUR ---
 elif selected_menu == "🏗️ Audit Struktur":
@@ -3030,6 +3083,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # =========================================================
     st.markdown("### 📥 Cetak Dokumen Final (Approval)")
     st.info("Fitur Export Excel 7-Tab dan PDF sedang disinkronkan dengan Database SE 182 yang baru. (Under Maintenance)")
+
 
 
 
