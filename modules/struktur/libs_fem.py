@@ -677,10 +677,116 @@ class OpenSeesTemplateGenerator:
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator: {e}"
 
+    def generate_2d_truss(self, span, height, num_panels):
+        """Generator untuk Rangka Atap (2D Truss - Model Howe)"""
+        if not HAS_OPENSEES:
+            return None, "Error: Library openseespy belum terinstall."
+            
+        try:
+            import openseespy.opensees as ops
+            import pandas as pd
+            import plotly.graph_objects as go
+            
+            ops.wipe()
+            # Kita gunakan NDF=3 (Sambungan Kaku/Rigid Truss) agar kompatibel dengan 
+            # script pemberian beban merata (beamUniform) di solver utama.
+            ops.model('basic', '-ndm', 2, '-ndf', 3) 
+            self.nodes.clear()
+            self.elements.clear()
+
+            if num_panels % 2 != 0: num_panels += 1 # Paksa genap agar simetris
+            
+            dx = span / num_panels
+            node_tag = 1
+            
+            # 1. GENERASI NODES BAWAH (Bottom Chords)
+            bottom_nodes = []
+            for i in range(num_panels + 1):
+                x = i * dx
+                ops.node(node_tag, x, 0.0)
+                self.nodes[node_tag] = (x, 0.0)
+                
+                # Tumpuan: Kiri Sendi, Kanan Rol
+                if i == 0: ops.fix(node_tag, 1, 1, 0)
+                elif i == num_panels: ops.fix(node_tag, 0, 1, 0)
+                
+                bottom_nodes.append(node_tag)
+                node_tag += 1
+                
+            # 2. GENERASI NODES ATAS (Top Chords)
+            top_nodes = []
+            for i in range(1, num_panels):
+                x = i * dx
+                # Hitung elevasi Y membentuk segitiga
+                if i <= num_panels / 2:
+                    y = x * (height / (span / 2))
+                else:
+                    y = (span - x) * (height / (span / 2))
+                    
+                ops.node(node_tag, x, y)
+                self.nodes[node_tag] = (x, y)
+                top_nodes.append(node_tag)
+                node_tag += 1
+                
+            # 3. GENERASI ELEMEN
+            A = 0.005; E = 200e9; I = 0.00005 # Penampang Baja Profil
+            transf_tag = 1
+            ops.geomTransf('Linear', transf_tag)
+            
+            ele_tag = 1
+            def add_ele(n1, n2, type_name):
+                nonlocal ele_tag
+                ops.element('elasticBeamColumn', ele_tag, n1, n2, A, E, I, transf_tag)
+                x1, y1 = self.nodes[n1]
+                x2, y2 = self.nodes[n2]
+                L = round(((x2-x1)**2 + (y2-y1)**2)**0.5, 2)
+                self.elements.append({'id': ele_tag, 'Tipe': type_name, 'n1': n1, 'n2': n2, 'L': L})
+                ele_tag += 1
+                
+            # A. Batang Bawah
+            for i in range(len(bottom_nodes) - 1): add_ele(bottom_nodes[i], bottom_nodes[i+1], 'Balok Bawah (Tarik)')
+            # B. Batang Atas (Kita namakan 'Balok' agar otomatis terkena beban atap)
+            add_ele(bottom_nodes[0], top_nodes[0], 'Balok Atas (Tekan)')
+            for i in range(len(top_nodes) - 1): add_ele(top_nodes[i], top_nodes[i+1], 'Balok Atas (Tekan)')
+            add_ele(top_nodes[-1], bottom_nodes[-1], 'Balok Atas (Tekan)')
+            # C. Batang Vertikal
+            for i in range(len(top_nodes)): add_ele(bottom_nodes[i+1], top_nodes[i], 'Vertikal')
+            # D. Batang Diagonal (Pola Howe)
+            mid_idx = int(num_panels / 2)
+            for i in range(mid_idx - 1): add_ele(bottom_nodes[i+1], top_nodes[i+1], 'Diagonal')
+            for i in range(mid_idx, num_panels - 1): add_ele(bottom_nodes[i+1], top_nodes[i-1], 'Diagonal')
+
+            # 4. VISUALISASI PLOTLY
+            fig = go.Figure()
+            for el in self.elements:
+                n1 = self.nodes[el['n1']]
+                n2 = self.nodes[el['n2']]
+                color = '#3b82f6' if 'Balok' in el['Tipe'] else '#9ca3af'
+                fig.add_trace(go.Scatter(
+                    x=[n1[0], n2[0]], y=[n1[1], n2[1]], mode='lines', 
+                    line=dict(color=color, width=3),
+                    text=f"{el['Tipe']} [ID:{el['id']}]<br>L: {el['L']}m", 
+                    hoverinfo='text', showlegend=False
+                ))
+            
+            # Nodes & Supports
+            nx = [pos[0] for pos in self.nodes.values()]
+            ny = [pos[1] for pos in self.nodes.values()]
+            fig.add_trace(go.Scatter(x=nx, y=ny, mode='markers', marker=dict(size=8, color='gold', line=dict(color='black', width=1)), hoverinfo='none', showlegend=False))
+            fig.add_trace(go.Scatter(x=[0, span], y=[0, 0], mode='markers', marker=dict(size=14, symbol='triangle-up', color='#ef4444'), hoverinfo='none', showlegend=False))
+            
+            fig.update_layout(title=f"Geometri 2D Truss ({num_panels} Panel)", xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20))
+            
+            df_elemen = pd.DataFrame(self.elements)
+            return fig, df_elemen
+            
+        except Exception as e:
+            return None, f"Gagal mengeksekusi Template Generator Truss: {e}"
+
     def apply_loads_and_analyze(self, q_load_kNm, p_load_kn):
         """
-        Menerapkan beban statik ke model OpenSees yang sedang aktif,
-        menjalankan solver, dan mengekstrak deformasi serta gaya dalam.
+        Menerapkan beban statik ke model OpenSees yang sedang aktif.
+        (Versi Upgrade: AI Cerdas mendeteksi arah beban lateral)
         """
         try:
             import openseespy.opensees as ops
@@ -691,38 +797,48 @@ class OpenSeesTemplateGenerator:
             ops.timeSeries('Linear', 1)
             ops.pattern('Plain', 1, 1)
             
-            # A. Beban Merata (q) pada semua elemen Balok
+            # A. Beban Merata (q) pada semua elemen bermana 'Balok' (Portal maupun Truss Atas)
             for el in self.elements:
                 if 'Balok' in el['Tipe']:
-                    # Beban arah Y negatif (ke bawah)
                     ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -q_load_kNm)
                     
-            # B. Beban Titik Lateral (P) untuk simulasi Gempa Statik/Angin
-            for n_id, pos in self.nodes.items():
-                if pos[1] > 0 and pos[0] == 0: # X = 0 (kiri luar), Y > 0 (bukan pondasi)
-                    ops.load(n_id, p_load_kn, 0.0, 0.0) # Beban ke arah X positif
+            # B. Beban Titik Lateral (P)
+            # Logika Cerdas: Tembak beban ke tiang kiri. Jika tidak ada tiang (Truss), tembak ke puncak.
+            lateral_nodes = [n_id for n_id, pos in self.nodes.items() if pos[0] == 0 and pos[1] > 0]
+            if not lateral_nodes:
+                max_y = max([pos[1] for pos in self.nodes.values()])
+                lateral_nodes = [n_id for n_id, pos in self.nodes.items() if abs(pos[1] - max_y) < 0.001]
+                
+            for n_id in lateral_nodes:
+                ops.load(n_id, p_load_kn, 0.0, 0.0) 
 
-            # 2. SOLVER / MESIN ANALISIS STATIK
+            # 2. SOLVER ANALISIS STATIK
             ops.system('BandGeneral')
             ops.numberer('RCM')
             ops.constraints('Plain')
             ops.integrator('LoadControl', 1.0)
             ops.algorithm('Linear')
             ops.analysis('Static')
-            ops.analyze(1) # Jalankan 1 langkah statik
+            ops.analyze(1) 
             
             # 3. EKSTRAKSI HASIL & PLOTTING DEFORMASI
-            scale_factor = 10.0 # Faktor pengali visual agar deformasi terlihat jelas
+            scale_factor = 10.0 
             fig = go.Figure()
-            
             hasil_elemen = []
             
             for el in self.elements:
-                # Ekstrak Gaya Dalam
                 forces = ops.basicForce(el['id']) 
-                axial = forces[0]
-                momen_kiri = forces[1]
-                momen_kanan = forces[2]
+                # Untuk elemen elasticBeamColumn, forces = [Aksial, Geser Kiri, Momen Kiri, Aksial, Geser Kanan, Momen Kanan]
+                if len(forces) >= 6:
+                    axial = forces[0]
+                    momen_kiri = forces[2]
+                    momen_kanan = forces[5]
+                else:
+                    # Fallback jika model adalah NDF=2 atau element Truss biasa
+                    axial = forces[0]
+                    momen_kiri = forces[1] if len(forces) > 1 else 0
+                    momen_kanan = forces[2] if len(forces) > 2 else 0
+                    
                 max_momen = max(abs(momen_kiri), abs(momen_kanan))
                 
                 hasil_elemen.append({
@@ -732,49 +848,31 @@ class OpenSeesTemplateGenerator:
                     "Momen Max (kNm)": round(max_momen, 2)
                 })
                 
-                # Ekstrak Koordinat dan Deformasi Node
-                n1 = el['n1']
-                n2 = el['n2']
+                n1, n2 = el['n1'], el['n2']
                 x1, y1 = self.nodes[n1]
                 x2, y2 = self.nodes[n2]
-                
-                d1 = ops.nodeDisp(n1)
-                d2 = ops.nodeDisp(n2)
+                d1, d2 = ops.nodeDisp(n1), ops.nodeDisp(n2)
                 
                 xd1 = x1 + d1[0] * scale_factor
                 yd1 = y1 + d1[1] * scale_factor
                 xd2 = x2 + d2[0] * scale_factor
                 yd2 = y2 + d2[1] * scale_factor
                 
-                # Gambar Garis Geometri Asli
-                fig.add_trace(go.Scatter(
-                    x=[x1, x2], y=[y1, y2], mode='lines', 
-                    line=dict(color='lightgray', width=1, dash='dot'), 
-                    hoverinfo='none', showlegend=False
-                ))
+                # Gambar Garis Asli
+                fig.add_trace(go.Scatter(x=[x1, x2], y=[y1, y2], mode='lines', line=dict(color='lightgray', width=1, dash='dot'), hoverinfo='none', showlegend=False))
                 
                 # Gambar Garis Deformasi
-                color = '#ef4444' if 'Kolom' in el['Tipe'] else '#2563eb'
+                color = '#ef4444' if 'Kolom' in el['Tipe'] or 'Tekan' in el['Tipe'] else '#2563eb'
                 hover_text = f"{el['Tipe']} {el['id']}<br>Momen Max: {max_momen:.2f} kNm<br>Aksial: {axial:.2f} kN"
                 
-                fig.add_trace(go.Scatter(
-                    x=[xd1, xd2], y=[yd1, yd2], mode='lines+markers', 
-                    line=dict(color=color, width=3),
-                    marker=dict(size=4, color='black'),
-                    text=hover_text, hoverinfo='text', showlegend=False
-                ))
+                fig.add_trace(go.Scatter(x=[xd1, xd2], y=[yd1, yd2], mode='lines+markers', line=dict(color=color, width=3), marker=dict(size=4, color='black'), text=hover_text, hoverinfo='text', showlegend=False))
                 
             df_hasil = pd.DataFrame(hasil_elemen)
-            
-            fig.update_layout(
-                title=f"Bentuk Deformasi & Gaya Dalam (Faktor Skala Visual: {scale_factor}x)<br>Arahkan kursor ke garis untuk melihat nilai Momen",
-                xaxis_title="Sumbu X", yaxis_title="Elevasi Y",
-                yaxis=dict(scaleanchor="x", scaleratio=1),
-                plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=60, b=20)
-            )
+            fig.update_layout(title=f"Bentuk Deformasi & Gaya Dalam (Faktor Skala Visual: {scale_factor}x)", xaxis_title="Sumbu X", yaxis_title="Elevasi Y", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=60, b=20))
             
             return df_hasil, fig
             
         except Exception as e:
             return None, f"Error saat analisis OpenSees: {e}"
+    
 
