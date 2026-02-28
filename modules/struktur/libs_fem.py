@@ -604,7 +604,7 @@ class OpenSeesTemplateGenerator:
             
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator: {e}"
-def generate_continuous_beam(self, num_spans, span_length):
+    def generate_continuous_beam(self, num_spans, span_length):
         """Generator untuk Balok Menerus (Continuous Beam)"""
         if not HAS_OPENSEES:
             return None, "Error: Library openseespy belum terinstall."
@@ -680,7 +680,7 @@ def generate_continuous_beam(self, num_spans, span_length):
 
             df_elemen = pd.DataFrame(self.elements)
             return fig, df_elemen
- def apply_loads_and_analyze(self, q_load_kNm, p_load_kn):
+    def apply_loads_and_analyze(self, q_load_kNm, p_load_kn):
         """
         Menerapkan beban statik ke model OpenSees yang sedang aktif,
         menjalankan solver, dan mengekstrak deformasi serta gaya dalam.
