@@ -604,3 +604,82 @@ class OpenSeesTemplateGenerator:
             
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator: {e}"
+def generate_continuous_beam(self, num_spans, span_length):
+        """Generator untuk Balok Menerus (Continuous Beam)"""
+        if not HAS_OPENSEES:
+            return None, "Error: Library openseespy belum terinstall."
+            
+        try:
+            import openseespy.opensees as ops
+            import pandas as pd
+            import plotly.graph_objects as go
+            
+            ops.wipe()
+            ops.model('basic', '-ndm', 2, '-ndf', 3)
+            self.nodes.clear()
+            self.elements.clear()
+
+            # 1. GENERASI NODES & TUMPUAN
+            node_tag = 1
+            for x in range(num_spans + 1):
+                x_coord = x * span_length
+                ops.node(node_tag, x_coord, 0.0)
+                self.nodes[node_tag] = (x_coord, 0.0)
+                
+                # Tumpuan: Ujung kiri Sendi (1,1,0), sisanya Rol (0,1,0)
+                if x == 0:
+                    ops.fix(node_tag, 1, 1, 0)
+                else:
+                    ops.fix(node_tag, 0, 1, 0)
+                node_tag += 1
+
+            # 2. GENERASI ELEMEN
+            A = 0.015; E = 200e9; I = 0.0002 
+            transf_tag = 1
+            ops.geomTransf('Linear', transf_tag)
+            
+            ele_tag = 1
+            for x in range(num_spans):
+                nI = x + 1
+                nJ = x + 2
+                ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, I, transf_tag)
+                self.elements.append({'id': ele_tag, 'Tipe': 'Balok Menerus', 'n1': nI, 'n2': nJ, 'L': span_length})
+                ele_tag += 1
+
+            # 3. VISUALISASI PLOTLY
+            fig = go.Figure()
+            
+            # Gambar Elemen Balok
+            for el in self.elements:
+                n1 = self.nodes[el['n1']]
+                n2 = self.nodes[el['n2']]
+                fig.add_trace(go.Scatter(
+                    x=[n1[0], n2[0]], y=[n1[1], n2[1]],
+                    mode='lines', line=dict(color='#10b981', width=5), # Warna hijau
+                    hoverinfo='text', text=f"Bentang {el['id']}<br>L: {el['L']} m",
+                    showlegend=False
+                ))
+                
+            # Gambar Nodes (Tumpuan)
+            nx = [pos[0] for pos in self.nodes.values()]
+            ny = [pos[1] for pos in self.nodes.values()]
+            fig.add_trace(go.Scatter(
+                x=nx, y=ny, mode='markers',
+                marker=dict(size=14, symbol='triangle-up', color='#ef4444'), # Segitiga merah untuk tumpuan
+                hoverinfo='text', text=[f"Tumpuan Node {k}" for k in self.nodes.keys()],
+                showlegend=False
+            ))
+
+            fig.update_layout(
+                title=f"Geometri Balok Menerus ({num_spans} Bentang)",
+                xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)",
+                yaxis=dict(scaleanchor="x", scaleratio=1), 
+                plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20),
+                yaxis_range=[-2, 2] # Mengunci tinggi Y agar proporsional
+            )
+
+            df_elemen = pd.DataFrame(self.elements)
+            return fig, df_elemen
+            
+        except Exception as e:
+            return None, f"Gagal mengeksekusi Template Generator: {e}"
