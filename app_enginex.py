@@ -1319,9 +1319,29 @@ elif selected_menu == "🏛️ Template Struktur (Klasik)":
                             st.session_state['template_status'] = f"✅ Berhasil membuat {len(df_hasil)} elemen balok menerus."
                         else:
                             st.error(df_hasil)
+                            
+            # --- JIKA MEMILIH 2D TRUSS ---
+            elif tipe_template == "2D Truss":
+                st.info("Satuan standar: Meter (m)")
+                span_truss = st.number_input("Panjang Bentang Total (L) [m]", min_value=2.0, value=12.0, step=1.0, key="tmpl_truss_span")
+                tinggi_truss = st.number_input("Tinggi Puncak (H) [m]", min_value=1.0, value=3.0, step=0.5, key="tmpl_truss_height")
+                panel_truss = st.number_input("Jumlah Panel Pias (Wajib Genap)", min_value=2, max_value=20, value=6, step=2, key="tmpl_truss_panel")
+                
+                st.write("") # Spacer
+                if st.button("🚀 Generate Rangka Atap", type="primary", use_container_width=True):
+                    with st.spinner("Membangun geometri Truss baja..."):
+                        generator = sys.modules['libs_fem'].OpenSeesTemplateGenerator()
+                        fig_hasil, df_hasil = generator.generate_2d_truss(span_truss, tinggi_truss, panel_truss)
+                        if fig_hasil is not None:
+                            st.session_state['template_fig'] = fig_hasil
+                            st.session_state['template_df'] = df_hasil
+                            st.session_state['template_status'] = f"✅ Berhasil membuat {len(df_hasil)} elemen rangka atap."
+                        else:
+                            st.error(df_hasil)
             else:
                 st.warning("Template ini sedang dalam tahap pengembangan (WIP).")
-
+            
+            
         # --- ZONA VISUALISASI ---
         with col_viz:
             st.markdown("### 3. Visualisasi Model (Real-time)")
@@ -1375,6 +1395,8 @@ elif selected_menu == "🏛️ Template Struktur (Klasik)":
                             generator.generate_2d_portal(st.session_state['tmpl_portal_lantai'], st.session_state['tmpl_portal_bentang'], st.session_state['tmpl_portal_tinggi'], st.session_state['tmpl_portal_lebar'])
                         elif tipe_template == "Continuous Beam (Menerus)":
                             generator.generate_continuous_beam(st.session_state['tmpl_beam_bentang'], st.session_state['tmpl_beam_panjang'])
+                        elif tipe_template == "2D Truss":
+                            generator.generate_2d_truss(st.session_state['tmpl_truss_span'], st.session_state['tmpl_truss_height'], st.session_state['tmpl_truss_panel'])
                             
                         # 2. Tembakkan Beban & Analisis
                         df_forces, fig_deform = generator.apply_loads_and_analyze(q_load, p_load)
@@ -1385,7 +1407,7 @@ elif selected_menu == "🏛️ Template Struktur (Klasik)":
                             st.success("✅ Analisis Konvergen & Selesai!")
                         else:
                             st.error(fig_deform)
-
+            
             # Menampilkan Hasil Akhir di bawahnya
             if 'hasil_fig' in st.session_state:
                 st.markdown("#### 📈 Hasil Deformasi & Gaya Dalam (Post-Processing)")
@@ -3083,6 +3105,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # =========================================================
     st.markdown("### 📥 Cetak Dokumen Final (Approval)")
     st.info("Fitur Export Excel 7-Tab dan PDF sedang disinkronkan dengan Database SE 182 yang baru. (Under Maintenance)")
+
 
 
 
