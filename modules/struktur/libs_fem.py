@@ -485,6 +485,7 @@ class OpenSeesPortal2D:
             margin=dict(l=20, r=20, t=50, b=20)
         )
         return fig
+
 class OpenSeesTemplateGenerator:
     """
     Engine Generator Template Parametrik ala SAP2000 v7.
@@ -526,29 +527,26 @@ class OpenSeesTemplateGenerator:
                     node_tag += 1
 
             # 2. AUTO-MESHING (Generasi Elemen Balok & Kolom)
-            # Properti Dummy Elastis untuk keperluan rendering awal
             A = 0.01; E = 200e9; I = 0.0001 
             transf_tag = 1
             ops.geomTransf('Linear', transf_tag)
             
             ele_tag = 1
             
-            # A. Looping Kolom (Vertikal)
+            # A. Looping Kolom
             for x in range(num_bays + 1):
                 for y in range(num_stories):
                     nI = x + y * (num_bays + 1) + 1
                     nJ = nI + (num_bays + 1)
-                    
                     ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, I, transf_tag)
                     self.elements.append({'id': ele_tag, 'Tipe': 'Kolom', 'n1': nI, 'n2': nJ, 'L': story_height})
                     ele_tag += 1
 
-            # B. Looping Balok (Horizontal)
+            # B. Looping Balok
             for y in range(1, num_stories + 1):
                 for x in range(num_bays):
                     nI = x + y * (num_bays + 1) + 1
                     nJ = nI + 1
-                    
                     ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, I, transf_tag)
                     self.elements.append({'id': ele_tag, 'Tipe': 'Balok', 'n1': nI, 'n2': nJ, 'L': bay_width})
                     ele_tag += 1
@@ -561,38 +559,16 @@ class OpenSeesTemplateGenerator:
                 n2 = self.nodes[el['n2']]
                 color = '#dc2626' if el['Tipe'] == 'Kolom' else '#2563eb' 
                 width = 4 if el['Tipe'] == 'Kolom' else 3
-                
-                fig.add_trace(go.Scatter(
-                    x=[n1[0], n2[0]], y=[n1[1], n2[1]],
-                    mode='lines', line=dict(color=color, width=width),
-                    hoverinfo='text',
-                    text=f"{el['Tipe']} [ID:{el['id']}]<br>Panjang: {el['L']} m",
-                    showlegend=False
-                ))
+                fig.add_trace(go.Scatter(x=[n1[0], n2[0]], y=[n1[1], n2[1]], mode='lines', line=dict(color=color, width=width), hoverinfo='text', text=f"{el['Tipe']} [ID:{el['id']}]<br>Panjang: {el['L']} m", showlegend=False))
                 
             nx = [pos[0] for pos in self.nodes.values()]
             ny = [pos[1] for pos in self.nodes.values()]
-            fig.add_trace(go.Scatter(
-                x=nx, y=ny, mode='markers',
-                marker=dict(size=8, color='gold', line=dict(color='black', width=1)),
-                hoverinfo='text',
-                text=[f"Node {k}: ({v[0]}, {v[1]})" for k, v in self.nodes.items()],
-                showlegend=False
-            ))
+            fig.add_trace(go.Scatter(x=nx, y=ny, mode='markers', marker=dict(size=8, color='gold', line=dict(color='black', width=1)), hoverinfo='text', text=[f"Node {k}: ({v[0]}, {v[1]})" for k, v in self.nodes.items()], showlegend=False))
 
             for x in range(num_bays + 1):
-                fig.add_trace(go.Scatter(
-                    x=[x * bay_width], y=[0], mode='markers',
-                    marker=dict(size=14, symbol='triangle-up', color='black'),
-                    hoverinfo='none', showlegend=False
-                ))
+                fig.add_trace(go.Scatter(x=[x * bay_width], y=[0], mode='markers', marker=dict(size=14, symbol='triangle-up', color='black'), hoverinfo='none', showlegend=False))
 
-            fig.update_layout(
-                title=f"Geometri Portal 2D ({num_stories} Lantai, {num_bays} Bentang)",
-                xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)",
-                yaxis=dict(scaleanchor="x", scaleratio=1),
-                plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20)
-            )
+            fig.update_layout(title=f"Geometri Portal 2D ({num_stories} Lantai, {num_bays} Bentang)", xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20))
 
             df_elemen = pd.DataFrame(self.elements)
             return fig, df_elemen
@@ -601,10 +577,7 @@ class OpenSeesTemplateGenerator:
             return None, f"Gagal mengeksekusi Template Generator: {e}"
 
     def generate_continuous_beam(self, num_spans, span_length):
-        """Generator untuk Balok Menerus (Continuous Beam)"""
-        if not HAS_OPENSEES:
-            return None, "Error: Library openseespy belum terinstall."
-            
+        if not HAS_OPENSEES: return None, "Error: Library openseespy belum terinstall."
         try:
             import openseespy.opensees as ops
             import pandas as pd
@@ -615,20 +588,16 @@ class OpenSeesTemplateGenerator:
             self.nodes.clear()
             self.elements.clear()
 
-            # 1. GENERASI NODES & TUMPUAN
             node_tag = 1
             for x in range(num_spans + 1):
                 x_coord = x * span_length
                 ops.node(node_tag, x_coord, 0.0)
                 self.nodes[node_tag] = (x_coord, 0.0)
                 
-                if x == 0:
-                    ops.fix(node_tag, 1, 1, 0)
-                else:
-                    ops.fix(node_tag, 0, 1, 0)
+                if x == 0: ops.fix(node_tag, 1, 1, 0)
+                else: ops.fix(node_tag, 0, 1, 0)
                 node_tag += 1
 
-            # 2. GENERASI ELEMEN
             A = 0.015; E = 200e9; I = 0.0002 
             transf_tag = 1
             ops.geomTransf('Linear', transf_tag)
@@ -641,95 +610,60 @@ class OpenSeesTemplateGenerator:
                 self.elements.append({'id': ele_tag, 'Tipe': 'Balok Menerus', 'n1': nI, 'n2': nJ, 'L': span_length})
                 ele_tag += 1
 
-            # 3. VISUALISASI PLOTLY
             fig = go.Figure()
-            
             for el in self.elements:
                 n1 = self.nodes[el['n1']]
                 n2 = self.nodes[el['n2']]
-                fig.add_trace(go.Scatter(
-                    x=[n1[0], n2[0]], y=[n1[1], n2[1]],
-                    mode='lines', line=dict(color='#10b981', width=5),
-                    hoverinfo='text', text=f"Bentang {el['id']}<br>L: {el['L']} m",
-                    showlegend=False
-                ))
+                fig.add_trace(go.Scatter(x=[n1[0], n2[0]], y=[n1[1], n2[1]], mode='lines', line=dict(color='#10b981', width=5), hoverinfo='text', text=f"Bentang {el['id']}<br>L: {el['L']} m", showlegend=False))
                 
             nx = [pos[0] for pos in self.nodes.values()]
             ny = [pos[1] for pos in self.nodes.values()]
-            fig.add_trace(go.Scatter(
-                x=nx, y=ny, mode='markers',
-                marker=dict(size=14, symbol='triangle-up', color='#ef4444'),
-                hoverinfo='text', text=[f"Tumpuan Node {k}" for k in self.nodes.keys()],
-                showlegend=False
-            ))
+            fig.add_trace(go.Scatter(x=nx, y=ny, mode='markers', marker=dict(size=14, symbol='triangle-up', color='#ef4444'), hoverinfo='text', text=[f"Tumpuan Node {k}" for k in self.nodes.keys()], showlegend=False))
 
-            fig.update_layout(
-                title=f"Geometri Balok Menerus ({num_spans} Bentang)",
-                xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)",
-                yaxis=dict(scaleanchor="x", scaleratio=1), 
-                plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20),
-                yaxis_range=[-2, 2] 
-            )
+            fig.update_layout(title=f"Geometri Balok Menerus ({num_spans} Bentang)", xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20), yaxis_range=[-2, 2])
 
             df_elemen = pd.DataFrame(self.elements)
             return fig, df_elemen
-            
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator: {e}"
 
     def generate_2d_truss(self, span, height, num_panels):
-        """Generator untuk Rangka Atap (2D Truss - Model Howe)"""
-        if not HAS_OPENSEES:
-            return None, "Error: Library openseespy belum terinstall."
-            
+        if not HAS_OPENSEES: return None, "Error: Library openseespy belum terinstall."
         try:
             import openseespy.opensees as ops
             import pandas as pd
             import plotly.graph_objects as go
             
             ops.wipe()
-            # Kita gunakan NDF=3 (Sambungan Kaku/Rigid Truss) agar kompatibel dengan 
-            # script pemberian beban merata (beamUniform) di solver utama.
             ops.model('basic', '-ndm', 2, '-ndf', 3) 
             self.nodes.clear()
             self.elements.clear()
 
-            if num_panels % 2 != 0: num_panels += 1 # Paksa genap agar simetris
-            
+            if num_panels % 2 != 0: num_panels += 1 
             dx = span / num_panels
             node_tag = 1
             
-            # 1. GENERASI NODES BAWAH (Bottom Chords)
             bottom_nodes = []
             for i in range(num_panels + 1):
                 x = i * dx
                 ops.node(node_tag, x, 0.0)
                 self.nodes[node_tag] = (x, 0.0)
-                
-                # Tumpuan: Kiri Sendi, Kanan Rol
                 if i == 0: ops.fix(node_tag, 1, 1, 0)
                 elif i == num_panels: ops.fix(node_tag, 0, 1, 0)
-                
                 bottom_nodes.append(node_tag)
                 node_tag += 1
                 
-            # 2. GENERASI NODES ATAS (Top Chords)
             top_nodes = []
             for i in range(1, num_panels):
                 x = i * dx
-                # Hitung elevasi Y membentuk segitiga
-                if i <= num_panels / 2:
-                    y = x * (height / (span / 2))
-                else:
-                    y = (span - x) * (height / (span / 2))
-                    
+                if i <= num_panels / 2: y = x * (height / (span / 2))
+                else: y = (span - x) * (height / (span / 2))
                 ops.node(node_tag, x, y)
                 self.nodes[node_tag] = (x, y)
                 top_nodes.append(node_tag)
                 node_tag += 1
                 
-            # 3. GENERASI ELEMEN
-            A = 0.005; E = 200e9; I = 0.00005 # Penampang Baja Profil
+            A = 0.005; E = 200e9; I = 0.00005 
             transf_tag = 1
             ops.geomTransf('Linear', transf_tag)
             
@@ -743,33 +677,22 @@ class OpenSeesTemplateGenerator:
                 self.elements.append({'id': ele_tag, 'Tipe': type_name, 'n1': n1, 'n2': n2, 'L': L})
                 ele_tag += 1
                 
-            # A. Batang Bawah
             for i in range(len(bottom_nodes) - 1): add_ele(bottom_nodes[i], bottom_nodes[i+1], 'Balok Bawah (Tarik)')
-            # B. Batang Atas (Kita namakan 'Balok' agar otomatis terkena beban atap)
             add_ele(bottom_nodes[0], top_nodes[0], 'Balok Atas (Tekan)')
             for i in range(len(top_nodes) - 1): add_ele(top_nodes[i], top_nodes[i+1], 'Balok Atas (Tekan)')
             add_ele(top_nodes[-1], bottom_nodes[-1], 'Balok Atas (Tekan)')
-            # C. Batang Vertikal
             for i in range(len(top_nodes)): add_ele(bottom_nodes[i+1], top_nodes[i], 'Vertikal')
-            # D. Batang Diagonal (Pola Howe)
             mid_idx = int(num_panels / 2)
             for i in range(mid_idx - 1): add_ele(bottom_nodes[i+1], top_nodes[i+1], 'Diagonal')
             for i in range(mid_idx, num_panels - 1): add_ele(bottom_nodes[i+1], top_nodes[i-1], 'Diagonal')
 
-            # 4. VISUALISASI PLOTLY
             fig = go.Figure()
             for el in self.elements:
                 n1 = self.nodes[el['n1']]
                 n2 = self.nodes[el['n2']]
                 color = '#3b82f6' if 'Balok' in el['Tipe'] else '#9ca3af'
-                fig.add_trace(go.Scatter(
-                    x=[n1[0], n2[0]], y=[n1[1], n2[1]], mode='lines', 
-                    line=dict(color=color, width=3),
-                    text=f"{el['Tipe']} [ID:{el['id']}]<br>L: {el['L']}m", 
-                    hoverinfo='text', showlegend=False
-                ))
+                fig.add_trace(go.Scatter(x=[n1[0], n2[0]], y=[n1[1], n2[1]], mode='lines', line=dict(color=color, width=3), text=f"{el['Tipe']} [ID:{el['id']}]<br>L: {el['L']}m", hoverinfo='text', showlegend=False))
             
-            # Nodes & Supports
             nx = [pos[0] for pos in self.nodes.values()]
             ny = [pos[1] for pos in self.nodes.values()]
             fig.add_trace(go.Scatter(x=nx, y=ny, mode='markers', marker=dict(size=8, color='gold', line=dict(color='black', width=1)), hoverinfo='none', showlegend=False))
@@ -779,103 +702,10 @@ class OpenSeesTemplateGenerator:
             
             df_elemen = pd.DataFrame(self.elements)
             return fig, df_elemen
-            
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator Truss: {e}"
 
-    def apply_loads_and_analyze(self, q_load_kNm, p_load_kn):
-        """
-        Menerapkan beban statik ke model OpenSees yang sedang aktif.
-        (Versi Upgrade: AI Cerdas mendeteksi arah beban lateral)
-        """
-        try:
-            import openseespy.opensees as ops
-            import pandas as pd
-            import plotly.graph_objects as go
-            
-            # 1. APLIKASI BEBAN
-            ops.timeSeries('Linear', 1)
-            ops.pattern('Plain', 1, 1)
-            
-            # A. Beban Merata (q) pada semua elemen bermana 'Balok' (Portal maupun Truss Atas)
-            for el in self.elements:
-                if 'Balok' in el['Tipe']:
-                    ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -q_load_kNm)
-                    
-            # B. Beban Titik Lateral (P)
-            # Logika Cerdas: Tembak beban ke tiang kiri. Jika tidak ada tiang (Truss), tembak ke puncak.
-            lateral_nodes = [n_id for n_id, pos in self.nodes.items() if pos[0] == 0 and pos[1] > 0]
-            if not lateral_nodes:
-                max_y = max([pos[1] for pos in self.nodes.values()])
-                lateral_nodes = [n_id for n_id, pos in self.nodes.items() if abs(pos[1] - max_y) < 0.001]
-                
-            for n_id in lateral_nodes:
-                ops.load(n_id, p_load_kn, 0.0, 0.0) 
-
-            # 2. SOLVER ANALISIS STATIK
-            ops.system('BandGeneral')
-            ops.numberer('RCM')
-            ops.constraints('Plain')
-            ops.integrator('LoadControl', 1.0)
-            ops.algorithm('Linear')
-            ops.analysis('Static')
-            ops.analyze(1) 
-            
-            # 3. EKSTRAKSI HASIL & PLOTTING DEFORMASI
-            scale_factor = 10.0 
-            fig = go.Figure()
-            hasil_elemen = []
-            
-            for el in self.elements:
-                forces = ops.basicForce(el['id']) 
-                # Untuk elemen elasticBeamColumn, forces = [Aksial, Geser Kiri, Momen Kiri, Aksial, Geser Kanan, Momen Kanan]
-                if len(forces) >= 6:
-                    axial = forces[0]
-                    momen_kiri = forces[2]
-                    momen_kanan = forces[5]
-                else:
-                    # Fallback jika model adalah NDF=2 atau element Truss biasa
-                    axial = forces[0]
-                    momen_kiri = forces[1] if len(forces) > 1 else 0
-                    momen_kanan = forces[2] if len(forces) > 2 else 0
-                    
-                max_momen = max(abs(momen_kiri), abs(momen_kanan))
-                
-                hasil_elemen.append({
-                    "Elemen ID": el['id'],
-                    "Tipe": el['Tipe'],
-                    "Aksial (kN)": round(axial, 2),
-                    "Momen Max (kNm)": round(max_momen, 2)
-                })
-                
-                n1, n2 = el['n1'], el['n2']
-                x1, y1 = self.nodes[n1]
-                x2, y2 = self.nodes[n2]
-                d1, d2 = ops.nodeDisp(n1), ops.nodeDisp(n2)
-                
-                xd1 = x1 + d1[0] * scale_factor
-                yd1 = y1 + d1[1] * scale_factor
-                xd2 = x2 + d2[0] * scale_factor
-                yd2 = y2 + d2[1] * scale_factor
-                
-                # Gambar Garis Asli
-                fig.add_trace(go.Scatter(x=[x1, x2], y=[y1, y2], mode='lines', line=dict(color='lightgray', width=1, dash='dot'), hoverinfo='none', showlegend=False))
-                
-                # Gambar Garis Deformasi
-                color = '#ef4444' if 'Kolom' in el['Tipe'] or 'Tekan' in el['Tipe'] else '#2563eb'
-                hover_text = f"{el['Tipe']} {el['id']}<br>Momen Max: {max_momen:.2f} kNm<br>Aksial: {axial:.2f} kN"
-                
-                fig.add_trace(go.Scatter(x=[xd1, xd2], y=[yd1, yd2], mode='lines+markers', line=dict(color=color, width=3), marker=dict(size=4, color='black'), text=hover_text, hoverinfo='text', showlegend=False))
-                
-            df_hasil = pd.DataFrame(hasil_elemen)
-            fig.update_layout(title=f"Bentuk Deformasi & Gaya Dalam (Faktor Skala Visual: {scale_factor}x)", xaxis_title="Sumbu X", yaxis_title="Elevasi Y", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=60, b=20))
-            
-            return df_hasil, fig
-            
-        except Exception as e:
-            return None, f"Error saat analisis OpenSees: {e}"
-def generate_3d_frame(self, num_stories, num_bays_x, num_bays_z, story_height, bay_width_x, bay_width_z):
-        """Generator untuk Model Gedung 3 Dimensi (3D Building Frame)"""
+    def generate_3d_frame(self, num_stories, num_bays_x, num_bays_z, story_height, bay_width_x, bay_width_z):
         if not HAS_OPENSEES: return None, "Error: Library openseespy belum terinstall."
         try:
             import openseespy.opensees as ops
@@ -883,7 +713,6 @@ def generate_3d_frame(self, num_stories, num_bays_x, num_bays_z, story_height, b
             import plotly.graph_objects as go
             
             ops.wipe()
-            # 3D membutuhkan NDM=3 (X,Y,Z) dan NDF=6 (6 Derajat Kebebasan per Node)
             ops.model('basic', '-ndm', 3, '-ndf', 6)
             self.nodes.clear()
             self.elements.clear()
@@ -894,104 +723,75 @@ def generate_3d_frame(self, num_stories, num_bays_x, num_bays_z, story_height, b
                 for z in range(num_bays_z + 1):
                     for x in range(num_bays_x + 1):
                         x_coord = x * bay_width_x
-                        y_coord = y * story_height  # Y adalah sumbu vertikal/tinggi
+                        y_coord = y * story_height
                         z_coord = z * bay_width_z
                         
                         ops.node(node_tag, x_coord, y_coord, z_coord)
                         self.nodes[node_tag] = (x_coord, y_coord, z_coord)
                         
-                        # Tumpuan Jepit di dasar (Y = 0)
-                        if y == 0:
-                            ops.fix(node_tag, 1, 1, 1, 1, 1, 1) # Tahan 6 arah
+                        if y == 0: ops.fix(node_tag, 1, 1, 1, 1, 1, 1) 
                         node_tag += 1
 
             # 2. GENERASI ELEMEN 3D
             A = 0.04; E = 200e9; G = 77e9; J = 0.0001; Iy = 0.0002; Iz = 0.0002
-            
-            # Transformasi Koordinat Lokal (Sangat penting di 3D)
-            ops.geomTransf('Linear', 1, 0, 0, 1) # Untuk Kolom
-            ops.geomTransf('Linear', 2, 0, 1, 0) # Untuk Balok Arah X
-            ops.geomTransf('Linear', 3, 0, 1, 0) # Untuk Balok Arah Z
+            ops.geomTransf('Linear', 1, 0, 0, 1) 
+            ops.geomTransf('Linear', 2, 0, 1, 0) 
+            ops.geomTransf('Linear', 3, 0, 1, 0) 
 
             ele_tag = 1
-            
-            # Helper untuk menemukan Node Tag berdasarkan posisi Grid
             def get_node(ix, iy, iz):
                 return 1 + ix + iz * (num_bays_x + 1) + iy * (num_bays_x + 1) * (num_bays_z + 1)
 
-            # A. Kolom (Vertikal sejajar Y)
+            # Kolom
             for y in range(num_stories):
                 for z in range(num_bays_z + 1):
                     for x in range(num_bays_x + 1):
-                        nI = get_node(x, y, z)
-                        nJ = get_node(x, y+1, z)
+                        nI = get_node(x, y, z); nJ = get_node(x, y+1, z)
                         ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, G, J, Iy, Iz, 1)
                         self.elements.append({'id': ele_tag, 'Tipe': 'Kolom', 'n1': nI, 'n2': nJ, 'L': story_height})
                         ele_tag += 1
 
-            # B. Balok Arah X
+            # Balok X
             for y in range(1, num_stories + 1):
                 for z in range(num_bays_z + 1):
                     for x in range(num_bays_x):
-                        nI = get_node(x, y, z)
-                        nJ = get_node(x+1, y, z)
+                        nI = get_node(x, y, z); nJ = get_node(x+1, y, z)
                         ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, G, J, Iy, Iz, 2)
                         self.elements.append({'id': ele_tag, 'Tipe': 'Balok X', 'n1': nI, 'n2': nJ, 'L': bay_width_x})
                         ele_tag += 1
 
-            # C. Balok Arah Z
+            # Balok Z
             for y in range(1, num_stories + 1):
                 for z in range(num_bays_z):
                     for x in range(num_bays_x + 1):
-                        nI = get_node(x, y, z)
-                        nJ = get_node(x, y, z+1)
+                        nI = get_node(x, y, z); nJ = get_node(x, y, z+1)
                         ops.element('elasticBeamColumn', ele_tag, nI, nJ, A, E, G, J, Iy, Iz, 3)
                         self.elements.append({'id': ele_tag, 'Tipe': 'Balok Z', 'n1': nI, 'n2': nJ, 'L': bay_width_z})
                         ele_tag += 1
 
-            # 3. VISUALISASI PLOTLY 3D (Bisa diputar)
+            # 3. VISUALISASI PLOTLY 3D
             fig = go.Figure()
             for el in self.elements:
                 n1 = self.nodes[el['n1']]
                 n2 = self.nodes[el['n2']]
-                
-                if el['Tipe'] == 'Kolom': color = '#dc2626' # Merah
-                elif el['Tipe'] == 'Balok X': color = '#2563eb' # Biru
-                else: color = '#10b981' # Hijau (Balok Z)
-                
-                fig.add_trace(go.Scatter3d(
-                    x=[n1[0], n2[0]], y=[n1[1], n2[1]], z=[n1[2], n2[2]],
-                    mode='lines', line=dict(color=color, width=4),
-                    hoverinfo='text', text=f"{el['Tipe']} [ID:{el['id']}]", showlegend=False
-                ))
+                if el['Tipe'] == 'Kolom': color = '#dc2626' 
+                elif el['Tipe'] == 'Balok X': color = '#2563eb' 
+                else: color = '#10b981' 
+                fig.add_trace(go.Scatter3d(x=[n1[0], n2[0]], y=[n1[1], n2[1]], z=[n1[2], n2[2]], mode='lines', line=dict(color=color, width=4), hoverinfo='text', text=f"{el['Tipe']} [ID:{el['id']}]", showlegend=False))
 
-            # Render Nodes
             nx = [p[0] for p in self.nodes.values()]
             ny = [p[1] for p in self.nodes.values()]
             nz = [p[2] for p in self.nodes.values()]
-            fig.add_trace(go.Scatter3d(
-                x=nx, y=ny, z=nz, mode='markers',
-                marker=dict(size=3, color='gold', line=dict(color='black', width=1)),
-                hoverinfo='none', showlegend=False
-            ))
+            fig.add_trace(go.Scatter3d(x=nx, y=ny, z=nz, mode='markers', marker=dict(size=3, color='gold', line=dict(color='black', width=1)), hoverinfo='none', showlegend=False))
 
-            fig.update_layout(
-                title="Geometri 3D Building Frame",
-                scene=dict(
-                    xaxis_title="Sumbu X (m)", yaxis_title="Tinggi Y (m)", zaxis_title="Sumbu Z (m)",
-                    aspectmode='data' # Skala nyata, kotak tidak akan gepeng
-                ),
-                margin=dict(l=0, r=0, b=0, t=40)
-            )
+            fig.update_layout(title="Geometri 3D Building Frame", scene=dict(xaxis_title="Sumbu X (m)", yaxis_title="Tinggi Y (m)", zaxis_title="Sumbu Z (m)", aspectmode='data'), margin=dict(l=0, r=0, b=0, t=40))
 
             df_elemen = pd.DataFrame(self.elements)
             return fig, df_elemen
-
         except Exception as e:
             return None, f"Error Generate 3D: {e}"
 
-    def apply_loads_and_analyze_3d(self, q_load_kNm, p_load_kn):
-        """Mesin Solver Khusus 3D (Beban Y gravitasi, Beban X angin/gempa)"""
+    def apply_loads_and_analyze(self, q_load_kNm, p_load_kn):
         try:
             import openseespy.opensees as ops
             import pandas as pd
@@ -1000,16 +800,79 @@ def generate_3d_frame(self, num_stories, num_bays_x, num_bays_z, story_height, b
             ops.timeSeries('Linear', 1)
             ops.pattern('Plain', 1, 1)
             
-            # A. Beban Merata
             for el in self.elements:
                 if 'Balok' in el['Tipe']:
-                    # 3D butuh parameter wy, wz, wx (Wy arah gravitasi Y ke bawah)
+                    ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -q_load_kNm)
+                    
+            lateral_nodes = [n_id for n_id, pos in self.nodes.items() if pos[0] == 0 and pos[1] > 0]
+            if not lateral_nodes:
+                max_y = max([pos[1] for pos in self.nodes.values()])
+                lateral_nodes = [n_id for n_id, pos in self.nodes.items() if abs(pos[1] - max_y) < 0.001]
+                
+            for n_id in lateral_nodes:
+                ops.load(n_id, p_load_kn, 0.0, 0.0) 
+
+            ops.system('BandGeneral')
+            ops.numberer('RCM')
+            ops.constraints('Plain')
+            ops.integrator('LoadControl', 1.0)
+            ops.algorithm('Linear')
+            ops.analysis('Static')
+            ops.analyze(1) 
+            
+            scale_factor = 10.0 
+            fig = go.Figure()
+            hasil_elemen = []
+            
+            for el in self.elements:
+                forces = ops.basicForce(el['id']) 
+                if len(forces) >= 6:
+                    axial = forces[0]
+                    momen_kiri = forces[2]
+                    momen_kanan = forces[5]
+                else:
+                    axial = forces[0]
+                    momen_kiri = forces[1] if len(forces) > 1 else 0
+                    momen_kanan = forces[2] if len(forces) > 2 else 0
+                    
+                max_momen = max(abs(momen_kiri), abs(momen_kanan))
+                hasil_elemen.append({"Elemen ID": el['id'], "Tipe": el['Tipe'], "Aksial (kN)": round(axial, 2), "Momen Max (kNm)": round(max_momen, 2)})
+                
+                n1, n2 = el['n1'], el['n2']
+                x1, y1 = self.nodes[n1]
+                x2, y2 = self.nodes[n2]
+                d1, d2 = ops.nodeDisp(n1), ops.nodeDisp(n2)
+                
+                xd1 = x1 + d1[0] * scale_factor; yd1 = y1 + d1[1] * scale_factor
+                xd2 = x2 + d2[0] * scale_factor; yd2 = y2 + d2[1] * scale_factor
+                
+                fig.add_trace(go.Scatter(x=[x1, x2], y=[y1, y2], mode='lines', line=dict(color='lightgray', width=1, dash='dot'), hoverinfo='none', showlegend=False))
+                
+                color = '#ef4444' if 'Kolom' in el['Tipe'] or 'Tekan' in el['Tipe'] else '#2563eb'
+                hover_text = f"{el['Tipe']} {el['id']}<br>Momen Max: {max_momen:.2f} kNm<br>Aksial: {axial:.2f} kN"
+                fig.add_trace(go.Scatter(x=[xd1, xd2], y=[yd1, yd2], mode='lines+markers', line=dict(color=color, width=3), marker=dict(size=4, color='black'), text=hover_text, hoverinfo='text', showlegend=False))
+                
+            df_hasil = pd.DataFrame(hasil_elemen)
+            fig.update_layout(title=f"Bentuk Deformasi & Gaya Dalam (Faktor Skala Visual: {scale_factor}x)", xaxis_title="Sumbu X", yaxis_title="Elevasi Y", yaxis=dict(scaleanchor="x", scaleratio=1), plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=60, b=20))
+            return df_hasil, fig
+        except Exception as e:
+            return None, f"Error saat analisis OpenSees: {e}"
+
+    def apply_loads_and_analyze_3d(self, q_load_kNm, p_load_kn):
+        try:
+            import openseespy.opensees as ops
+            import pandas as pd
+            import plotly.graph_objects as go
+            
+            ops.timeSeries('Linear', 1)
+            ops.pattern('Plain', 1, 1)
+            
+            for el in self.elements:
+                if 'Balok' in el['Tipe']:
                     ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -q_load_kNm, 0.0, 0.0)
                     
-            # B. Beban Lateral (Tembak ke dinding X=0 bagian luar)
             for n_id, pos in self.nodes.items():
                 if pos[0] == 0 and pos[1] > 0:
-                    # Beban 3D NDF=6 (Fx, Fy, Fz, Mx, My, Mz)
                     ops.load(n_id, p_load_kn, 0.0, 0.0, 0.0, 0.0, 0.0)
 
             ops.system('BandGeneral')
@@ -1020,61 +883,38 @@ def generate_3d_frame(self, num_stories, num_bays_x, num_bays_z, story_height, b
             ops.analysis('Static')
             ops.analyze(1)
 
-            scale_factor = 20.0 # Skala lebih besar agar lenturan 3D jelas
+            scale_factor = 20.0 
             fig = go.Figure()
             hasil_elemen = []
             
             for el in self.elements:
                 forces = ops.basicForce(el['id'])
-                # Output Force 3D berjumlah 12 item. 
-                # Aksial index 0, Momen Y index 4, Momen Z index 5
                 axial = forces[0]
                 m_y_i, m_z_i = forces[4], forces[5]
                 m_y_j, m_z_j = forces[10], forces[11]
                 
                 max_momen = max(abs(m_y_i), abs(m_z_i), abs(m_y_j), abs(m_z_j))
-                
-                hasil_elemen.append({
-                    "Elemen ID": el['id'],
-                    "Tipe": el['Tipe'],
-                    "Aksial (kN)": round(axial, 2),
-                    "Momen Max (kNm)": round(max_momen, 2)
-                })
+                hasil_elemen.append({"Elemen ID": el['id'], "Tipe": el['Tipe'], "Aksial (kN)": round(axial, 2), "Momen Max (kNm)": round(max_momen, 2)})
 
                 n1, n2 = el['n1'], el['n2']
                 x1, y1, z1 = self.nodes[n1]
                 x2, y2, z2 = self.nodes[n2]
-                
                 d1, d2 = ops.nodeDisp(n1), ops.nodeDisp(n2)
                 
-                # Kalkulasi Posisi Deformasi
                 xd1 = x1 + d1[0] * scale_factor; yd1 = y1 + d1[1] * scale_factor; zd1 = z1 + d1[2] * scale_factor
                 xd2 = x2 + d2[0] * scale_factor; yd2 = y2 + d2[1] * scale_factor; zd2 = z2 + d2[2] * scale_factor
                 
-                # Garis Asli (Bayangan)
                 fig.add_trace(go.Scatter3d(x=[x1, x2], y=[y1, y2], z=[z1, z2], mode='lines', line=dict(color='lightgray', width=2, dash='dot'), hoverinfo='none', showlegend=False))
                 
-                # Garis Deformasi
                 if el['Tipe'] == 'Kolom': color = '#ef4444'
                 elif el['Tipe'] == 'Balok X': color = '#2563eb'
                 else: color = '#10b981'
                 
                 hover_text = f"{el['Tipe']} {el['id']}<br>Momen Max: {max_momen:.2f} kNm<br>Aksial: {axial:.2f} kN"
-                fig.add_trace(go.Scatter3d(
-                    x=[xd1, xd2], y=[yd1, yd2], z=[zd1, zd2],
-                    mode='lines+markers', line=dict(color=color, width=5),
-                    marker=dict(size=2, color='black'),
-                    text=hover_text, hoverinfo='text', showlegend=False
-                ))
+                fig.add_trace(go.Scatter3d(x=[xd1, xd2], y=[yd1, yd2], z=[zd1, zd2], mode='lines+markers', line=dict(color=color, width=5), marker=dict(size=2, color='black'), text=hover_text, hoverinfo='text', showlegend=False))
 
-            fig.update_layout(
-                title=f"Bentuk Deformasi 3D & Momen (Skala: {scale_factor}x)",
-                scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z", aspectmode='data'),
-                margin=dict(l=0, r=0, b=0, t=40)
-            )
-            
+            fig.update_layout(title=f"Bentuk Deformasi 3D & Momen (Skala: {scale_factor}x)", scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z", aspectmode='data'), margin=dict(l=0, r=0, b=0, t=40))
             return pd.DataFrame(hasil_elemen), fig
-            
         except Exception as e:
-            return None, f"Error 3D Analysis: {e}"    
+            return None, f"Error 3D Analysis: {e}"
 
