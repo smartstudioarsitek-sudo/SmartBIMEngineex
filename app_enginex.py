@@ -169,19 +169,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-# ==========================================
-# AUTO-LOAD MASTER DATABASE AHSP
-# ==========================================
-if 'master_ahsp' not in st.session_state:
-    # Coba tarik data permanen dari SQLite
-    df_ahsp_db = db.get_master_ahsp_permanen()
-    
-    if not df_ahsp_db.empty:
-        st.session_state.master_ahsp = df_ahsp_db
-        st.session_state.status_ahsp = "TERKUNCI DARI DATABASE"
-    else:
-        st.session_state.master_ahsp = None
-        st.session_state.status_ahsp = "KOSONG"
 
 st.markdown("""
 <style>
@@ -2920,6 +2907,7 @@ Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah 
             )
         except Exception as e:
             st.error(f"Gagal render Excel: {e}")
+
 
 
 
