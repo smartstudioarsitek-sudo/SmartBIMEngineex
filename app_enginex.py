@@ -1338,8 +1338,37 @@ elif selected_menu == "🏛️ Template Struktur (Klasik)":
                             st.session_state['template_status'] = f"✅ Berhasil membuat {len(df_hasil)} elemen rangka atap."
                         else:
                             st.error(df_hasil)
-            else:
-                st.warning("Template ini sedang dalam tahap pengembangan (WIP).")
+            # --- JIKA MEMILIH 3D BUILDING FRAME ---
+            elif tipe_template == "3D Building Frame":
+                st.info("Desain Gedung 3 Dimensi")
+                
+                col_3d_1, col_3d_2 = st.columns(2)
+                jml_lantai_3d = col_3d_1.number_input("Jumlah Lantai (Tinggi)", 1, 20, 3, key="t3d_ly")
+                tinggi_lt_3d = col_3d_2.number_input("Tinggi per Lantai (m)", 1.0, 6.0, 3.5, key="t3d_ty")
+                
+                col_3d_3, col_3d_4 = st.columns(2)
+                jml_bentang_x = col_3d_3.number_input("Jumlah Bentang X", 1, 10, 3, key="t3d_bx")
+                lebar_btg_x = col_3d_4.number_input("Lebar Bentang X (m)", 1.0, 10.0, 4.0, key="t3d_lx")
+                
+                col_3d_5, col_3d_6 = st.columns(2)
+                jml_bentang_z = col_3d_5.number_input("Jumlah Bentang Z", 1, 10, 2, key="t3d_bz")
+                lebar_btg_z = col_3d_6.number_input("Lebar Bentang Z (m)", 1.0, 10.0, 4.0, key="t3d_lz")
+                
+                st.write("") # Spacer
+                if st.button("🚀 Generate 3D Frame", type="primary", use_container_width=True):
+                    with st.spinner("Membangun ruang geometri 3D..."):
+                        generator = sys.modules['libs_fem'].OpenSeesTemplateGenerator()
+                        fig_hasil, df_hasil = generator.generate_3d_frame(
+                            jml_lantai_3d, jml_bentang_x, jml_bentang_z, 
+                            tinggi_lt_3d, lebar_btg_x, lebar_btg_z
+                        )
+                        if fig_hasil is not None:
+                            st.session_state['template_fig'] = fig_hasil
+                            st.session_state['template_df'] = df_hasil
+                            st.session_state['template_status'] = f"✅ Berhasil merakit {len(df_hasil)} elemen balok dan kolom 3D!"
+                        else:
+                            st.error(df_hasil)
+           
             
             
         # --- ZONA VISUALISASI ---
@@ -1397,16 +1426,22 @@ elif selected_menu == "🏛️ Template Struktur (Klasik)":
                             generator.generate_continuous_beam(st.session_state['tmpl_beam_bentang'], st.session_state['tmpl_beam_panjang'])
                         elif tipe_template == "2D Truss":
                             generator.generate_2d_truss(st.session_state['tmpl_truss_span'], st.session_state['tmpl_truss_height'], st.session_state['tmpl_truss_panel'])
+                        elif tipe_template == "3D Building Frame":
+                            generator.generate_3d_frame(st.session_state['t3d_ly'], st.session_state['t3d_bx'], st.session_state['t3d_bz'], st.session_state['t3d_ty'], st.session_state['t3d_lx'], st.session_state['t3d_lz'])
                             
                         # 2. Tembakkan Beban & Analisis
-                        df_forces, fig_deform = generator.apply_loads_and_analyze(q_load, p_load)
+                        if tipe_template == "3D Building Frame":
+                            # Panggil fungsi khusus 3D
+                            df_forces, fig_deform = generator.apply_loads_and_analyze_3d(q_load, p_load)
+                        else:
+                            # Panggil fungsi standar 2D
+                            df_forces, fig_deform = generator.apply_loads_and_analyze(q_load, p_load)
                         
                         if df_forces is not None:
                             st.session_state['hasil_df'] = df_forces
-                            st.session_state['hasil_fig'] = fig_deform
-                            st.success("✅ Analisis Konvergen & Selesai!")
-                        else:
-                            st.error(fig_deform)
+                            # ... (sisanya biarkan sama)
+                        
+                        
             
             # Menampilkan Hasil Akhir di bawahnya
             if 'hasil_fig' in st.session_state:
@@ -3105,6 +3140,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # =========================================================
     st.markdown("### 📥 Cetak Dokumen Final (Approval)")
     st.info("Fitur Export Excel 7-Tab dan PDF sedang disinkronkan dengan Database SE 182 yang baru. (Under Maintenance)")
+
 
 
 
