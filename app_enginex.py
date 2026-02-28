@@ -172,17 +172,86 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    [data-testid="stSidebar"] {background-color: #F8FAFC; border-right: 1px solid #E2E8F0;}
-    .stChatInput textarea {font-size: 16px !important;}
-    .stDownloadButton button {width: 100%; border-radius: 6px; font-weight: 600;}
-    .main-header {font-size: 28px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px;}
-    .sub-header {font-size: 14px; color: #64748B; margin-bottom: 20px;}
-    .audit-badge {background-color: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;}
+    /* 1. Menghilangkan Branding Streamlit (White-label) */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* 2. Styling Sidebar agar bersih dan elegan */
+    [data-testid="stSidebar"] {
+        background-color: #ffffff;
+        border-right: 1px solid #e2e8f0;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+    }
+
+    /* 3. Tombol Premium (Efek Hover & Shadow) */
+    .stButton>button {
+        background-color: #1E3A8A !important; /* Corporate Blue */
+        color: white !important;
+        border-radius: 6px !important;
+        border: none !important;
+        font-weight: 600 !important;
+        padding: 0.5rem 1rem !important;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06) !important;
+        transition: all 0.3s ease !important;
+    }
+    .stButton>button:hover {
+        background-color: #1e40af !important; /* Warna sedikit lebih terang saat di-hover */
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05) !important;
+        transform: translateY(-2px) !important; /* Efek tombol terangkat */
+    }
+
+    /* 4. Styling Kotak/Expander agar modern (UI Card) */
     .streamlit-expanderHeader {
-        font-size: 14px; color: #64748B; background-color: #F1F5F9; border-radius: 8px;
+        background-color: #f8fafc !important;
+        border-radius: 8px !important;
+        border: 1px solid #e2e8f0 !important;
+        font-weight: 600 !important;
+        color: #334155 !important;
+    }
+    div[data-testid="stExpander"] {
+        border: none !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1) !important;
+        border-radius: 8px !important;
+        margin-bottom: 10px !important;
+        background-color: white !important;
+    }
+
+    /* 5. Typografi Heading & Badge */
+    .main-header {font-size: 32px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px;}
+    .sub-header {font-size: 16px; color: #64748b; margin-bottom: 20px;}
+    .audit-badge {
+        background-color: #1E3A8A; 
+        color: white;
+        padding: 4px 10px; 
+        border-radius: 20px; 
+        font-size: 12px; 
+        font-weight: bold;
+        vertical-align: middle;
+        margin-left: 10px;
+    }
+    
+    /* 6. Input Form elegan */
+    input, textarea, select {
+        border-radius: 6px !important;
+        border: 1px solid #cbd5e1 !important;
+        background-color: #f8fafc !important;
+    }
+    input:focus, textarea:focus, select:focus {
+        border-color: #1E3A8A !important;
+        box-shadow: 0 0 0 1px #1E3A8A !important;
+    }
+    
+    /* 7. Styling Tabel Dataframe */
+    [data-testid="stDataFrame"] {
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     }
 </style>
 """, unsafe_allow_html=True)
+
 
 # ==========================================
 # 3. HELPER FUNCTIONS & NEW FEATURES
@@ -2864,6 +2933,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # =========================================================
     st.markdown("### 📥 Cetak Dokumen Final (Approval)")
     st.info("Fitur Export Excel 7-Tab dan PDF sedang disinkronkan dengan Database SE 182 yang baru. (Under Maintenance)")
+
 
 
 
