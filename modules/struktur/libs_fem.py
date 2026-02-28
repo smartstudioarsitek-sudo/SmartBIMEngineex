@@ -680,6 +680,106 @@ def generate_continuous_beam(self, num_spans, span_length):
 
             df_elemen = pd.DataFrame(self.elements)
             return fig, df_elemen
+ def apply_loads_and_analyze(self, q_load_kNm, p_load_kn):
+        """
+        Menerapkan beban statik ke model OpenSees yang sedang aktif,
+        menjalankan solver, dan mengekstrak deformasi serta gaya dalam.
+        """
+        try:
+            import openseespy.opensees as ops
+            import pandas as pd
+            import plotly.graph_objects as go
             
+            # 1. APLIKASI BEBAN
+            ops.timeSeries('Linear', 1)
+            ops.pattern('Plain', 1, 1)
+            
+            # A. Beban Merata (q) pada semua elemen Balok
+            for el in self.elements:
+                if 'Balok' in el['Tipe']:
+                    # Beban arah Y negatif (ke bawah)
+                    ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -q_load_kNm)
+                    
+            # B. Beban Titik Lateral (P) untuk simulasi Gempa Statik/Angin
+            # Kita tembakkan beban ini ke semua Node yang berada di sisi paling kiri
+            for n_id, pos in self.nodes.items():
+                if pos[1] > 0 and pos[0] == 0: # X = 0 (kiri luar), Y > 0 (bukan pondasi)
+                    ops.load(n_id, p_load_kn, 0.0, 0.0) # Beban ke arah X positif
+
+            # 2. SOLVER / MESIN ANALISIS STATIK
+            ops.system('BandGeneral')
+            ops.numberer('RCM')
+            ops.constraints('Plain')
+            ops.integrator('LoadControl', 1.0)
+            ops.algorithm('Linear')
+            ops.analysis('Static')
+            ops.analyze(1) # Jalankan 1 langkah statik
+            
+            # 3. EKSTRAKSI HASIL & PLOTTING DEFORMASI
+            scale_factor = 10.0 # Faktor pengali visual agar deformasi terlihat jelas
+            fig = go.Figure()
+            
+            hasil_elemen = []
+            
+            for el in self.elements:
+                # Ekstrak Gaya Dalam (Basic Forces)
+                forces = ops.basicForce(el['id']) 
+                axial = forces[0]
+                momen_kiri = forces[1]
+                momen_kanan = forces[2]
+                max_momen = max(abs(momen_kiri), abs(momen_kanan))
+                
+                hasil_elemen.append({
+                    "Elemen ID": el['id'],
+                    "Tipe": el['Tipe'],
+                    "Aksial (kN)": round(axial, 2),
+                    "Momen Max (kNm)": round(max_momen, 2)
+                })
+                
+                # Ekstrak Koordinat dan Deformasi Node
+                n1 = el['n1']
+                n2 = el['n2']
+                x1, y1 = self.nodes[n1]
+                x2, y2 = self.nodes[n2]
+                
+                d1 = ops.nodeDisp(n1)
+                d2 = ops.nodeDisp(n2)
+                
+                xd1 = x1 + d1[0] * scale_factor
+                yd1 = y1 + d1[1] * scale_factor
+                xd2 = x2 + d2[0] * scale_factor
+                yd2 = y2 + d2[1] * scale_factor
+                
+                # Gambar Garis Geometri Asli (Bayangan Abu-abu)
+                fig.add_trace(go.Scatter(
+                    x=[x1, x2], y=[y1, y2], mode='lines', 
+                    line=dict(color='lightgray', width=1, dash='dot'), 
+                    hoverinfo='none', showlegend=False
+                ))
+                
+                # Gambar Garis Deformasi (Hover memunculkan nilai gaya dalam)
+                color = '#ef4444' if 'Kolom' in el['Tipe'] else '#2563eb'
+                hover_text = f"{el['Tipe']} {el['id']}<br>Momen Max: {max_momen:.2f} kNm<br>Aksial: {axial:.2f} kN"
+                
+                fig.add_trace(go.Scatter(
+                    x=[xd1, xd2], y=[yd1, yd2], mode='lines+markers', 
+                    line=dict(color=color, width=3),
+                    marker=dict(size=4, color='black'),
+                    text=hover_text, hoverinfo='text', showlegend=False
+                ))
+                
+            df_hasil = pd.DataFrame(hasil_elemen)
+            
+            fig.update_layout(
+                title=f"Bentuk Deformasi & Gaya Dalam (Faktor Skala Visual: {scale_factor}x)<br>Arahkan kursor ke garis untuk melihat nilai Momen",
+                xaxis_title="Sumbu X", yaxis_title="Elevasi Y",
+                yaxis=dict(scaleanchor="x", scaleratio=1),
+                plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=60, b=20)
+            )
+            
+            return df_hasil, fig
+            
+        except Exception as e:
+            return None, f"Error saat analisis OpenSees: {e}"           
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator: {e}"
