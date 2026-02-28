@@ -2644,63 +2644,41 @@ elif selected_menu == "⚖️ Evaluasi Tender & Legal":
                     st.markdown(f"""<div style="padding:20px; background-color:white; border:1px solid #ccc; color:black; height:500px; overflow-y:auto;">
                                 {draft_rkk.replace(chr(10), '<br>')}</div>""", unsafe_allow_html=True)
 
-# --- MODE ADMIN: MANAJEMEN DATABASE AHSP ---
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
-    import io
-    st.header("⚙️ Manajemen Database AHSP PUPR")
-    st.info("Menu khusus Admin. Unggah file Master Database AHSP (Excel/CSV) yang sudah terstruktur dengan pasti. Fitur AI dihentikan di menu ini untuk menjaga validitas angka.")
-    
-    # A. SEDIAKAN TEMPLATE KOSONG UNTUK PENGGUNA
-    st.markdown("**1. Format Standar Sistem**")
-    st.caption("Jika belum memiliki format, silakan download template tabel standar ini lalu isi menggunakan Microsoft Excel.")
-    kolom_wajib = ["Bidang", "Kode_AHSP", "Deskripsi", "Kategori", "Nama_Komponen", "Satuan", "Koefisien"]
-    template_df = pd.DataFrame(columns=kolom_wajib)
-    
-    output_template = io.BytesIO()
-    with pd.ExcelWriter(output_template, engine='xlsxwriter') as writer:
-        template_df.to_excel(writer, index=False, sheet_name='Master_AHSP')
-    
-    st.download_button(
-        label="📥 Download Template Excel AHSP", 
-        data=output_template.getvalue(), 
-        file_name="Template_Master_AHSP.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-    
-    st.divider()
+        st.title("⚙️ Database Master AHSP (Admin Only)")
+        st.info("Pilih dan unggah beberapa file Excel AHSP sekaligus (Misal: Struktur, ME, Lansekap). Sistem akan otomatis mencari sheet 'HSP', membersihkan datanya, dan menggabungkannya ke dalam Database SQLite.")
+        
+        # FITUR MULTI-FILE UPLOAD (accept_multiple_files=True)
+        file_ahsp_list = st.file_uploader("Upload File Excel AHSP (.xlsx)", type=["xlsx"], accept_multiple_files=True)
+        
+        if file_ahsp_list:
+            st.write(f"📁 {len(file_ahsp_list)} file siap diproses.")
+            if st.button("🚀 Sedot dan Kunci Permanen ke Database SaaS", type="primary"):
+                with st.spinner("Mesin sedang membedah ribuan baris Excel. Harap tunggu..."):
+                    sukses, pesan = db.proses_dan_simpan_multi_excel(file_ahsp_list)
+                    
+                    if sukses:
+                        st.success(pesan)
+                        st.balloons() # Efek animasi balon jika sukses
+                        # Reload data dari database ke memory
+                        st.session_state.master_ahsp = db.get_master_ahsp_permanen()
+                        st.session_state.status_ahsp = "TERKUNCI DARI DATABASE"
+                        time.sleep(3)
+                        st.rerun()
+                    else:
+                        st.error(pesan)
+                
+        st.divider()
+        st.markdown("### 📊 Status Database AHSP Saat Ini:")
+        if st.session_state.get('master_ahsp') is not None and not st.session_state.master_ahsp.empty:
+            jumlah_baris = len(st.session_state.master_ahsp)
+            st.success(f"✅ AKTIF: Database menyimpan total {jumlah_baris} item pekerjaan lintas disiplin.")
+            
+            # Tampilkan tabel yang bisa di-filter dan di-search oleh Admin
+            st.dataframe(st.session_state.master_ahsp, use_container_width=True, height=400) 
+        else:
+            st.warning("⚠️ KOSONG: Belum ada data di database. Silakan upload file Excel SE BK No 182 di atas.")
 
-    # B. UPLOADER DATABASE MURNI
-    st.markdown("**2. Unggah Data Master**")
-    file_master_ahsp = st.file_uploader("Upload file Master AHSP (.xlsx, .csv):", type=["xlsx", "xls", "csv"])
-    
-    if file_master_ahsp is not None:
-        try:
-            with st.spinner("Membaca dan memvalidasi keaslian data..."):
-                # Baca sesuai ekstensi file
-                if file_master_ahsp.name.endswith('.csv'):
-                    df_ahsp = pd.read_csv(file_master_ahsp)
-                else:
-                    df_ahsp = pd.read_excel(file_master_ahsp)
-                
-                # Validasi anti-bug: Pastikan strukturnya benar
-                kolom_file = df_ahsp.columns.tolist()
-                
-                if all(k in kolom_file for k in kolom_wajib):
-                    st.success(f"✅ Data tervalidasi! Berhasil memuat {len(df_ahsp)} baris resep AHSP.")
-                    
-                    # Tampilkan tabel asli dari file
-                    st.dataframe(df_ahsp, use_container_width=True)
-                    
-                    # Tombol Simpan ke Memori
-                    if st.button("💾 Kunci Data ke Sistem Estimasi", type="primary", use_container_width=True):
-                        st.session_state['master_ahsp_data'] = df_ahsp
-                        st.success("✅ Database terkunci! Modul RAB sekarang akan merujuk pada data ini secara mutlak.")
-                else:
-                    st.error("❌ Format file ditolak. Pastikan header tabel sesuai dengan template.")
-                    st.warning(f"Kolom yang terdeteksi di file Anda: {kolom_file}")
-                    
-        except Exception as e:
-            st.error(f"❌ Terjadi kesalahan saat memproses file: {e}")
 
 # --- E. MODE LAPORAN RAB 5D (WORKSPACE ONLINE) ---
 elif selected_menu == "📑 Laporan RAB 5D":
@@ -2929,6 +2907,7 @@ Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah 
             )
         except Exception as e:
             st.error(f"Gagal render Excel: {e}")
+
 
 
 
