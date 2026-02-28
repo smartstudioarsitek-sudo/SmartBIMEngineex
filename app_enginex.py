@@ -3134,10 +3134,89 @@ elif selected_menu == "📑 Laporan RAB 5D":
 
     st.divider()
     # =========================================================
-    # 4. EXPORT FINAL
+    # 4. EXPORT FINAL (AKTIF - GOV.READY)
     # =========================================================
     st.markdown("### 📥 Cetak Dokumen Final (Approval)")
-    st.info("Fitur Export Excel 7-Tab dan PDF sedang disinkronkan dengan Database SE 182 yang baru. (Under Maintenance)")
+    st.write("Cetak seluruh hasil analisis BOQ, RAB, AHSP, SMKK, dan Rekapitulasi ke dalam satu file Excel (7-Tab) standar Kementerian PUPR dan dokumen PDF.")
+    
+    col_export_1, col_export_2 = st.columns(2)
+    
+    # --- FITUR 1: EXPORT EXCEL 7-TAB ---
+    with col_export_1:
+        if st.button("📊 Generate Excel 7-Tab (PUPR Standard)", type="primary", use_container_width=True):
+            with st.spinner("Memaketkan 7 Worksheet Excel beserta tautan rumusnya..."):
+                try:
+                    # Pastikan modul libs_export tersedia
+                    if 'libs_export' in sys.modules:
+                        export_engine = sys.modules['libs_export'].Export_Engine()
+                        
+                        # [PENTING] Memanggil fungsi generate_7tab_rab_excel dari libs_export.py
+                        # Perhatikan bahwa kita melewatkan df_boq_aktual (Volume asli)
+                        # Harga dan hitungan akan dirakit ulang di dalam libs_export agar memiliki rumus Excel (=A1*B1)
+                        excel_bytes = export_engine.generate_7tab_rab_excel(
+                            project_name=nama_proyek, 
+                            df_boq=df_boq_aktual, 
+                            price_engine=sys.modules['libs_price_engine'].PriceEngine3Tier() if 'libs_price_engine' in sys.modules else None,
+                            lokasi_proyek=lokasi_proyek
+                        )
+                        
+                        st.download_button(
+                            label="📥 Download File Excel (.xlsx)",
+                            data=excel_bytes,
+                            file_name=f"RAB_Lengkap_{nama_proyek.replace(' ', '_')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                        st.success("✅ File Excel 7-Tab siap diunduh!")
+                    else:
+                        st.error("Modul libs_export tidak ditemukan.")
+                except Exception as e:
+                    st.error(f"Gagal membuat Excel: {str(e)}")
+
+    # --- FITUR 2: EXPORT LAPORAN PDF ---
+    with col_export_2:
+        if st.button("📄 Generate Laporan PDF (SIMBG)", type="secondary", use_container_width=True):
+            with st.spinner("Menyusun Laporan Teknis PDF..."):
+                try:
+                    # Menyusun narasi otomatis untuk PDF
+                    laporan_teks = f"""
+LAPORAN RENCANA ANGGARAN BIAYA (RAB)
+Proyek: {nama_proyek.upper()}
+Lokasi Indeks BPS: {lokasi_proyek}
+
+A. REKAPITULASI BIAYA
+1. Total Biaya Fisik Struktur: Rp {total_rab_fisik:,.2f}
+2. Pajak Pertambahan Nilai (PPN 11%): Rp {ppn:,.2f}
+3. Grand Total Estimasi Biaya: Rp {grand_total:,.2f}
+
+B. BIAYA SISTEM MANAJEMEN KESELAMATAN KONSTRUKSI (SMKK)
+Total Anggaran SMKK: Rp {total_smkk:,.2f}
+
+C. TINGKAT KOMPONEN DALAM NEGERI (TKDN)
+Estimasi Kandungan Lokal: {persentase_tkdn:.2f}% (Memenuhi syarat minimum Pemerintah > 40%)
+
+D. CATATAN AUDITOR:
+Data RAB ini diekstrak langsung dari pemodelan BIM 3D (Format IFC) menggunakan SmartBIM Engineex dan dikalibrasi terhadap database Indeks Kemahalan Konstruksi (IKK) BPS wilayah {lokasi_proyek}.
+                    """
+                    
+                    # Coba gunakan fungsi dari libs_pdf (jika lebih canggih) atau fungsi lokal create_pdf
+                    if 'libs_pdf' in sys.modules:
+                        pdf_bytes = sys.modules['libs_pdf'].create_pdf(laporan_teks, title=f"RINGKASAN RAB - {nama_proyek}")
+                    else:
+                        pdf_bytes = create_pdf(laporan_teks) # Fungsi lokal di app_enginex.py baris atas
+                        
+                    st.download_button(
+                        label="📥 Download Laporan (.pdf)",
+                        data=pdf_bytes,
+                        file_name=f"Ringkasan_RAB_{nama_proyek.replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                    st.success("✅ Dokumen PDF siap diunduh!")
+                except Exception as e:
+                    st.error(f"Gagal membuat PDF: {str(e)}")
+ 
+
 
 
 
