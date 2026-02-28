@@ -536,7 +536,6 @@ class OpenSeesTemplateGenerator:
             # A. Looping Kolom (Vertikal)
             for x in range(num_bays + 1):
                 for y in range(num_stories):
-                    # Rumus indeks node berdasarkan grid
                     nI = x + y * (num_bays + 1) + 1
                     nJ = nI + (num_bays + 1)
                     
@@ -557,11 +556,9 @@ class OpenSeesTemplateGenerator:
             # 3. VISUALISASI PLOTLY INSTAN
             fig = go.Figure()
             
-            # Gambar Elemen
             for el in self.elements:
                 n1 = self.nodes[el['n1']]
                 n2 = self.nodes[el['n2']]
-                # Bedakan warna balok dan kolom
                 color = '#dc2626' if el['Tipe'] == 'Kolom' else '#2563eb' 
                 width = 4 if el['Tipe'] == 'Kolom' else 3
                 
@@ -573,7 +570,6 @@ class OpenSeesTemplateGenerator:
                     showlegend=False
                 ))
                 
-            # Gambar Nodes
             nx = [pos[0] for pos in self.nodes.values()]
             ny = [pos[1] for pos in self.nodes.values()]
             fig.add_trace(go.Scatter(
@@ -584,7 +580,6 @@ class OpenSeesTemplateGenerator:
                 showlegend=False
             ))
 
-            # Gambar Simbol Jepit (Sederhana) di dasar
             for x in range(num_bays + 1):
                 fig.add_trace(go.Scatter(
                     x=[x * bay_width], y=[0], mode='markers',
@@ -595,7 +590,7 @@ class OpenSeesTemplateGenerator:
             fig.update_layout(
                 title=f"Geometri Portal 2D ({num_stories} Lantai, {num_bays} Bentang)",
                 xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)",
-                yaxis=dict(scaleanchor="x", scaleratio=1), # Wajib agar skala X dan Y tidak distorsi
+                yaxis=dict(scaleanchor="x", scaleratio=1),
                 plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20)
             )
 
@@ -604,6 +599,7 @@ class OpenSeesTemplateGenerator:
             
         except Exception as e:
             return None, f"Gagal mengeksekusi Template Generator: {e}"
+
     def generate_continuous_beam(self, num_spans, span_length):
         """Generator untuk Balok Menerus (Continuous Beam)"""
         if not HAS_OPENSEES:
@@ -626,7 +622,6 @@ class OpenSeesTemplateGenerator:
                 ops.node(node_tag, x_coord, 0.0)
                 self.nodes[node_tag] = (x_coord, 0.0)
                 
-                # Tumpuan: Ujung kiri Sendi (1,1,0), sisanya Rol (0,1,0)
                 if x == 0:
                     ops.fix(node_tag, 1, 1, 0)
                 else:
@@ -649,23 +644,21 @@ class OpenSeesTemplateGenerator:
             # 3. VISUALISASI PLOTLY
             fig = go.Figure()
             
-            # Gambar Elemen Balok
             for el in self.elements:
                 n1 = self.nodes[el['n1']]
                 n2 = self.nodes[el['n2']]
                 fig.add_trace(go.Scatter(
                     x=[n1[0], n2[0]], y=[n1[1], n2[1]],
-                    mode='lines', line=dict(color='#10b981', width=5), # Warna hijau
+                    mode='lines', line=dict(color='#10b981', width=5),
                     hoverinfo='text', text=f"Bentang {el['id']}<br>L: {el['L']} m",
                     showlegend=False
                 ))
                 
-            # Gambar Nodes (Tumpuan)
             nx = [pos[0] for pos in self.nodes.values()]
             ny = [pos[1] for pos in self.nodes.values()]
             fig.add_trace(go.Scatter(
                 x=nx, y=ny, mode='markers',
-                marker=dict(size=14, symbol='triangle-up', color='#ef4444'), # Segitiga merah untuk tumpuan
+                marker=dict(size=14, symbol='triangle-up', color='#ef4444'),
                 hoverinfo='text', text=[f"Tumpuan Node {k}" for k in self.nodes.keys()],
                 showlegend=False
             ))
@@ -675,11 +668,15 @@ class OpenSeesTemplateGenerator:
                 xaxis_title="Sumbu X (m)", yaxis_title="Elevasi Y (m)",
                 yaxis=dict(scaleanchor="x", scaleratio=1), 
                 plot_bgcolor='whitesmoke', margin=dict(l=20, r=20, t=50, b=20),
-                yaxis_range=[-2, 2] # Mengunci tinggi Y agar proporsional
+                yaxis_range=[-2, 2] 
             )
 
             df_elemen = pd.DataFrame(self.elements)
             return fig, df_elemen
+            
+        except Exception as e:
+            return None, f"Gagal mengeksekusi Template Generator: {e}"
+
     def apply_loads_and_analyze(self, q_load_kNm, p_load_kn):
         """
         Menerapkan beban statik ke model OpenSees yang sedang aktif,
@@ -701,7 +698,6 @@ class OpenSeesTemplateGenerator:
                     ops.eleLoad('-ele', el['id'], '-type', '-beamUniform', -q_load_kNm)
                     
             # B. Beban Titik Lateral (P) untuk simulasi Gempa Statik/Angin
-            # Kita tembakkan beban ini ke semua Node yang berada di sisi paling kiri
             for n_id, pos in self.nodes.items():
                 if pos[1] > 0 and pos[0] == 0: # X = 0 (kiri luar), Y > 0 (bukan pondasi)
                     ops.load(n_id, p_load_kn, 0.0, 0.0) # Beban ke arah X positif
@@ -722,7 +718,7 @@ class OpenSeesTemplateGenerator:
             hasil_elemen = []
             
             for el in self.elements:
-                # Ekstrak Gaya Dalam (Basic Forces)
+                # Ekstrak Gaya Dalam
                 forces = ops.basicForce(el['id']) 
                 axial = forces[0]
                 momen_kiri = forces[1]
@@ -750,14 +746,14 @@ class OpenSeesTemplateGenerator:
                 xd2 = x2 + d2[0] * scale_factor
                 yd2 = y2 + d2[1] * scale_factor
                 
-                # Gambar Garis Geometri Asli (Bayangan Abu-abu)
+                # Gambar Garis Geometri Asli
                 fig.add_trace(go.Scatter(
                     x=[x1, x2], y=[y1, y2], mode='lines', 
                     line=dict(color='lightgray', width=1, dash='dot'), 
                     hoverinfo='none', showlegend=False
                 ))
                 
-                # Gambar Garis Deformasi (Hover memunculkan nilai gaya dalam)
+                # Gambar Garis Deformasi
                 color = '#ef4444' if 'Kolom' in el['Tipe'] else '#2563eb'
                 hover_text = f"{el['Tipe']} {el['id']}<br>Momen Max: {max_momen:.2f} kNm<br>Aksial: {axial:.2f} kN"
                 
@@ -780,5 +776,5 @@ class OpenSeesTemplateGenerator:
             return df_hasil, fig
             
         except Exception as e:
-            return None, f"Error saat analisis OpenSees: {e}"           
-   
+            return None, f"Error saat analisis OpenSees: {e}"
+
