@@ -51,44 +51,28 @@ except ImportError:
 # 2. KERNEL MATEMATIKA (AUDIT COMPLIANCE SNI 1726:2019)
 # ==============================================================================
 
-def interpolate_sni_coefficients(value, axis_points, coefficient_values):
+def interpolate_sni_coefficients(value: float, axis_points: list, coefficient_values: list) -> float:
     """
     [ALGORITMA INTERPOLASI PRESISI - SESUAI REKOMENDASI AUDIT]
     Fungsi ini menangani Skenario Uji A, B, dan C laporan audit.
-    
-    Args:
-        value (float): Nilai input (Ss atau S1).
-        axis_points (list): Titik acuan header tabel (misal: [0.25, 0.5, ...]).
-        coefficient_values (list): Nilai koefisien (Fa/Fv) yang sesuai.
-        
-    Returns:
-        float: Hasil interpolasi presisi.
     """
-    # Validasi Input Dasar
     if not axis_points or not coefficient_values:
         return 0.0
     
-    # Skenario Uji B & Lower Bound (Clamping)
-    # Jika input lebih kecil dari tabel, ambil nilai terkiri (jangan ekstrapolasi ke bawah)
     if value <= axis_points[0]:
         return coefficient_values[0]
         
-    # Jika input lebih besar dari tabel, ambil nilai terkanan (sesuai aturan SNI umumnya plateau)
     if value >= axis_points[-1]:
         return coefficient_values[-1]
         
-    # Skenario Uji A (Interpolasi Linear dalam Interval)
     for i in range(len(axis_points) - 1):
         x1 = axis_points[i]
         x2 = axis_points[i+1]
         
-        # Cari bracket/kantung di mana value berada
         if x1 <= value <= x2:
             y1 = coefficient_values[i]
             y2 = coefficient_values[i+1]
             
-            # Rumus Interpolasi Linear: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
-            # Menghindari pembagian nol
             if x2 == x1: 
                 return y1 
             
@@ -96,109 +80,103 @@ def interpolate_sni_coefficients(value, axis_points, coefficient_values):
             result = y1 + ratio * (y2 - y1)
             return result
             
-    return coefficient_values[-1] # Fallback aman
+    return coefficient_values[-1] 
 
 # ==============================================================================
-# 3. IMPLEMENTASI TOOLS (INTEGRASI ANTAR MODUL)
+# 3. IMPLEMENTASI TOOLS (INTEGRASI ANTAR MODUL UNTUK AI GEMINI)
+# Wajib menggunakan Type Hints (: float, : str) agar terbaca oleh LLM
 # ==============================================================================
 
 # --- TOOL 1: STRUKTUR BETON (SNI 2847:2019) ---
-def tool_hitung_balok(b_mm, h_mm, fc, fy, mu_kNm):
+def tool_hitung_balok(b_mm: float, h_mm: float, fc: float, fy: float, mu_kNm: float) -> str:
     """
-    [TOOL SATRIA] Menghitung tulangan balok beton dengan Mode Ketat (Strict Mode).
-    Memenuhi syarat 'White Box' (Transparansi Perhitungan).
+    Menghitung kebutuhan tulangan lentur dan kapasitas geser balok beton bertulang berdasarkan SNI 2847:2019.
+    Gunakan tool ini jika pengguna meminta perhitungan struktur balok beton.
+    
+    Args:
+        b_mm: Lebar balok dalam satuan milimeter (mm).
+        h_mm: Tinggi balok dalam satuan milimeter (mm).
+        fc: Mutu kuat tekan beton (MPa).
+        fy: Mutu kuat leleh baja tulangan utama (MPa).
+        mu_kNm: Beban momen ultimate yang terjadi dalam satuan kNm.
     """
     try:
-        # Inisialisasi Engine Beton SNI 2019
         engine = sni.SNI_Concrete_2019(fc, fy)
-        
-        # Estimasi tinggi efektif (d)
-        ds = 40 + 10 + 8 # Selimut(40) + Sengkang(10) + 1/2 D_tulangan(16/2)
+        ds = 40 + 10 + 8 
         d_eff = h_mm - ds
         
-        # 1. Hitung Tulangan Lentur (As)
         as_req = engine.hitung_tulangan_perlu(mu_kNm, d_eff, b_mm)
         dia_tul = 16
         n_bars = int(as_req / (0.25 * 3.14 * dia_tul**2)) + 1
         
-        # 2. Hitung Kapasitas Geser (Vc) dengan SIZE EFFECT
-        # PENTING: Kita masukkan As_longitudinal agar Size Effect dihitung akurat
-        # Jika As_longitudinal tidak dimasukkan, rumus akan fallback ke estimasi kasar (Risk)
         vc, lambda_s, trace_msg = engine.hitung_geser_beton_vc(
             bw=b_mm, 
             d=d_eff, 
-            Av_terpasang=0, # Asumsi awal analisis tanpa sengkang untuk cek Vc beton murni
-            As_longitudinal=as_req # Parameter Wajib untuk SNI 2019
+            Av_terpasang=0, 
+            As_longitudinal=as_req 
         )
         
-        # Format Laporan 'White Box' untuk TABG
         report = (
             f"ANALISA STRUKTUR BALOK {b_mm}x{h_mm} (SNI 2847:2019)\n"
             f"----------------------------------------------------\n"
             f"1. Data Input:\n"
             f"   - Mu (Momen Ultimate): {mu_kNm} kNm\n"
-            f"   - Mutu Material: fc'{fc} MPa, fy {fy} MPa\n"
+            f"   - Mutu Material: fc' {fc} MPa, fy {fy} MPa\n"
             f"   - Tinggi Efektif (d): {d_eff} mm\n\n"
             f"2. Analisa Lentur:\n"
             f"   - Luas Tulangan Perlu (As): {as_req:.2f} mm2\n"
             f"   - Rekomendasi: {n_bars} D{dia_tul} (As pasang = {n_bars * 0.25 * 3.14 * dia_tul**2:.0f} mm2)\n\n"
             f"3. Analisa Geser Beton (Vc):\n"
-            f"   - Faktor Ukuran (Size Effect λs): {lambda_s:.3f}\n"
+            f"   - Faktor Ukuran (Size Effect lambda_s): {lambda_s:.3f}\n"
             f"   - Kapasitas Geser Beton (Vc): {vc/1000:.2f} kN\n"
             f"   - Detail Perhitungan: {trace_msg}\n"
         )
         return report
                 
     except Exception as e:
-        return f"❌ ERROR Hitung Balok: {str(e)}. Periksa input atau library libs_sni."
+        return f"ERROR Hitung Balok: {str(e)}. Periksa input parameter."
 
 # --- TOOL 2: STRUKTUR BAJA (SNI 1729:2020) ---
-def tool_cek_baja_wf(mu_kNm, bentang_m):
+def tool_cek_baja_wf(mu_kNm: float, bentang_m: float) -> str:
     """
-    [TOOL SATRIA] Cek kapasitas profil baja WF 300x150.
-    Menghilangkan logika dummy, menggunakan perhitungan limit state dasar.
+    Mengecek kapasitas momen dan stabilitas lateral (LTB) profil baja WF 300x150 standar SNI 1729:2020.
+    Gunakan tool ini jika pengguna meminta pengecekan profil baja WF.
+    
+    Args:
+        mu_kNm: Beban momen ultimate yang terjadi dalam kNm.
+        bentang_m: Panjang bentang balok tak terkekang dalam meter (m).
     """
-    # Data Database Profil WF 300x150x6.5x9 (Standard Gunung Garuda)
     wf_data = {
-        'Zx': 481000, # Modulus Plastis (mm3)
-        'Iy': 5.08e6, # Momen Inersia lemah (mm4)
-        'J': 1.36e5,  # Konstanta Torsi
-        'Sx': 424000, # Modulus Elastis (mm3)
+        'Zx': 481000, 
+        'Iy': 5.08e6, 
+        'J': 1.36e5,  
+        'Sx': 424000, 
         'h': 300,
         'bf': 150
     } 
     
     try:
-        # Parameter Desain (BJ-37)
-        Fy = 240.0 # MPa
-        E = 200000.0 # MPa
-        Phi_b = 0.90 # Faktor reduksi lentur (LRFD)
+        Fy = 240.0 
+        E = 200000.0 
+        Phi_b = 0.90 
         
-        # 1. Cek Kapasitas Momen Plastis (Yielding)
-        # Mn = Mp = Fy * Zx
         Mn_nmm = Fy * wf_data['Zx']
-        Phi_Mn_Yield = (Phi_b * Mn_nmm) / 1e6 # Konversi ke kNm
+        Phi_Mn_Yield = (Phi_b * Mn_nmm) / 1e6 
         
-        # 2. Cek Tekuk Torsi Lateral (LTB) - Simplified Check
-        # Asumsi Lb (Panjang tak terkekang) = Bentang penuh
-        Lb = bentang_m * 1000 # mm
-        ry = math.sqrt(wf_data['Iy'] / (wf_data['bf'] * 9 + (wf_data['h']-18)*6.5)) # Estimasi kasar ry
-        # Batas Lp (Plastis) ~ 1.76 * ry * sqrt(E/Fy)
-        Lp = 1.76 * 32.9 * math.sqrt(E/Fy) # ry ~ 32.9mm untuk WF300
+        Lb = bentang_m * 1000 
+        ry = math.sqrt(wf_data['Iy'] / (wf_data['bf'] * 9 + (wf_data['h']-18)*6.5)) 
+        Lp = 1.76 * 32.9 * math.sqrt(E/Fy) 
         
         status_ltb = "Aman (Kompak)"
         Phi_Mn_Final = Phi_Mn_Yield
         
         if Lb > Lp:
-            # Jika bentang panjang, kapasitas turun karena LTB
-            # Reduksi sederhana untuk keamanan (Konservatif)
             reduksi_ltb = max(0.6, Lp / Lb) 
             Phi_Mn_Final = Phi_Mn_Yield * reduksi_ltb
             status_ltb = f"Rawan LTB (Reduksi {reduksi_ltb:.2f}x)"
 
-        # 3. Hitung Rasio Kapasitas (D/C Ratio)
         D_C_Ratio = mu_kNm / Phi_Mn_Final
-        status = "✅ AMAN" if D_C_Ratio <= 1.0 else "❌ TIDAK AMAN"
+        status = "AMAN" if D_C_Ratio <= 1.0 else "TIDAK AMAN"
         
         report = (
             f"ANALISA BAJA WF 300x150 (BJ-37)\n"
@@ -216,17 +194,19 @@ def tool_cek_baja_wf(mu_kNm, bentang_m):
         return report
         
     except Exception as e:
-        return f"❌ ERROR Analisa Baja: {e}"
+        return f"ERROR Analisa Baja: {e}"
 
 # --- TOOL 3: PONDASI (GEOTEKNIK) ---
-def tool_hitung_pondasi(beban_pu, lebar_m):
+def tool_hitung_pondasi(beban_pu: float, lebar_m: float) -> str:
     """
-    [TOOL GEOTEKNIK] Cek keamanan pondasi telapak (Footplate).
+    Menghitung tegangan yang terjadi pada pondasi telapak (cakar ayam) dan mengecek keamanannya terhadap daya dukung tanah.
+    
+    Args:
+        beban_pu: Beban aksial yang disalurkan ke pondasi (kN).
+        lebar_m: Lebar/panjang tapak pondasi persegi dalam meter (m).
     """
     try:
-        # Daya dukung tanah asumsi 150 kPa (Tanah Sedang)
         engine = fdn.Foundation_Engine(150.0) 
-        # Tebal pondasi standar 300mm
         res = engine.hitung_footplate(beban_pu, lebar_m, lebar_m, 300)
         
         return (
@@ -238,22 +218,24 @@ def tool_hitung_pondasi(beban_pu, lebar_m):
             f"- Volume Beton: {res['vol_beton']:.2f} m3"
         )
     except Exception as e:
-        return f"❌ ERROR Pondasi: {e}"
+        return f"ERROR Pondasi: {e}"
 
 # --- TOOL 4: ESTIMASI BIAYA (AHSP) ---
-def tool_estimasi_biaya(volume_beton):
+def tool_estimasi_biaya(volume_beton: float) -> str:
     """
-    [TOOL BUDI] Hitung biaya beton per m3 (K-300).
+    Menghitung estimasi biaya pekerjaan beton mutu K-300 berdasarkan harga satuan bahan dan upah.
+    
+    Args:
+        volume_beton: Total volume beton yang akan dikerjakan dalam satuan m3.
     """
     try:
         engine = ahsp.AHSP_Engine()
-        # Database harga satuan dasar (Update Q1 2026)
         h_dasar = {
-            'semen': 1400,    # per kg (Rp 70rb/sak)
-            'pasir': 250000,  # per m3
-            'split': 300000,  # per m3
-            'pekerja': 120000,# Harian
-            'tukang': 150000  # Harian
+            'semen': 1400,    
+            'pasir': 250000,  
+            'split': 300000,  
+            'pekerja': 120000,
+            'tukang': 150000  
         } 
         
         hsp = engine.hitung_hsp('beton_k300', h_dasar, h_dasar)
@@ -266,42 +248,37 @@ def tool_estimasi_biaya(volume_beton):
             f"- Total Biaya: Rp {total:,.0f}"
         )
     except Exception as e:
-        return f"❌ ERROR AHSP: {e}"
+        return f"ERROR AHSP: {e}"
 
 # --- TOOL 5: GEMPA (SNI 1726:2019) - AUDIT PRIORITY ---
-def tool_hitung_gempa_v(berat_total_kn, lokasi_tanah):
+def tool_hitung_gempa_v(berat_total_kn: float, lokasi_tanah: str) -> str:
     """
-    [TOOL GEMPA] Hitung Base Shear dengan Interpolasi Linear.
-    Lulus Skenario Uji C (Peringatan Kelas Situs SF/SE).
+    Menghitung gaya geser dasar (Base Shear / V) akibat beban gempa berdasarkan SNI 1726:2019.
+    
+    Args:
+        berat_total_kn: Berat total bangunan seismik efektif dalam satuan kN.
+        lokasi_tanah: Jenis/kategori tanah, pilih salah satu dari: 'lunak', 'sedang', 'keras', atau 'khusus'.
     """
     try:
         site_map = {'lunak': 'SE', 'sedang': 'SD', 'keras': 'SC', 'khusus': 'SF'}
         kode_site = site_map.get(lokasi_tanah.lower(), 'SD')
         
-        # [AUDIT] Skenario Uji C: Jika SF, sistem harus menolak hitungan otomatis
         if kode_site == 'SF':
-            return "⛔ STOP: Kelas Situs SF (Tanah Khusus) memerlukan Analisis Respons Spesifik Situs (Pasal 6.10.1). Perhitungan otomatis tidak diizinkan demi keselamatan."
+            return "STOP: Kelas Situs SF (Tanah Khusus) memerlukan Analisis Respons Spesifik Situs (Pasal 6.10.1). Perhitungan otomatis tidak diizinkan demi keselamatan."
 
-        # Parameter Gempa Wilayah (Contoh: Zona Gempa Kuat)
         Ss_input = 0.8
         S1_input = 0.4
 
-        # [AUDIT] Menggunakan Class SNI_Gempa_2019 yang sudah diperbaiki
         engine = quake.SNI_Gempa_2019(Ss_input, S1_input, kode_site)
         
-        # Hitung Cs (Koefisien Respon Seismik)
-        # Asumsi Sistem Rangka Pemikul Momen Khusus (SRPMK): R=8, Ie=1.0
         R = 8.0
         Ie = 1.0
         
-        # Cs = Sds / (R/Ie)
         if R == 0: Cs = 0 
         else: Cs = engine.Sds / (R/Ie)
         
-        # Base Shear V = Cs * W
         V = Cs * berat_total_kn
         
-        # Laporan Transparan (White Box)
         report = (
             f"ANALISA GAYA GESER DASAR (BASE SHEAR) - SNI 1726:2019\n"
             f"-----------------------------------------------------\n"
@@ -321,18 +298,19 @@ def tool_hitung_gempa_v(berat_total_kn, lokasi_tanah):
         return report
         
     except Exception as e:
-        return f"❌ ERROR Gempa: {e}"
+        return f"ERROR Gempa: {e}"
 
 # --- TOOL 6: TALUD (GEOTEKNIK) ---
-def tool_cek_talud(tinggi_m):
+def tool_cek_talud(tinggi_m: float) -> str:
     """
-    [TOOL GEOTEKNIK] Cek kestabilan Talud Batu Kali.
+    Mengecek stabilitas guling (Overturning Safety Factor) untuk struktur Talud / Dinding Penahan Tanah Batu Kali.
+    
+    Args:
+        tinggi_m: Tinggi talud dari dasar ke permukaan dalam satuan meter (m).
     """
     try:
-        # Init Engine: gamma=18 kN/m3, phi=30 derajat, c=5 kPa
         engine = geo.Geotech_Engine(gamma=18.0, phi=30.0, c=5.0)
         
-        # Dimensi Talud (Rule of Thumb): Lebar atas 40cm, Lebar bawah 60% Tinggi
         b_atas = 0.4
         b_bawah = 0.6 * tinggi_m
         
@@ -345,23 +323,24 @@ def tool_cek_talud(tinggi_m):
             f"- Status Keamanan: {res['Status']}"
         )
     except Exception as e:
-        return f"❌ ERROR Geotek: {e}"
+        return f"ERROR Geotek: {e}"
 
 # --- TOOL 7: OPTIMASI (COST) ---
-def tool_cari_dimensi_optimal(mu_kNm, bentang_m):
+def tool_cari_dimensi_optimal(mu_kNm: float, bentang_m: float) -> str:
     """
-    [TOOL SATRIA] Optimasi Dimensi Balok Termurah.
+    Mencari ukuran dimensi balok beton (lebar x tinggi) yang paling optimal dan termurah berdasarkan beban momen.
+    
+    Args:
+        mu_kNm: Momen lentur ultimate (kNm).
+        bentang_m: Panjang bentang balok (m).
     """
     try:
-        # Harga input
         harga = {'beton': 1200000, 'baja': 15000, 'bekisting': 200000}
-        
-        # Init Optimizer (Mutu fc25, fy400)
         optimizer = opt.BeamOptimizer(25, 400, harga)
         hasil = optimizer.cari_dimensi_optimal(mu_kNm, bentang_m)
         
         if not hasil:
-            return "⚠️ Tidak ditemukan dimensi optimal. Coba perbesar mutu beton atau cek beban."
+            return "Tidak ditemukan dimensi optimal. Coba perbesar mutu beton atau cek beban."
         
         best = hasil[0]
         return (
@@ -372,10 +351,18 @@ def tool_cari_dimensi_optimal(mu_kNm, bentang_m):
             f"4. Rasio Tulangan: {best['Rho (%)']}% (Efisien)"
         )
     except Exception as e:
-        return f"❌ ERROR Optimasi: {e}"
+        return f"ERROR Optimasi: {e}"
 
 # --- TOOL 8: ARSITEK & GREEN ---
-def tool_konsep_rumah(penghuni, mobil, luas_tanah):
+def tool_konsep_rumah(penghuni: int, mobil: int, luas_tanah: float) -> str:
+    """
+    Membuat program ruang arsitektur dan mengecek KDB (Koefisien Dasar Bangunan).
+    
+    Args:
+        penghuni: Jumlah estimasi penghuni rumah (orang).
+        mobil: Jumlah mobil yang butuh garasi/carport (unit).
+        luas_tanah: Luas total lahan tanah (m2).
+    """
     try:
         arch = libs_arch.Architect_Engine()
         res = arch.generate_program_ruang(penghuni, mobil, luas_tanah)
@@ -388,13 +375,20 @@ def tool_konsep_rumah(penghuni, mobil, luas_tanah):
             f"- Rincian: {len(res['Detail_Ruang'])} jenis ruang terbentuk."
         )
         return txt
-    except:
-        return f"Modul Arsitek belum siap. Estimasi kasar: {penghuni*25}m2."
+    except Exception as e:
+        return f"Modul Arsitek belum siap. Estimasi kasar: {penghuni*25}m2. Detail: {e}"
 
-def tool_audit_green(luas_atap, hadap):
+def tool_audit_green(luas_atap: float, hadap: str) -> str:
+    """
+    Melakukan audit efisiensi green building terkait panen air hujan dan orientasi matahari.
+    
+    Args:
+        luas_atap: Luas penampang atap yang menampung air (m2).
+        hadap: Arah mata angin fasad utama bangunan menghadap (cth: 'utara', 'timur', 'barat').
+    """
     try:
-        eco = libs_green.Green_Audit()
-        hujan = eco.hitung_panen_hujan(luas_atap, 2500) # 2500mm curah hujan tahunan
+        eco = libs_green.Green_Building_Engine() # Fix nama class sesuai file libs_green.py
+        hujan = eco.hitung_panen_hujan(luas_atap, 2500) 
         matahari = eco.cek_orientasi_bangunan(hadap)
         
         return (
@@ -402,5 +396,5 @@ def tool_audit_green(luas_atap, hadap):
             f"1. Orientasi: {matahari}\n"
             f"2. Panen Air Hujan: {hujan['Penghematan Harian']} ({hujan['Potensi Air Hujan']})"
         )
-    except:
-        return "Modul Green belum aktif."
+    except Exception as e:
+        return f"Modul Green belum aktif. Error: {e}"
