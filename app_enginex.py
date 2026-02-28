@@ -1431,16 +1431,32 @@ elif selected_menu == "🏛️ Template Struktur (Klasik)":
                             
                         # 2. Tembakkan Beban & Analisis
                         if tipe_template == "3D Building Frame":
-                            # Panggil fungsi khusus 3D
                             df_forces, fig_deform = generator.apply_loads_and_analyze_3d(q_load, p_load)
                         else:
-                            # Panggil fungsi standar 2D
                             df_forces, fig_deform = generator.apply_loads_and_analyze(q_load, p_load)
                         
+                        # 3. Simpan Hasil Lengkap (Ini yang tadi hilang!)
                         if df_forces is not None:
                             st.session_state['hasil_df'] = df_forces
-                            # ... (sisanya biarkan sama)
-                        
+                            st.session_state['hasil_fig'] = fig_deform
+                            st.success("✅ Analisis Konvergen & Selesai!")
+                        else:
+                            st.error(fig_deform)
+
+            # Menampilkan Hasil Akhir di bawahnya
+            if 'hasil_fig' in st.session_state:
+                st.markdown("#### 📈 Hasil Deformasi & Gaya Dalam (Post-Processing)")
+                col_hasil1, col_hasil2 = st.columns([1, 1.5])
+                
+                with col_hasil1:
+                    st.markdown("**Rekapitulasi Gaya Dalam Maksimum**")
+                    st.dataframe(st.session_state['hasil_df'].style.highlight_max(subset=['Momen Max (kNm)', 'Aksial (kN)'], color='lightcoral'), use_container_width=True, height=450)
+                
+                with col_hasil2:
+                    with st.container(border=True):
+                        st.plotly_chart(st.session_state['hasil_fig'], use_container_width=True)
+                        st.caption("💡 *Arahkan kursor mouse (hover) ke garis elemen merah/biru untuk melihat nilai Momen dan Gaya Aksial pada elemen tersebut.*")
+                              
                         
             
             # Menampilkan Hasil Akhir di bawahnya
@@ -3140,6 +3156,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # =========================================================
     st.markdown("### 📥 Cetak Dokumen Final (Approval)")
     st.info("Fitur Export Excel 7-Tab dan PDF sedang disinkronkan dengan Database SE 182 yang baru. (Under Maintenance)")
+
 
 
 
