@@ -1457,25 +1457,7 @@ elif selected_menu == "🏛️ Template Struktur (Klasik)":
                         st.plotly_chart(st.session_state['hasil_fig'], use_container_width=True)
                         st.caption("💡 *Arahkan kursor mouse (hover) ke garis elemen merah/biru untuk melihat nilai Momen dan Gaya Aksial pada elemen tersebut.*")
                               
-                        
-            
-            # Menampilkan Hasil Akhir di bawahnya
-            if 'hasil_fig' in st.session_state:
-                st.markdown("#### 📈 Hasil Deformasi & Gaya Dalam (Post-Processing)")
-                col_hasil1, col_hasil2 = st.columns([1, 1.5])
-                
-                with col_hasil1:
-                    st.markdown("**Rekapitulasi Gaya Dalam Maksimum**")
-                    # Tampilkan tabel yang di-highlight nilai ekstremnya
-                    st.dataframe(st.session_state['hasil_df'].style.highlight_max(subset=['Momen Max (kNm)', 'Aksial (kN)'], color='lightcoral'), use_container_width=True, height=450)
-                
-                with col_hasil2:
-                    with st.container(border=True):
-                        # Grafik deformasi dengan garis putus-putus untuk posisi awal
-                        st.plotly_chart(st.session_state['hasil_fig'], use_container_width=True)
-                        st.caption("💡 *Arahkan kursor mouse (hover) ke garis elemen merah/biru untuk melihat nilai Momen dan Gaya Aksial pada elemen tersebut.*")
-                
-                
+                      
         
 # --- C. MODE AUDIT STRUKTUR ---
 elif selected_menu == "🏗️ Audit Struktur":
@@ -3156,6 +3138,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # =========================================================
     st.markdown("### 📥 Cetak Dokumen Final (Approval)")
     st.info("Fitur Export Excel 7-Tab dan PDF sedang disinkronkan dengan Database SE 182 yang baru. (Under Maintenance)")
+
 
 
 
