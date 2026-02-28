@@ -855,6 +855,7 @@ if selected_menu == "🤖 AI Assistant":
                         daftar_tools_sni = [
                             libs_tools.tool_hitung_gempa_v,
                             libs_tools.tool_hitung_balok,
+                            libs_tools.tool_evaluasi_kapasitas_balok,
                             libs_tools.tool_cek_baja_wf,
                             libs_tools.tool_hitung_pondasi,
                             libs_tools.tool_estimasi_biaya,
@@ -2928,6 +2929,7 @@ Total estimasi biaya konstruksi fisik adalah Rp {total_rab_fisik:,.0f}. Setelah 
             )
         except Exception as e:
             st.error(f"Gagal render Excel: {e}")
+
 
 
 
