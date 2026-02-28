@@ -153,8 +153,73 @@ class EnginexBackend:
             # Rollback jika gagal di tengah jalan
             self.conn.rollback()
             return False, f"❌ Gagal Restore: {str(e)}"
+    # ==========================================
+    # MODUL SAAS: MANAJEMEN DATABASE AHSP (SUPER EXTRACTOR)
+    # ==========================================
+    def proses_dan_simpan_multi_excel(self, list_file_excel):
+        """Membaca banyak file Excel, mengekstrak Sheet HSP, dan menggabungkannya"""
+        import pandas as pd
+        import streamlit as st
+        
+        semua_data = []
+        
+        try:
+            for file in list_file_excel:
+                # Baca semua sheet dalam 1 file excel
+                xls = pd.ExcelFile(file)
+                
+                for sheet_name in xls.sheet_names:
+                    # KITA HANYA INCAR SHEET YANG MENGANDUNG KATA "HSP"
+                    if "HSP" in sheet_name.upper():
+                        # Baca sheet mentah
+                        df_raw = pd.read_excel(xls, sheet_name=sheet_name)
+                        
+                        # ALGORITMA PENCARI HEADER (Karena baris judul tiap Excel beda-beda)
+                        header_row_idx = None
+                        for i, row in df_raw.iterrows():
+                            # Cari baris yang mengandung kata 'Uraian' dan 'Harga'
+                            row_str = str(row.values).lower()
+                            if 'uraian' in row_str and ('harga' in row_str or 'satuan' in row_str):
+                                header_row_idx = i
+                                break
+                        
+                        if header_row_idx is not None:
+                            # Jadikan baris tersebut sebagai Header yang benar
+                            df_bersih = pd.read_excel(xls, sheet_name=sheet_name, header=header_row_idx + 1)
+                            
+                            # Bersihkan kolom yang tidak bernama (Unamed) dan baris kosong
+                            df_bersih = df_bersih.loc[:, ~df_bersih.columns.str.contains('^Unnamed')]
+                            df_bersih = df_bersih.dropna(subset=[df_bersih.columns[1]]) # Asumsi kolom 1 adalah Uraian
+                            
+                            # Tambahkan penanda asal sumber data
+                            df_bersih['Kategori_Sumber'] = file.name.split('.')[1][:15] if len(file.name.split('.'))>1 else "Master"
+                            
+                            semua_data.append(df_bersih)
 
+            if not semua_data:
+                return False, "❌ Tidak ditemukan sheet bernama 'HSP' atau format tidak sesuai."
+
+            # Gabungkan semua data dari 5 file menjadi 1 Tabel Raksasa
+            df_final = pd.concat(semua_data, ignore_index=True)
+            
+            # Kunci ke Database SQLite secara permanen
+            df_final.to_sql('master_ahsp', self.conn, if_exists='replace', index=False)
+            
+            return True, f"✅ Sukses! {len(df_final)} Item Pekerjaan dari {len(list_file_excel)} File berhasil disedot ke Database!"
+
+        except Exception as e:
+            return False, f"Terjadi kesalahan saat memproses Excel: {e}"
+
+    def get_master_ahsp_permanen(self):
+        """Memanggil database AHSP saat aplikasi pertama kali dibuka"""
+        import pandas as pd
+        try:
+            df = pd.read_sql_query("SELECT * FROM master_ahsp", self.conn)
+            return df
+        except Exception:
+            return pd.DataFrame()
     def close(self):
         """Tutup koneksi database"""
         if self.conn:
             self.conn.close()
+
