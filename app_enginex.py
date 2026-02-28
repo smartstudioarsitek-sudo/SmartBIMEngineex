@@ -546,7 +546,8 @@ with st.sidebar:
             "🤖 AI Assistant", 
             "📏 Visual QTO 2D (PlanSwift Mode)", 
             "📑 Laporan RAB 5D", 
-            "🌪️ Analisis Gempa (FEM)", 
+            "🌪️ Analisis Gempa (FEM)",
+            "🏛️ Template Struktur (Klasik)",
             "🏗️ Audit Struktur",
             "🌾 Desain Irigasi (KP-01)",
             "🌊 Hidrolika Bendung (KP-02)",
@@ -1253,6 +1254,84 @@ elif selected_menu == "🌪️ Analisis Gempa (FEM)":
                 st.dataframe(df_scale.style.map(style_scaling), use_container_width=True)
                 
             except Exception as e: st.error(f"Error FEM: {e}")
+
+# --- MODE TEMPLATE STRUKTUR (SAP2000 STYLE) ---
+elif selected_menu == "🏛️ Template Struktur (Klasik)":
+    st.header("🏛️ Template Struktur Parametrik")
+    st.caption("Generator instan model elemen hingga bergaya antarmuka SAP2000 Klasik.")
+    
+    if 'libs_fem' not in sys.modules:
+        st.warning("⚠️ Modul `libs_fem` (OpenSees) belum dimuat oleh sistem.")
+    else:
+        # ZONA 1: Pemilihan Tipe (Top Bar)
+        tipe_template = st.selectbox(
+            "1. Pilih Tipe Struktur Dasar:", 
+            ["2D Portal Frame (Gedung)", "Continuous Beam (Menerus)", "2D Truss", "3D Building Frame"],
+            index=0
+        )
+        
+        st.divider()
+        
+        # ZONA 2 & 3: Input Kiri, Visualisasi Kanan
+        col_input, col_viz = st.columns([1, 2.5])
+        
+        with col_input:
+            st.markdown("### 2. Parameter Geometri")
+            
+            if tipe_template == "2D Portal Frame (Gedung)":
+                st.info("Satuan standar: Meter (m)")
+                
+                # Input persis dialog box SAP2000
+                jml_lantai = st.number_input("Number of Stories", min_value=1, max_value=50, value=3, step=1)
+                jml_bentang = st.number_input("Number of Bays", min_value=1, max_value=20, value=4, step=1)
+                tinggi_lt = st.number_input("Typical Story Height (m)", min_value=1.0, value=3.5, step=0.5)
+                lebar_btg = st.number_input("Typical Bay Width (m)", min_value=1.0, value=4.0, step=0.5)
+                
+                with st.expander("⚙️ Opsi Lanjutan (Material & Penampang)"):
+                    st.selectbox("Material Dasar", ["Beton K-300", "Baja BJ-37", "Custom"])
+                    st.caption("Di versi ini, penampang di-generate sebagai garis as (centerline) analitik.")
+                
+                st.write("") # Spacer
+                if st.button("🚀 Generate Model", type="primary", use_container_width=True):
+                    with st.spinner("Merakit Matriks Kekakuan OpenSees..."):
+                        # Memanggil Backend Generator
+                        generator = sys.modules['libs_fem'].OpenSeesTemplateGenerator()
+                        fig_hasil, df_hasil = generator.generate_2d_portal(jml_lantai, jml_bentang, tinggi_lt, lebar_btg)
+                        
+                        if fig_hasil is not None:
+                            st.session_state['template_fig'] = fig_hasil
+                            st.session_state['template_df'] = df_hasil
+                            st.session_state['template_status'] = f"✅ Berhasil membuat {len(df_hasil)} elemen dan {(jml_lantai+1)*(jml_bentang+1)} nodes."
+                        else:
+                            st.error(df_hasil) # df_hasil berisi pesan error jika fig_hasil None
+
+            else:
+                st.warning("Template ini sedang dalam tahap pengembangan (WIP). Silakan gunakan 2D Portal Frame.")
+                
+        with col_viz:
+            st.markdown("### 3. Visualisasi Model (Real-time)")
+            
+            # Cek apakah sudah ada model di memori
+            if 'template_fig' in st.session_state:
+                st.success(st.session_state['template_status'])
+                
+                # Render Plotly
+                with st.container(border=True):
+                    st.plotly_chart(st.session_state['template_fig'], use_container_width=True, height=500)
+                
+                # Tampilkan Tabel
+                with st.expander("📋 Tabel Rekapitulasi Elemen Terbentuk", expanded=False):
+                    st.dataframe(st.session_state['template_df'], use_container_width=True)
+                    
+                # Tombol Aksi Selanjutnya
+                c_act1, c_act2 = st.columns(2)
+                c_act1.button("⚖️ Lanjut: Define Beban & Kombinasi", use_container_width=True)
+                c_act2.button("💾 Simpan ke Database Proyek", type="secondary", use_container_width=True)
+            else:
+                # Tampilan Kosong (Blank State)
+                st.info("👈 Masukkan parameter di sebelah kiri dan klik **Generate Model**.")
+                with st.container(border=True):
+                    st.markdown("<div style='height: 400px; display: flex; align-items: center; justify-content: center; color: gray;'>Ruang Gambar Geometri</div>", unsafe_allow_html=True)
 
 # --- C. MODE AUDIT STRUKTUR ---
 elif selected_menu == "🏗️ Audit Struktur":
@@ -2933,6 +3012,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # =========================================================
     st.markdown("### 📥 Cetak Dokumen Final (Approval)")
     st.info("Fitur Export Excel 7-Tab dan PDF sedang disinkronkan dengan Database SE 182 yang baru. (Under Maintenance)")
+
 
 
 
