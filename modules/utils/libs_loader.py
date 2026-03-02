@@ -232,12 +232,13 @@ def process_special_file(uploaded_file):
     return text_info, image_buf, df_data
 class DXF_QTO_Engine:
     """
-    Mesin Quantity Take-Off (QTO) 2D berbasis Vektor dengan Boolean Geometri.
+    Mesin Quantity Take-Off (QTO) 2D berbasis Vektor dengan OGC Topology.
     Membaca file DXF dan mengekstrak Luasan (Area) serta Panjang (Length).
-    Mampu mendeteksi poligon di dalam poligon (lubang/void) dan otomatis mengurangkannya.
+    [AUDIT PATCH]: Dilengkapi Micro-buffering, Rekursi Block (INSERT), dan 
+    Algoritma Area-based Even-Odd Boolean untuk lubang (Void) yang anti-crash.
     """
     def __init__(self):
-        self.engine_name = "SmartBIM Vector QTO Engine (Boolean Active)"
+        self.engine_name = "SmartBIM Vector QTO Engine (OGC Topology & Block Support)"
 
     def extract_qto_from_dxf(self, file_stream):
         import ezdxf
@@ -246,13 +247,14 @@ class DXF_QTO_Engine:
         import os
         import math
         
-        # Import Shapely untuk operasi Boolean Geometri (pengurangan lubang)
+        # Import fungsionalitas topologi spasial Shapely
         try:
-            from shapely.geometry import Polygon, LineString, Point
+            from shapely.geometry import Polygon, LineString, Point, MultiPolygon
+            from shapely.ops import unary_union
         except ImportError:
             return None, "Library 'shapely' belum terinstall. Mesin QTO gagal dimuat."
 
-        # 1. Simpan stream DXF sementara ke disk
+        # 1. Simpan stream DXF sementara ke disk untuk menghemat RAM streaming
         file_stream.seek(0)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp:
             tmp.write(file_stream.read())
@@ -263,83 +265,108 @@ class DXF_QTO_Engine:
             msp = doc.modelspace()
             
             qto_data = []
-            
-            # Wadah penampung geometri per layer
             layer_polygons = {}
             layer_lines = {}
 
-            # 2. Iterasi semua entitas di Modelspace CAD
-            for entity in msp:
-                layer_name = entity.dxf.layer
-                dxftype = entity.dxftype()
+            # ========================================================
+            # FUNGSI REKURSIF UNTUK MEMBACA BLOCK (INSERT)
+            # Menjawab bug "Kebutaan Sistem Terhadap Entitas Referensi Blok"
+            # ========================================================
+            def get_virtual_entities(entity):
+                if entity.dxftype() == 'INSERT':
+                    try:
+                        # Memecah block menjadi entitas virtual (garis/poligon dasar)
+                        # di posisi koordinat aslinya (explode on-the-fly)
+                        for virtual_e in entity.virtual_entities():
+                            yield from get_virtual_entities(virtual_e)
+                    except:
+                        pass
+                else:
+                    yield entity
 
-                # Abaikan layer standar/sampah visual yang tidak butuh dihitung
-                if any(abaikan in layer_name.lower() for abaikan in ['dim', 'text', 'defpoints', '0', 'grid', 'as', 'arsir', 'hatch']):
-                    continue
+            # 2. Iterasi seluruh entitas (termasuk yang ada di dalam Block)
+            for base_entity in msp:
+                for entity in get_virtual_entities(base_entity):
+                    layer_name = entity.dxf.layer
+                    dxftype = entity.dxftype()
 
-                # A. Tangkap LWPOLYLINE (Bisa berupa Garis atau Area)
-                if dxftype == 'LWPOLYLINE':
-                    points = list(entity.get_points(format='xy'))
-                    if len(points) < 2: continue
-                    
-                    # Cek apakah poligon tertutup (Bentuk Area)
-                    if entity.is_closed or points[0] == points[-1]:
-                        if len(points) >= 3:
-                            poly = Polygon(points)
-                            # Coba perbaiki poligon yang self-intersecting (garisnya silang)
-                            if not poly.is_valid:
-                                poly = poly.buffer(0) 
-                                
-                            if poly.area > 0:
-                                layer_polygons.setdefault(layer_name, []).append(poly)
-                    else:
-                        # Jika terbuka, hitung panjangnya (Line)
-                        line = LineString(points)
-                        layer_lines[layer_name] = layer_lines.get(layer_name, 0.0) + line.length
+                    # Abaikan layer standar/sampah visual
+                    if any(abaikan in layer_name.lower() for abaikan in ['dim', 'text', 'defpoints', '0', 'grid', 'as', 'arsir', 'hatch']):
+                        continue
 
-                # B. Tangkap LINE biasa
-                elif dxftype == 'LINE':
-                    start = entity.dxf.start
-                    end = entity.dxf.end
-                    length = math.dist((start.x, start.y), (end.x, end.y))
-                    if length > 0:
-                        layer_lines[layer_name] = layer_lines.get(layer_name, 0.0) + length
+                    # A. Tangkap LWPOLYLINE (Area atau Garis)
+                    if dxftype == 'LWPOLYLINE':
+                        points = list(entity.get_points(format='xy'))
+                        if len(points) < 2: continue
+                        
+                        is_closed = entity.is_closed if hasattr(entity, 'is_closed') else (points[0] == points[-1])
+                        
+                        if is_closed:
+                            if len(points) >= 3:
+                                poly = Polygon(points)
+                                if not poly.is_valid:
+                                    poly = poly.buffer(0) 
+                                if poly.area > 0:
+                                    layer_polygons.setdefault(layer_name, []).append(poly)
+                        else:
+                            line = LineString(points)
+                            layer_lines[layer_name] = layer_lines.get(layer_name, 0.0) + line.length
 
-                # C. Tangkap CIRCLE (Bisa diubah jadi Poligon Area untuk pilar bulat dll)
-                elif dxftype == 'CIRCLE':
-                    center = (entity.dxf.center.x, entity.dxf.center.y)
-                    radius = entity.dxf.radius
-                    if radius > 0:
-                        circle_poly = Point(center).buffer(radius)
-                        layer_polygons.setdefault(layer_name, []).append(circle_poly)
+                    # B. Tangkap LINE biasa
+                    elif dxftype == 'LINE':
+                        start = entity.dxf.start
+                        end = entity.dxf.end
+                        length = math.dist((start.x, start.y), (end.x, end.y))
+                        if length > 0:
+                            layer_lines[layer_name] = layer_lines.get(layer_name, 0.0) + length
 
+                    # C. Tangkap CIRCLE
+                    elif dxftype == 'CIRCLE':
+                        center = (entity.dxf.center.x, entity.dxf.center.y)
+                        radius = entity.dxf.radius
+                        if radius > 0:
+                            circle_poly = Point(center).buffer(radius)
+                            layer_polygons.setdefault(layer_name, []).append(circle_poly)
+
+            # Segera hancurkan file temporary untuk membebaskan disk
             os.remove(tmp_path)
 
-            # 3. EKSEKUSI BOOLEAN GEOMETRI (Pengurangan Lubang/Void)
+            # ========================================================
+            # 3. EKSEKUSI BOOLEAN GEOMETRI & TOPOLOGI (PENCEGAHAN CRASH)
+            # Menjawab bug "Kerentanan Kegagalan Topologi pada Geometri Bersarang"
+            # ========================================================
             for layer, polys in layer_polygons.items():
                 # Urutkan poligon dari yang terluas ke terkecil
-                # Logika: Poligon terluas pasti pelat utama, yang lebih kecil di dalamnya pasti lubang
                 polys_sorted = sorted(polys, key=lambda p: p.area, reverse=True)
                 
-                final_polys = []
+                # Inisialisasi geometri kosong untuk menampung kanvas
+                final_geom = Polygon() 
+                
                 for p in polys_sorted:
-                    is_hole = False
-                    # Cek apakah poligon 'p' ini berada di dalam perut poligon utama yang sudah ada
-                    for i, fp in enumerate(final_polys):
-                        if fp.contains(p):
-                            # BOOLEAN DIFFERENCE: Kurangi luasan utama dengan lubang ini
-                            final_polys[i] = fp.difference(p)
-                            is_hole = True
-                            break
-                            
-                    if not is_hole:
-                        # Jika bukan lubang, jadikan poligon utama baru di layer ini
-                        final_polys.append(p)
-                        
-                # Agregasi total luas bersih (Net Area) untuk layer ini
-                total_area = sum(fp.area for fp in final_polys)
-                if total_area > 0:
-                    qto_data.append({"Layer (Item Pekerjaan)": layer, "Kategori": "Luasan (m2)", "Volume": total_area})
+                    # [PATCH]: Micro-buffering untuk menjahit celah mikroskopis (snapping issue)
+                    p_clean = p.buffer(1e-5).buffer(-1e-5)
+                    if p_clean.is_empty: continue
+                    
+                    # Logika Even-Odd Area:
+                    # Jika 95% dari poligon P ini sudah berada di dalam final_geom, 
+                    # maka secara logis P adalah sebuah LUBANG (Void) -> Lakukan Difference
+                    intersection_area = final_geom.intersection(p_clean).area
+                    
+                    if intersection_area > (p_clean.area * 0.95):
+                        final_geom = final_geom.difference(p_clean)
+                    else:
+                        # Jika tidak tumpang tindih secara masif, ini adalah poligon baru (atau pulau di dalam lubang)
+                        final_geom = final_geom.union(p_clean)
+                
+                # Agregasi total luas bersih (Net Area)
+                # Metode ini otomatis menangani MultiPolygon tanpa iterasi manual
+                net_area = final_geom.area
+                if net_area > 0:
+                    qto_data.append({"Layer (Item Pekerjaan)": layer, "Kategori": "Luasan (m2)", "Volume": net_area})
+                
+                # Kosongkan memori iterasi
+                del final_geom
+                del polys_sorted
 
             # 4. Agregasi Total Panjang (Line)
             for layer, length in layer_lines.items():
@@ -360,7 +387,5 @@ class DXF_QTO_Engine:
             if os.path.exists(tmp_path): os.remove(tmp_path)
             return None, f"Gagal memproses DXF: {str(e)}"
 
-# ==============================================================================
-# END OF FILE
-# ==============================================================================
+
 
