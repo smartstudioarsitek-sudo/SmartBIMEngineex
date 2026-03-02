@@ -1,0 +1,46 @@
+name: BPS Data Synchronizer (Cron Job)
+
+# Mengatur jadwal kapan skrip ini berjalan otomatis
+on:
+  schedule:
+    # Berjalan setiap hari Senin jam 00:00 UTC (Jam 07:00 WIB)
+    - cron: '0 0 * * 1'
+  # Memungkinkan kita menjalankan skrip secara manual dari tombol di web GitHub
+  workflow_dispatch:
+
+jobs:
+  update-database:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Mengambil kode terbaru dari repository kamu
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # 2. Menyiapkan environment Python
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # 3. Menginstall library yang dibutuhkan (sesuaikan dengan requirement-mu)
+      - name: Install Dependencies
+        run: |
+          pip install pandas requests duckdb
+
+      # 4. Menjalankan skrip cron persis seperti di terminal lokal
+      - name: Eksekusi Skrip Tarik Data BPS
+        run: python cron_bps_fetcher.py
+        env:
+          # Jika nanti butuh API Key, pasang di GitHub Secrets dan panggil di sini
+          BPS_API_TOKEN: ${{ secrets.BPS_API_TOKEN }}
+
+      # 5. Menyimpan (Commit) database SQLite yang baru di-update kembali ke GitHub
+      - name: Commit and Push Database Update
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add enginex_core.db
+          # Cek apakah ada perubahan, jika ada lakukan commit
+          git diff --quiet && git diff --staged --quiet || git commit -m "🤖 Auto-update: Sinkronisasi Database BPS Terpusat"
+          git push
