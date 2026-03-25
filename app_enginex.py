@@ -610,78 +610,89 @@ with st.sidebar:
             ["Lampung", "DKI Jakarta", "Jawa Barat", "Jawa Tengah", "Jawa Timur", "Bali", "Sumatera Selatan", "Kalimantan Barat", "Sulawesi Selatan", "Papua", "Papua Pegunungan"], 
             index=0
         )
-        
-        st.markdown("### 📊 Export 5D BIM (IFC)")
-        ifc_file_target = st.file_uploader("Upload File .ifc Khusus RAB:", type=['ifc'], key="ifc_rab")
+        st.markdown("### 📊 Export 5D BIM (IFC / JSON Revit)")
+        ifc_file_target = st.file_uploader("Upload File .json atau .ifc Khusus RAB:", type=['ifc', 'json'], key="ifc_rab")
         
         if ifc_file_target:
-            if st.button("🔄 Ekstrak Volume IFC", use_container_width=True, type="secondary"):
-                with st.spinner("Menarik data 3D menjadi Volume..."):
-                    import tempfile
-                    try:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
-                            tmp.write(ifc_file_target.getvalue())
-                            tmp_path = tmp.name
-
-                        engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
-                        
-                        if engine_ifc.valid:
-                            elements = engine_ifc.model.by_type("IfcProduct")
+            if st.button("🔄 Ekstrak Volume BIM", use_container_width=True, type="secondary"):
+                
+                # --- JALUR TOL BARU: JIKA FILE JSON DARI REVIT ---
+                if ifc_file_target.name.endswith('.json'):
+                    with st.spinner("⚡ Menarik data volume pasti dari Revit..."):
+                        import json
+                        try:
+                            # Baca payload JSON
+                            data_revit = json.loads(ifc_file_target.getvalue().decode('utf-8'))
                             
-                            # [AUDIT PATCH]: Daftar Hitam (Blacklist) Aset Visual & Rendering
-                            blacklist_kata = ['enscape', 'tree', 'plant', 'sofa', 'standing', 'sitting', 'car ', 'people', 'person', 'bush', 'shrub', 'vehicle', 'grass', 'flower']
-                            
-                            
-                            # [AUDIT PATCH FINAL]: Pembersihan ID Revit & Translasi Paksa ke SNI
-                            # [AUDIT PATCH FINAL]: Filter Aset, Translasi SNI & Grouping
-                            data_boq_asli = []
-                            for el in elements:
-                                if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
-                                    
-                                    kategori_ifc = str(el.is_a()).lower()
-                                    nama_raw = str(el.Name).lower() if el.Name else ""
-                                    
-                                    # 1. BUANG ASET VISUAL/SAMPAN
-                                    blacklist = ['enscape', 'tree', 'plant', 'sofa', 'car', 'generic models', 'proxy', 'lines']
-                                    if any(b in nama_raw for b in blacklist): continue
-                                    
-                                    # 2. UBAH NAMA IFC JADI BAHASA SNI PUPR
-                                    nama_sni = None
-                                    if "ifccolumn" in kategori_ifc: nama_sni = "Pekerjaan Kolom Beton (K-300)"
-                                    elif "ifcbeam" in kategori_ifc: nama_sni = "Pekerjaan Balok Beton (K-300)"
-                                    elif "ifcslab" in kategori_ifc: nama_sni = "Pekerjaan Pelat Lantai Beton (K-300)"
-                                    elif "ifcwall" in kategori_ifc: nama_sni = "Pekerjaan Pasangan Dinding Bata"
-                                    elif "ifcdoor" in kategori_ifc or "ifcwindow" in kategori_ifc: nama_sni = "Pekerjaan Pintu dan Jendela"
-                                    elif "ifcfooting" in kategori_ifc or "ifcpile" in kategori_ifc: nama_sni = "Pekerjaan Pondasi Beton"
-                                    elif "ifcroof" in kategori_ifc or "ifccovering" in kategori_ifc: nama_sni = "Pekerjaan Rangka Atap dan Penutup"
-
-                                    
-                                    if not nama_sni: continue # Abaikan jika bukan struktur
-                                        
-                                    vol = engine_ifc.get_element_quantity(el)
-                                    vol_final = round(vol, 3) if vol and vol > 0 else 0.0 # <--- Tidak ada lagi volume fiktif 1.0!
-                                    
-                                    if vol_final > 0:
-                                        data_boq_asli.append({
-                                            "Kategori": "Pekerjaan Struktur",
-                                            "Nama": nama_sni,
-                                            "Volume": vol_final
-                                        })
-                            
-                            if len(data_boq_asli) > 0:
-                                # 3. REKAPITULASI (GROUPING): Ratusan baris jadi 1 baris per tipe
-                                df_raw = pd.DataFrame(data_boq_asli)
+                            if "bill_of_quantities" in data_revit:
+                                df_raw = pd.DataFrame(data_revit["bill_of_quantities"])
                                 df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
                                 
                                 st.session_state['real_boq_data'] = df_grouped
-                                st.success(f"✅ Data dipadatkan ke Standar SNI! (Tersisa {len(df_grouped)} Item Utama).")
+                                st.success(f"✅ Data RAB JSON berhasil dipadatkan! (Tersisa {len(df_grouped)} Item Utama). Buka Tab 'Laporan RAB 5D'.")
                             else:
-                                st.error("⚠️ IFC terbaca, tapi elemen fisik struktural kosong setelah difilter.")
-                        else:
-                            st.error("❌ File IFC Rusak.")
-                    except Exception as e:
-                        st.error(f"❌ Gagal Ekstrak: {e}")
+                                st.error("Format JSON tidak valid (kehilangan kunci 'bill_of_quantities').")
+                        except Exception as e:
+                            st.error(f"Gagal Ekstrak JSON: {e}")
+                            
+                # --- JALUR LAMA: JIKA FILE IFC ---
+                elif ifc_file_target.name.endswith('.ifc'):
+                    with st.spinner("Menarik data 3D menjadi Volume..."):
+                        import tempfile
+                        try:
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".ifc") as tmp:
+                                tmp.write(ifc_file_target.getvalue())
+                                tmp_path = tmp.name
 
+                            engine_ifc = libs_bim_importer.BIM_Engine(tmp_path)
+                            
+                            if engine_ifc.valid:
+                                elements = engine_ifc.model.by_type("IfcProduct")
+                                blacklist_kata = ['enscape', 'tree', 'plant', 'sofa', 'standing', 'sitting', 'car ', 'people', 'person', 'bush', 'shrub', 'vehicle', 'grass', 'flower']
+                                
+                                data_boq_asli = []
+                                for el in elements:
+                                    if "Ifc" in el.is_a() and el.is_a() not in ["IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcOpeningElement"]:
+                                        kategori_ifc = str(el.is_a()).lower()
+                                        nama_raw = str(el.Name).lower() if el.Name else ""
+                                        
+                                        blacklist = ['enscape', 'tree', 'plant', 'sofa', 'car', 'generic models', 'proxy', 'lines']
+                                        if any(b in nama_raw for b in blacklist): continue
+                                        
+                                        nama_sni = None
+                                        if "ifccolumn" in kategori_ifc: nama_sni = "Pekerjaan Kolom Beton (K-300)"
+                                        elif "ifcbeam" in kategori_ifc: nama_sni = "Pekerjaan Balok Beton (K-300)"
+                                        elif "ifcslab" in kategori_ifc: nama_sni = "Pekerjaan Pelat Lantai Beton (K-300)"
+                                        elif "ifcwall" in kategori_ifc: nama_sni = "Pekerjaan Pasangan Dinding Bata"
+                                        elif "ifcdoor" in kategori_ifc or "ifcwindow" in kategori_ifc: nama_sni = "Pekerjaan Pintu dan Jendela"
+                                        elif "ifcfooting" in kategori_ifc or "ifcpile" in kategori_ifc: nama_sni = "Pekerjaan Pondasi Beton"
+                                        elif "ifcroof" in kategori_ifc or "ifccovering" in kategori_ifc: nama_sni = "Pekerjaan Rangka Atap dan Penutup"
+
+                                        if not nama_sni: continue 
+                                        
+                                        vol = engine_ifc.get_element_quantity(el)
+                                        vol_final = round(vol, 3) if vol and vol > 0 else 0.0 
+                                        
+                                        if vol_final > 0:
+                                            data_boq_asli.append({
+                                                "Kategori": "Pekerjaan Struktur",
+                                                "Nama": nama_sni,
+                                                "Volume": vol_final
+                                            })
+                                
+                                if len(data_boq_asli) > 0:
+                                    df_raw = pd.DataFrame(data_boq_asli)
+                                    df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
+                                    
+                                    st.session_state['real_boq_data'] = df_grouped
+                                    st.success(f"✅ Data dipadatkan ke Standar SNI! (Tersisa {len(df_grouped)} Item Utama).")
+                                else:
+                                    st.error("⚠️ IFC terbaca, tapi elemen fisik struktural kosong setelah difilter.")
+                            else:
+                                st.error("❌ File IFC Rusak.")
+                        except Exception as e:
+                            st.error(f"❌ Gagal Ekstrak: {e}")
+        
 # ==========================================
 # 7. LOGIKA TAMPILAN UTAMA
 # ==========================================
@@ -843,6 +854,29 @@ if selected_menu == "🤖 AI Assistant":
                                 st.error(f"Gagal memproses file {f.name}: {e}")
 
                     # 4. HANDLING FILE BIM (IFC)
+                    # 3.5 HANDLING REVIT JSON (DIRECT INGESTION)
+                    elif f.name.lower().endswith('.json'):
+                        with st.spinner(f"⚡ Menginjeksi Data Presisi Revit dari {f.name}..."):
+                            try:
+                                import json
+                                # Baca file
+                                data_revit = json.loads(f.getvalue().decode('utf-8'))
+                                
+                                # A. Jika ada RAB, langsung tembak ke memori (Session State)
+                                if "bill_of_quantities" in data_revit:
+                                    df_raw = pd.DataFrame(data_revit["bill_of_quantities"])
+                                    df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
+                                    st.session_state['real_boq_data'] = df_grouped
+                                
+                                # B. Siapkan rangkuman JSON mentah ke Otak LLM Gemini (Akurasi Tinggi)
+                                revit_summary = json.dumps(data_revit, indent=2)
+                                full_prompt[0] += f"\n\n[DATA DETERMINISTIK REVIT (JSON): {f.name}]\n{revit_summary}"
+                                
+                                with st.chat_message("user"):
+                                    st.success(f"✅ Data Revit Termuat Sempurna! AI siap membaca {len(data_revit.get('bill_of_quantities', []))} item RAB.")
+                            except Exception as e:
+                                st.error(f"Gagal memproses JSON Revit: {e}")
+                                
                     elif f.name.lower().endswith('.ifc'):
                         with st.spinner(f"🏗️ Membedah hierarki dan elemen dari {f.name}..."):
                             import tempfile
