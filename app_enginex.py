@@ -582,10 +582,10 @@ with st.sidebar:
             
         st.markdown("### 📎 Upload Data")
         uploaded_files = st.file_uploader(
-            "Upload File (CAD, GIS, PDF, Excel, IFC)",
+            "Upload File (CAD, GIS, PDF, Excel, IFC, JSON)",
             type=["png","jpg","jpeg","pdf","xlsx","docx","ifc","py", 
                   "dxf", "dwg", "geojson", "kml", "kmz", "gpx", "zip", 
-                  "tif", "tiff", "dem"],
+                  "tif", "tiff", "dem", 'json'],
             accept_multiple_files=True,
             label_visibility="collapsed"
         )
