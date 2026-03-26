@@ -637,30 +637,45 @@ with st.sidebar:
                                 st.stop()
                                 
                             data_revit = json.loads(json_str)
-                            
                             # A. Proses ke memori RAB
                             if "bill_of_quantities" in data_revit:
-                                df_raw = pd.DataFrame(data_revit["bill_of_quantities"])
+                                boq_data = data_revit["bill_of_quantities"]
                                 
-                                # --- SABUK PENGAMAN (ANTI-CRASH) ---
-                                df_raw['Kategori'] = df_raw['Kategori'].astype(str)
-                                df_raw['Nama'] = df_raw['Nama'].astype(str)
-                                df_raw['Volume'] = pd.to_numeric(df_raw['Volume'], errors='coerce').fillna(0)
-                                # ----------------------------------------
-                                
-                                df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
-                                
-                                st.session_state['real_boq_data'] = df_grouped
+                                # Cek apakah data dari Revit ternyata kosong
+                                if not boq_data:
+                                    st.warning("⚠️ Data elemen 3D kosong. Pastikan model Revit memiliki volume fisik.")
+                                    df_grouped = pd.DataFrame(columns=['Kategori', 'Nama', 'Volume'])
+                                    st.session_state['real_boq_data'] = df_grouped
+                                else:
+                                    df_raw = pd.DataFrame(boq_data)
+                                    
+                                    # --- SABUK PENGAMAN KELAS BAJA (ANTI-CRASH) ---
+                                    # Jika kolom tidak ada, buatkan otomatis agar tidak KeyError
+                                    if 'Kategori' not in df_raw.columns: 
+                                        df_raw['Kategori'] = "Tanpa Kategori"
+                                    if 'Nama' not in df_raw.columns: 
+                                        df_raw['Nama'] = "Pekerjaan Tidak Diketahui"
+                                    if 'Volume' not in df_raw.columns: 
+                                        df_raw['Volume'] = 0.0
+                                        
+                                    # Paksa format data agar seragam
+                                    df_raw['Kategori'] = df_raw['Kategori'].astype(str)
+                                    df_raw['Nama'] = df_raw['Nama'].astype(str)
+                                    df_raw['Volume'] = pd.to_numeric(df_raw['Volume'], errors='coerce').fillna(0)
+                                    # ----------------------------------------
+                                    
+                                    df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
+                                    st.session_state['real_boq_data'] = df_grouped
                                 
                                 # B. Simpan data FEM untuk digunakan di menu Gempa nanti
                                 if "structural_analytical_model" in data_revit:
                                     st.session_state['revit_fem_data'] = data_revit["structural_analytical_model"]
                                 
                                 nama_proyek = data_revit.get("project_metadata", {}).get("project_name", "Unknown")
-                                st.success(f"✅ Data RAB JSON Berhasil Dimuat! (Proyek: {nama_proyek} | {len(df_grouped)} Item). Buka Tab 'Laporan RAB 5D'.")
+                                st.success(f"✅ Data RAB JSON Berhasil Dimuat! (Proyek: {nama_proyek} | {len(st.session_state['real_boq_data'])} Item). Buka Tab 'Laporan RAB 5D'.")
                             else:
                                 st.error("Format JSON tidak valid (kehilangan kunci 'bill_of_quantities').")
-                                
+                                                            
                         # ---> INI DIA BARIS YANG TIDAK SENGAJA TERHAPUS SEBELUMNYA <---
                         except Exception as e:
                             st.error(f"Gagal Ekstrak JSON: {e}")
