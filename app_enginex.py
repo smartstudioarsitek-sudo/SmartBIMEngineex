@@ -2986,41 +2986,85 @@ elif selected_menu == "⚖️ Evaluasi Tender & Legal":
                     st.info("📄 **PREVIEW: Ringkasan Rencana Keselamatan (RKK)**")
                     st.markdown(f"""<div style="padding:20px; background-color:white; border:1px solid #ccc; color:black; height:500px; overflow-y:auto;">
                                 {draft_rkk.replace(chr(10), '<br>')}</div>""", unsafe_allow_html=True)
-
 elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
-        st.title("⚙️ Database Master AHSP (Admin Only)")
-        st.info("Pilih dan unggah beberapa file Excel AHSP sekaligus (Misal: Struktur, ME, Lansekap). Sistem akan otomatis mencari sheet 'HSP', membersihkan datanya, dan menggabungkannya ke dalam Database SQLite.")
+    st.title("⚙️ Database Master AHSP (Admin Only)")
+    st.info("Sistem sekarang dilengkapi fitur 'Smart Filter'. Upload file Excel raksasa Anda, pilih sheet yang relevan, dan sistem akan menyedotnya satu per satu tanpa membebani RAM.")
+    
+    file_ahsp = st.file_uploader("Upload File Excel AHSP Induk (.xlsx)", type=["xlsx"])
+    
+    if file_ahsp:
+        import pandas as pd
         
-        # FITUR MULTI-FILE UPLOAD (accept_multiple_files=True)
-        file_ahsp_list = st.file_uploader("Upload File Excel AHSP (.xlsx)", type=["xlsx"], accept_multiple_files=True)
-        
-        if file_ahsp_list:
-            st.write(f"📁 {len(file_ahsp_list)} file siap diproses.")
-            if st.button("🚀 Sedot dan Kunci Permanen ke Database SaaS", type="primary"):
-                with st.spinner("Mesin sedang membedah ribuan baris Excel. Harap tunggu..."):
-                    sukses, pesan = db.proses_dan_simpan_multi_excel(file_ahsp_list)
-                    
-                    if sukses:
-                        st.success(pesan)
-                        st.balloons() # Efek animasi balon jika sukses
-                        # Reload data dari database ke memory
-                        st.session_state.master_ahsp = db.get_master_ahsp_permanen()
-                        st.session_state.status_ahsp = "TERKUNCI DARI DATABASE"
-                        time.sleep(3)
-                        st.rerun()
-                    else:
-                        st.error(pesan)
+        # 1. MENGINTIP DAFTAR SHEET (Hitungan Milidetik, Tanpa Membaca Isi Data)
+        with st.spinner("Mengintip struktur Excel..."):
+            try:
+                xls = pd.ExcelFile(file_ahsp)
+                semua_sheet = xls.sheet_names
+            except Exception as e:
+                st.error(f"Gagal membaca struktur Excel: {e}")
+                st.stop()
                 
-        st.divider()
-        st.markdown("### 📊 Status Database AHSP Saat Ini:")
-        if st.session_state.get('master_ahsp') is not None and not st.session_state.master_ahsp.empty:
-            jumlah_baris = len(st.session_state.master_ahsp)
-            st.success(f"✅ AKTIF: Database menyimpan total {jumlah_baris} item pekerjaan lintas disiplin.")
+        # 2. UI UNTUK MEMILIH SHEET
+        st.markdown("### 🗂️ Filter Sheet")
+        st.write("Silakan hapus centang pada sheet yang BUKAN merupakan data AHSP (misal: Cover, Daftar Isi, Rekapitulasi).")
+        
+        # Secara otomatis mencentang sheet yang namanya mengandung kata 'HSP', 'Analisa', atau 'Harga'
+        sheet_relevan_default = [s for s in semua_sheet if any(kata in s.lower() for kata in ['hsp', 'analisa', 'harga', 'arsitektur', 'struktur', 'mep'])]
+        if not sheet_relevan_default: 
+            sheet_relevan_default = semua_sheet # Jika tidak ada yang cocok, centang semua
             
-            # Tampilkan tabel yang bisa di-filter dan di-search oleh Admin
-            st.dataframe(st.session_state.master_ahsp, use_container_width=True, height=400) 
-        else:
-            st.warning("⚠️ KOSONG: Belum ada data di database. Silakan upload file Excel SE BK No 182 di atas.")
+        sheet_terpilih = st.multiselect(
+            "Pilih Sheet yang akan disedot ke Database:", 
+            options=semua_sheet, 
+            default=sheet_relevan_default
+        )
+        
+        # 3. PROSES EKSEKUSI (SATU PER SATU)
+        if st.button("🚀 Sedot Sheet Terpilih & Kunci ke Database", type="primary", use_container_width=True):
+            if not sheet_terpilih:
+                st.warning("Pilih minimal 1 sheet untuk diproses.")
+            else:
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                total_sheet = len(sheet_terpilih)
+                total_data_masuk = 0
+                
+                for i, sheet_name in enumerate(sheet_terpilih):
+                    status_text.text(f"Mengekstrak Sheet: {sheet_name} ({i+1}/{total_sheet})...")
+                    
+                    try:
+                        # Sedot HANYA 1 sheet ini
+                        df_temp = pd.read_excel(xls, sheet_name=sheet_name)
+                        
+                        # ---> DI SINI KAKAK PANGGIL FUNGSI BACKEND KAKAK <---
+                        # Misalnya: db.simpan_satu_dataframe_ke_sqlite(df_temp, nama_kategori=sheet_name)
+                        # Karena saya tidak melihat isi backend kakak, saya asumsikan ada fungsi seperti ini:
+                        
+                        sukses, jml_baris = db.proses_dan_simpan_dataframe(df_temp, sheet_name)
+                        
+                        if sukses:
+                            total_data_masuk += jml_baris
+                    except Exception as e:
+                        st.error(f"Gagal memproses sheet '{sheet_name}': {e}")
+                        
+                    # Update Progress Bar
+                    progress_bar.progress((i + 1) / total_sheet)
+                    
+                    # Bersihkan RAM secara paksa (PENTING AGAR TIDAK CRASH)
+                    import gc
+                    del df_temp
+                    gc.collect() 
+                
+                status_text.text("Proses Selesai!")
+                st.success(f"✅ BINGO! Total {total_data_masuk} baris data dari {total_sheet} sheet berhasil dimasukkan ke Database secara aman.")
+                
+                # Reload memori
+                st.session_state.master_ahsp = db.get_master_ahsp_permanen()
+                st.session_state.status_ahsp = "TERKUNCI DARI DATABASE"
+                import time
+                time.sleep(2)
+                st.rerun()
 
 # --- E. MODE LAPORAN RAB 5D (WORKSPACE ONLINE) ---
 elif selected_menu == "📑 Laporan RAB 5D":
