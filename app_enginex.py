@@ -620,6 +620,7 @@ with st.sidebar:
                 if ifc_file_target.name.endswith('.json'):
                     with st.spinner("⚡ Menarik data volume pasti dari Revit..."):
                         import json
+                        import pandas as pd
                         try:
                             # Baca payload JSON
                             data_revit = json.loads(ifc_file_target.getvalue().decode('utf-8'))
