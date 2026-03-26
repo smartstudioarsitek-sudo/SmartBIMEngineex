@@ -218,7 +218,7 @@ class EnginexBackend:
             return df
         except Exception:
             return pd.DataFrame()
-            def close(self):
+        def close(self):
         """Tutup koneksi database"""
         if self.conn:
             self.conn.close()
