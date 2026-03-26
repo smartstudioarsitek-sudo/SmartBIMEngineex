@@ -218,60 +218,48 @@ class EnginexBackend:
             return df
         except Exception:
             return pd.DataFrame()
-    def close(self):
+            def close(self):
         """Tutup koneksi database"""
         if self.conn:
             self.conn.close()
-def proses_dan_simpan_dataframe(self, df, nama_sheet):
+
+    def proses_dan_simpan_dataframe(self, df, nama_sheet):
         """Memproses 1 DataFrame dan memasukkannya ke SQLite"""
         try:
             # 1. Bersihkan Data (Drop baris/kolom kosong yang tidak berguna)
             df = df.dropna(how='all')
             
-            # 2. Standarisasi nama kolom (cari kolom 'Uraian', 'Harga', dll)
-            # ... (logika pembersihan data AHSP kakak di sini) ...
+            # 2. Standarisasi nama kolom & Cari Baris Header Otomatis
+            header_idx = None
+            for idx, row in df.iterrows():
+                row_str = " ".join(row.astype(str).str.upper())
+                if "URAIAN" in row_str and ("HARGA" in row_str or "SATUAN" in row_str):
+                    header_idx = idx
+                    break
+                    
+            if header_idx is not None:
+                df.columns = df.iloc[header_idx]
+                df = df.iloc[header_idx + 1:].reset_index(drop=True)
             
-            # 3. Tambahkan kolom Kategori berdasarkan nama sheet agar rapi
-            df['Kategori_Sheet'] = nama_sheet
+            df.columns = [str(c).upper().strip() for c in df.columns]
             
-            # 4. Simpan ke SQLite (Gunakan if_exists='append' agar data menumpuk/bertambah)
-            # df.to_sql('master_ahsp', con=self.engine, if_exists='append', index=False)
+            # 3. Cari kolom esensial
+            col_uraian = next((c for c in df.columns if 'URAIAN' in c), None)
+            col_harga = next((c for c in df.columns if 'HARGA' in c), None)
+            
+            if col_uraian and col_harga:
+                df[col_harga] = pd.to_numeric(df[col_harga], errors='coerce')
+                df = df.dropna(subset=[col_harga, col_uraian])
+                df = df[~df[col_uraian].str.match(r'^[A-Z]\.\s', na=False)]
+            
+            # 4. Tambahkan kategori & Simpan ke DB
+            df['KATEGORI_SHEET'] = nama_sheet
+            df.to_sql('master_ahsp', con=self.conn, if_exists='append', index=False)
             
             jumlah_baris_berhasil = len(df)
             return True, jumlah_baris_berhasil
         except Exception as e:
             return False, 0
-def bersihkan_data_ahsp(df):
-    """Algoritma Deep Dive untuk menjinakkan format Excel PUPR/Bina Konstruksi"""
     
-    # 1. CARI BARIS HEADER OTOMATIS
-    # Mesin akan mencari baris yang mengandung kata "URAIAN" atau "HARGA"
-    header_idx = None
-    for idx, row in df.iterrows():
-        row_str = " ".join(row.astype(str).str.upper())
-        if "URAIAN" in row_str and ("HARGA" in row_str or "SATUAN" in row_str):
-            header_idx = idx
-            break
-            
-    if header_idx is not None:
-        # Jadikan baris tersebut sebagai Header yang sah
-        df.columns = df.iloc[header_idx]
-        df = df.iloc[header_idx + 1:].reset_index(drop=True)
-    
-    # 2. BERSIHKAN NAMA KOLOM
-    df.columns = [str(c).upper().strip() for c in df.columns]
-    
-    # 3. IDENTIFIKASI KOLOM TARGET
-    col_uraian = next((c for c in df.columns if 'URAIAN' in c), None)
-    col_harga = next((c for c in df.columns if 'HARGA' in c), None)
-    
-    if col_uraian and col_harga:
-        # 4. BUANG SAMPAH
-        # Hapus baris yang harganya kosong (NaN) atau isinya teks (seperti "JUMLAH HARGA BAHAN")
-        df[col_harga] = pd.to_numeric(df[col_harga], errors='coerce')
-        df = df.dropna(subset=[col_harga, col_uraian])
-        
-        # Saring baris yang merupakan Sub-Header (Misal: "A. TENAGA KERJA")
-        df = df[~df[col_uraian].str.match(r'^[A-Z]\.\s', na=False)]
         
     return df
