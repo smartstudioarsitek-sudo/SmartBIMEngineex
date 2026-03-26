@@ -241,3 +241,37 @@ def proses_dan_simpan_dataframe(self, df, nama_sheet):
             return True, jumlah_baris_berhasil
         except Exception as e:
             return False, 0
+def bersihkan_data_ahsp(df):
+    """Algoritma Deep Dive untuk menjinakkan format Excel PUPR/Bina Konstruksi"""
+    
+    # 1. CARI BARIS HEADER OTOMATIS
+    # Mesin akan mencari baris yang mengandung kata "URAIAN" atau "HARGA"
+    header_idx = None
+    for idx, row in df.iterrows():
+        row_str = " ".join(row.astype(str).str.upper())
+        if "URAIAN" in row_str and ("HARGA" in row_str or "SATUAN" in row_str):
+            header_idx = idx
+            break
+            
+    if header_idx is not None:
+        # Jadikan baris tersebut sebagai Header yang sah
+        df.columns = df.iloc[header_idx]
+        df = df.iloc[header_idx + 1:].reset_index(drop=True)
+    
+    # 2. BERSIHKAN NAMA KOLOM
+    df.columns = [str(c).upper().strip() for c in df.columns]
+    
+    # 3. IDENTIFIKASI KOLOM TARGET
+    col_uraian = next((c for c in df.columns if 'URAIAN' in c), None)
+    col_harga = next((c for c in df.columns if 'HARGA' in c), None)
+    
+    if col_uraian and col_harga:
+        # 4. BUANG SAMPAH
+        # Hapus baris yang harganya kosong (NaN) atau isinya teks (seperti "JUMLAH HARGA BAHAN")
+        df[col_harga] = pd.to_numeric(df[col_harga], errors='coerce')
+        df = df.dropna(subset=[col_harga, col_uraian])
+        
+        # Saring baris yang merupakan Sub-Header (Misal: "A. TENAGA KERJA")
+        df = df[~df[col_uraian].str.match(r'^[A-Z]\.\s', na=False)]
+        
+    return df
