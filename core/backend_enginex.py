@@ -218,18 +218,19 @@ class EnginexBackend:
             return df
         except Exception:
             return pd.DataFrame()
-        def close(self):
+    def close(self):
         """Tutup koneksi database"""
         if self.conn:
             self.conn.close()
 
     def proses_dan_simpan_dataframe(self, df, nama_sheet):
         """Memproses 1 DataFrame dan memasukkannya ke SQLite"""
+        import pandas as pd
         try:
             # 1. Bersihkan Data (Drop baris/kolom kosong yang tidak berguna)
             df = df.dropna(how='all')
             
-            # 2. Standarisasi nama kolom & Cari Baris Header Otomatis
+            # 2. Standarisasi nama kolom & Cari Baris Header Otomatis (Penting untuk Excel PUPR)
             header_idx = None
             for idx, row in df.iterrows():
                 row_str = " ".join(row.astype(str).str.upper())
@@ -238,28 +239,35 @@ class EnginexBackend:
                     break
                     
             if header_idx is not None:
+                # Jadikan baris tersebut sebagai Header yang sah
                 df.columns = df.iloc[header_idx]
                 df = df.iloc[header_idx + 1:].reset_index(drop=True)
             
+            # Rapikan nama kolom
             df.columns = [str(c).upper().strip() for c in df.columns]
             
-            # 3. Cari kolom esensial
+            # 3. Cari kolom esensial (Uraian & Harga)
             col_uraian = next((c for c in df.columns if 'URAIAN' in c), None)
             col_harga = next((c for c in df.columns if 'HARGA' in c), None)
             
             if col_uraian and col_harga:
+                # Buang teks yang nyasar di kolom harga dan bersihkan sub-header (seperti "A. TENAGA KERJA")
                 df[col_harga] = pd.to_numeric(df[col_harga], errors='coerce')
                 df = df.dropna(subset=[col_harga, col_uraian])
                 df = df[~df[col_uraian].str.match(r'^[A-Z]\.\s', na=False)]
             
-            # 4. Tambahkan kategori & Simpan ke DB
+            # 4. Tambahkan kategori berdasarkan nama sheet agar rapi
             df['KATEGORI_SHEET'] = nama_sheet
+            
+            # 5. Simpan ke Database SQLite
             df.to_sql('master_ahsp', con=self.conn, if_exists='append', index=False)
             
             jumlah_baris_berhasil = len(df)
             return True, jumlah_baris_berhasil
         except Exception as e:
+            print(f"Error proses sheet {nama_sheet}: {e}")
             return False, 0
+        
     
         
     return df
