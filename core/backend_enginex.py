@@ -222,4 +222,22 @@ class EnginexBackend:
         """Tutup koneksi database"""
         if self.conn:
             self.conn.close()
-
+def proses_dan_simpan_dataframe(self, df, nama_sheet):
+        """Memproses 1 DataFrame dan memasukkannya ke SQLite"""
+        try:
+            # 1. Bersihkan Data (Drop baris/kolom kosong yang tidak berguna)
+            df = df.dropna(how='all')
+            
+            # 2. Standarisasi nama kolom (cari kolom 'Uraian', 'Harga', dll)
+            # ... (logika pembersihan data AHSP kakak di sini) ...
+            
+            # 3. Tambahkan kolom Kategori berdasarkan nama sheet agar rapi
+            df['Kategori_Sheet'] = nama_sheet
+            
+            # 4. Simpan ke SQLite (Gunakan if_exists='append' agar data menumpuk/bertambah)
+            # df.to_sql('master_ahsp', con=self.engine, if_exists='append', index=False)
+            
+            jumlah_baris_berhasil = len(df)
+            return True, jumlah_baris_berhasil
+        except Exception as e:
+            return False, 0
