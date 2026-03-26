@@ -615,7 +615,6 @@ with st.sidebar:
         
         if ifc_file_target:
             if st.button("🔄 Ekstrak Volume BIM", use_container_width=True, type="secondary"):
-                
                 # --- JALUR UPLOAD MANUAL: JSON DARI REVIT ---
                 if ifc_file_target.name.endswith('.json'):
                     with st.spinner("⚡ Membaca data volume pasti dari Revit..."):
@@ -638,16 +637,14 @@ with st.sidebar:
                                 st.stop()
                                 
                             data_revit = json.loads(json_str)
-
+                            
                             # A. Proses ke memori RAB
                             if "bill_of_quantities" in data_revit:
                                 df_raw = pd.DataFrame(data_revit["bill_of_quantities"])
                                 
-                                # --- SABUK PENGAMAN BARU (ANTI-CRASH) ---
-                                # Paksa kolom menjadi teks biasa (String) agar Pandas tidak bingung
+                                # --- SABUK PENGAMAN (ANTI-CRASH) ---
                                 df_raw['Kategori'] = df_raw['Kategori'].astype(str)
                                 df_raw['Nama'] = df_raw['Nama'].astype(str)
-                                # Paksa volume menjadi angka, jika ada error ubah jadi 0
                                 df_raw['Volume'] = pd.to_numeric(df_raw['Volume'], errors='coerce').fillna(0)
                                 # ----------------------------------------
                                 
@@ -663,8 +660,12 @@ with st.sidebar:
                                 st.success(f"✅ Data RAB JSON Berhasil Dimuat! (Proyek: {nama_proyek} | {len(df_grouped)} Item). Buka Tab 'Laporan RAB 5D'.")
                             else:
                                 st.error("Format JSON tidak valid (kehilangan kunci 'bill_of_quantities').")
+                                
+                        # ---> INI DIA BARIS YANG TIDAK SENGAJA TERHAPUS SEBELUMNYA <---
+                        except Exception as e:
+                            st.error(f"Gagal Ekstrak JSON: {e}")
                             
-                            
+                           
                 # --- JALUR LAMA: JIKA FILE IFC ---
                 elif ifc_file_target.name.endswith('.ifc'):
                     with st.spinner("Menarik data 3D menjadi Volume..."):
