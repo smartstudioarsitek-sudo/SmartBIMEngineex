@@ -638,10 +638,19 @@ with st.sidebar:
                                 st.stop()
                                 
                             data_revit = json.loads(json_str)
-                            
+
                             # A. Proses ke memori RAB
                             if "bill_of_quantities" in data_revit:
                                 df_raw = pd.DataFrame(data_revit["bill_of_quantities"])
+                                
+                                # --- SABUK PENGAMAN BARU (ANTI-CRASH) ---
+                                # Paksa kolom menjadi teks biasa (String) agar Pandas tidak bingung
+                                df_raw['Kategori'] = df_raw['Kategori'].astype(str)
+                                df_raw['Nama'] = df_raw['Nama'].astype(str)
+                                # Paksa volume menjadi angka, jika ada error ubah jadi 0
+                                df_raw['Volume'] = pd.to_numeric(df_raw['Volume'], errors='coerce').fillna(0)
+                                # ----------------------------------------
+                                
                                 df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
                                 
                                 st.session_state['real_boq_data'] = df_grouped
@@ -654,8 +663,7 @@ with st.sidebar:
                                 st.success(f"✅ Data RAB JSON Berhasil Dimuat! (Proyek: {nama_proyek} | {len(df_grouped)} Item). Buka Tab 'Laporan RAB 5D'.")
                             else:
                                 st.error("Format JSON tidak valid (kehilangan kunci 'bill_of_quantities').")
-                        except Exception as e:
-                            st.error(f"Gagal Ekstrak JSON: {e}")
+                            
                             
                 # --- JALUR LAMA: JIKA FILE IFC ---
                 elif ifc_file_target.name.endswith('.ifc'):
