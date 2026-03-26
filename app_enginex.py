@@ -615,41 +615,48 @@ with st.sidebar:
         
         if ifc_file_target:
             if st.button("🔄 Ekstrak Volume BIM", use_container_width=True, type="secondary"):
-                # --- JALUR TOL BARU: JIKA FILE JSON DARI REVIT ---
+                
+                # --- JALUR UPLOAD MANUAL: JSON DARI REVIT ---
                 if ifc_file_target.name.endswith('.json'):
-                    with st.spinner("⚡ Menarik data volume pasti dari Revit..."):
+                    with st.spinner("⚡ Membaca data volume pasti dari Revit..."):
                         import json
                         import pandas as pd
                         try:
-                            # PENGAMAN ENCODING: Coba berbagai format teks Windows/Mac
+                            # Pengaman Encoding (Baca dari RAM)
                             raw_bytes = ifc_file_target.getvalue()
                             json_str = None
                             
                             for enc in ['utf-16', 'utf-8-sig', 'utf-8', 'windows-1252']:
                                 try:
                                     json_str = raw_bytes.decode(enc)
-                                    break # Jika berhasil, hentikan pencarian
+                                    break
                                 except UnicodeDecodeError:
-                                    continue # Jika gagal, coba format berikutnya
+                                    continue
                                     
                             if not json_str:
                                 st.error("❌ Gagal membaca format teks file JSON.")
                                 st.stop()
                                 
-                            # Baca payload JSON yang sudah berhasil diterjemahkan
                             data_revit = json.loads(json_str)
                             
+                            # A. Proses ke memori RAB
                             if "bill_of_quantities" in data_revit:
                                 df_raw = pd.DataFrame(data_revit["bill_of_quantities"])
                                 df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
                                 
                                 st.session_state['real_boq_data'] = df_grouped
-                                st.success(f"✅ Data RAB JSON berhasil dipadatkan! (Tersisa {len(df_grouped)} Item Utama). Buka Tab 'Laporan RAB 5D'.")
+                                
+                                # B. Simpan data FEM untuk digunakan di menu Gempa nanti
+                                if "structural_analytical_model" in data_revit:
+                                    st.session_state['revit_fem_data'] = data_revit["structural_analytical_model"]
+                                
+                                nama_proyek = data_revit.get("project_metadata", {}).get("project_name", "Unknown")
+                                st.success(f"✅ Data RAB JSON Berhasil Dimuat! (Proyek: {nama_proyek} | {len(df_grouped)} Item). Buka Tab 'Laporan RAB 5D'.")
                             else:
                                 st.error("Format JSON tidak valid (kehilangan kunci 'bill_of_quantities').")
                         except Exception as e:
                             st.error(f"Gagal Ekstrak JSON: {e}")
-                                            
+                            
                 # --- JALUR LAMA: JIKA FILE IFC ---
                 elif ifc_file_target.name.endswith('.ifc'):
                     with st.spinner("Menarik data 3D menjadi Volume..."):
@@ -707,7 +714,7 @@ with st.sidebar:
                                 st.error("❌ File IFC Rusak.")
                         except Exception as e:
                             st.error(f"❌ Gagal Ekstrak: {e}")
-        
+                
 # ==========================================
 # 7. LOGIKA TAMPILAN UTAMA
 # ==========================================
