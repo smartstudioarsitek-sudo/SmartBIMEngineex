@@ -222,15 +222,15 @@ class EnginexBackend:
         """Tutup koneksi database"""
         if self.conn:
             self.conn.close()
-
     def proses_dan_simpan_dataframe(self, df, nama_sheet):
-        """Memproses 1 DataFrame dan memasukkannya ke SQLite"""
+        """Memproses 1 DataFrame, menstandarkan kolomnya, dan memasukkannya ke SQLite secara aman"""
         import pandas as pd
+        import numpy as np
         try:
-            # 1. Bersihkan Data (Drop baris/kolom kosong yang tidak berguna)
+            # 1. Bersihkan Data (Drop baris kosong)
             df = df.dropna(how='all')
             
-            # 2. Standarisasi nama kolom & Cari Baris Header Otomatis (Penting untuk Excel PUPR)
+            # 2. Cari Baris Header Otomatis (Mendeteksi format Excel PUPR)
             header_idx = None
             for idx, row in df.iterrows():
                 row_str = " ".join(row.astype(str).str.upper())
@@ -246,27 +246,55 @@ class EnginexBackend:
             # Rapikan nama kolom
             df.columns = [str(c).upper().strip() for c in df.columns]
             
-            # 3. Cari kolom esensial (Uraian & Harga)
+            # 3. Identifikasi Kolom Utama yang Wajib Ada
             col_uraian = next((c for c in df.columns if 'URAIAN' in c), None)
             col_harga = next((c for c in df.columns if 'HARGA' in c), None)
+            col_satuan = next((c for c in df.columns if 'SATUAN' in c and c != col_harga), None)
             
-            if col_uraian and col_harga:
-                # Buang teks yang nyasar di kolom harga dan bersihkan sub-header (seperti "A. TENAGA KERJA")
-                df[col_harga] = pd.to_numeric(df[col_harga], errors='coerce')
-                df = df.dropna(subset=[col_harga, col_uraian])
-                df = df[~df[col_uraian].str.match(r'^[A-Z]\.\s', na=False)]
+            # Jika kolom Uraian tidak ada, berarti ini sheet kosong/sampah
+            if not col_uraian:
+                return False, 0
+                
+            # 4. BUAT DATAFRAME BARU TERSTANDARISASI (Solusi agar SQLite tidak error)
+            df_clean = pd.DataFrame()
+            df_clean['URAIAN_PEKERJAAN'] = df[col_uraian].astype(str)
             
-            # 4. Tambahkan kategori berdasarkan nama sheet agar rapi
-            df['KATEGORI_SHEET'] = nama_sheet
+            if col_satuan:
+                df_clean['SATUAN'] = df[col_satuan].astype(str)
+            else:
+                df_clean['SATUAN'] = "-"
+                
+            if col_harga:
+                # Bersihkan harga dari teks, spasi, dll secara lembut tanpa menghapus barisnya
+                harga_bersih = df[col_harga].astype(str).str.replace(r'[^\d.]', '', regex=True)
+                df_clean['HARGA_SATUAN'] = pd.to_numeric(harga_bersih, errors='coerce')
+            else:
+                df_clean['HARGA_SATUAN'] = np.nan
+                
+            # 5. Filter Data Kosong
+            # Hanya hapus baris yang Uraian Pekerjaannya benar-benar kosong/NaN
+            df_clean = df_clean[df_clean['URAIAN_PEKERJAAN'].str.lower() != 'nan']
+            df_clean = df_clean[df_clean['URAIAN_PEKERJAAN'].str.strip() != '']
             
-            # 5. Simpan ke Database SQLite
-            df.to_sql('master_ahsp', con=self.conn, if_exists='append', index=False)
+            # 6. Tambahkan Kategori
+            df_clean['KATEGORI_SHEET'] = nama_sheet
             
-            jumlah_baris_berhasil = len(df)
+            # 7. SIMPAN KE SQLITE DENGAN FITUR AUTO-HEALING
+            try:
+                # Coba tambahkan ke tabel yang sudah ada
+                df_clean.to_sql('master_ahsp', con=self.conn, if_exists='append', index=False)
+            except Exception as sql_e:
+                # Jika gagal karena tabel lama rusak, hancurkan tabel lama dan buat baru (Self-Healing)
+                print(f"[!] Memperbaiki database yang rusak... Membuat ulang tabel master_ahsp.")
+                df_clean.to_sql('master_ahsp', con=self.conn, if_exists='replace', index=False)
+            
+            jumlah_baris_berhasil = len(df_clean)
             return True, jumlah_baris_berhasil
+            
         except Exception as e:
-            print(f"Error proses sheet {nama_sheet}: {e}")
+            print(f"[-] Error fatal pada sheet {nama_sheet}: {e}")
             return False, 0
+    
         
     
         
