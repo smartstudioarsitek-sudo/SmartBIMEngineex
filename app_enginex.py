@@ -623,25 +623,36 @@ with st.sidebar:
                         try:
                             # Pengaman Encoding (Baca dari RAM)
                             raw_bytes = ifc_file_target.getvalue()
+                            
+                            # Cek apakah file yang diupload kosong (0 KB)
+                            if len(raw_bytes) == 0:
+                                st.error("❌ File JSON kosong (0 KB). Silakan ekspor ulang dari Revit.")
+                                st.stop()
+                                
                             json_str = None
                             
-                            for enc in ['utf-16', 'utf-8-sig', 'utf-8', 'windows-1252']:
+                            # PERBAIKAN URUTAN BAHASA: Utamakan UTF-8!
+                            for enc in ['utf-8-sig', 'utf-8', 'utf-16', 'windows-1252']:
                                 try:
-                                    json_str = raw_bytes.decode(enc)
-                                    break
-                                except UnicodeDecodeError:
+                                    teks_sementara = raw_bytes.decode(enc)
+                                    # Validasi ekstra: Pastikan teksnya benar-benar JSON (diawali { atau [ )
+                                    if teks_sementara.strip().startswith('{') or teks_sementara.strip().startswith('['):
+                                        json_str = teks_sementara
+                                        break
+                                except Exception:
                                     continue
                                     
                             if not json_str:
-                                st.error("❌ Gagal membaca format teks file JSON.")
+                                st.error("❌ Gagal membaca format teks file JSON. File tidak dikenali.")
                                 st.stop()
                                 
+                            # Memuat teks yang sudah aman menjadi Kamus/Data
                             data_revit = json.loads(json_str)
+                            
                             # A. Proses ke memori RAB
                             if "bill_of_quantities" in data_revit:
                                 boq_data = data_revit["bill_of_quantities"]
                                 
-                                # Cek apakah data dari Revit ternyata kosong
                                 if not boq_data:
                                     st.warning("⚠️ Data elemen 3D kosong. Pastikan model Revit memiliki volume fisik.")
                                     df_grouped = pd.DataFrame(columns=['Kategori', 'Nama', 'Volume'])
@@ -650,15 +661,10 @@ with st.sidebar:
                                     df_raw = pd.DataFrame(boq_data)
                                     
                                     # --- SABUK PENGAMAN KELAS BAJA (ANTI-CRASH) ---
-                                    # Jika kolom tidak ada, buatkan otomatis agar tidak KeyError
-                                    if 'Kategori' not in df_raw.columns: 
-                                        df_raw['Kategori'] = "Tanpa Kategori"
-                                    if 'Nama' not in df_raw.columns: 
-                                        df_raw['Nama'] = "Pekerjaan Tidak Diketahui"
-                                    if 'Volume' not in df_raw.columns: 
-                                        df_raw['Volume'] = 0.0
+                                    if 'Kategori' not in df_raw.columns: df_raw['Kategori'] = "Tanpa Kategori"
+                                    if 'Nama' not in df_raw.columns: df_raw['Nama'] = "Pekerjaan Tidak Diketahui"
+                                    if 'Volume' not in df_raw.columns: df_raw['Volume'] = 0.0
                                         
-                                    # Paksa format data agar seragam
                                     df_raw['Kategori'] = df_raw['Kategori'].astype(str)
                                     df_raw['Nama'] = df_raw['Nama'].astype(str)
                                     df_raw['Volume'] = pd.to_numeric(df_raw['Volume'], errors='coerce').fillna(0)
@@ -675,11 +681,11 @@ with st.sidebar:
                                 st.success(f"✅ Data RAB JSON Berhasil Dimuat! (Proyek: {nama_proyek} | {len(st.session_state['real_boq_data'])} Item). Buka Tab 'Laporan RAB 5D'.")
                             else:
                                 st.error("Format JSON tidak valid (kehilangan kunci 'bill_of_quantities').")
-                                                            
-                        # ---> INI DIA BARIS YANG TIDAK SENGAJA TERHAPUS SEBELUMNYA <---
+                                
                         except Exception as e:
                             st.error(f"Gagal Ekstrak JSON: {e}")
                             
+                                            
                            
                 # --- JALUR LAMA: JIKA FILE IFC ---
                 elif ifc_file_target.name.endswith('.ifc'):
