@@ -3089,31 +3089,47 @@ elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
                 import time
                 time.sleep(2)
                 st.rerun()
-
 # --- E. MODE LAPORAN RAB 5D (WORKSPACE ONLINE) ---
 elif selected_menu == "📑 Laporan RAB 5D":
     st.header("📑 Workspace RAB 5D Interaktif")
     st.caption("Validasi perhitungan RAB, rincian AHSP, SMKK, dan TKDN secara online sebelum mencetak dokumen final.")
     
     # =========================================================
-    # 1. PENGAMANAN DATA (GEMBOK SAAS)
+    # 1. PENGAMANAN DATA BOQ (DARI REVIT/IFC)
+    # =========================================================
+    df_boq_aktual = st.session_state.get('real_boq_data', None)
+    lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
+    
+    if df_boq_aktual is None or df_boq_aktual.empty:
+        st.warning("⚠️ Data BOQ Kosong. Silakan ekstrak file JSON Revit / IFC dari sidebar di sebelah kiri terlebih dahulu.")
+        st.stop()
+
+    # =========================================================
+    # 2. PENGAMANAN DATABASE AHSP (ANTI-CRASH)
     # =========================================================
     db_ahsp = st.session_state.get('master_ahsp')
     
     if db_ahsp is None or (isinstance(db_ahsp, pd.DataFrame) and db_ahsp.empty):
         st.error("🚨 SISTEM TERKUNCI: Database Master AHSP Kosong!")
-        st.warning("Silakan ke menu **⚙️ Admin: Ekstraksi AHSP**, upload File Excel AHSP SE BK 182, lalu klik tombol 'Sedot dan Kunci Permanen'.")
+        st.warning("Volume dari Revit berhasil ditarik, namun harga tidak bisa dihitung. Silakan ke menu **⚙️ Admin: Ekstraksi AHSP**, upload File Excel AHSP, lalu klik tombol 'Sedot dan Kunci Permanen'.")
+        
+        # Tampilkan Volume saja biar user tenang dan tahu JSON Revit-nya jalan
+        st.markdown("### 📊 Preview Volume Revit (Tanpa Harga)")
+        st.dataframe(df_boq_aktual, use_container_width=True)
         st.stop()
         
-    df_boq_aktual = st.session_state.get('real_boq_data', None)
-    lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
+    # Cek apakah kolom URAIAN ada di database AHSP (menghindari KeyError)
+    col_uraian = next((c for c in db_ahsp.columns if 'uraian' in str(c).lower()), None)
     
-    if df_boq_aktual is None or df_boq_aktual.empty:
-        st.warning("⚠️ Data BOQ Kosong. Silakan ekstrak file IFC dari sidebar di sebelah kiri terlebih dahulu.")
+    if not col_uraian:
+        st.error("🚨 DATABASE AHSP KORUP: Tidak menemukan kolom 'Uraian Pekerjaan'.")
+        st.info("💡 Solusi: Silakan ke menu **⚙️ Admin: Ekstraksi AHSP**, upload ulang file Excel AHSP Anda.")
+        st.markdown("### 📊 Preview Volume Revit (Tanpa Harga)")
+        st.dataframe(df_boq_aktual, use_container_width=True)
         st.stop()
 
     # =========================================================
-    # 2. KALKULASI RAB ONLINE (SMART MATCHER V2)
+    # 3. KALKULASI RAB ONLINE (SMART MATCHER V2)
     # =========================================================
     with st.spinner("Menyelaraskan Volume BIM dengan Database SE BK 182 & IKK BPS..."):
         df_rab = df_boq_aktual.copy()
@@ -3125,42 +3141,43 @@ elif selected_menu == "📑 Laporan RAB 5D":
         elif "kalimantan" in lokasi_proyek.lower(): ikk_multiplier = 1.15
         
         def dapatkan_data_ahsp(nama_pekerjaan):
-            col_harga = next((c for c in db_ahsp.columns if 'harga' in str(c).lower()), None)
-            col_uraian = next((c for c in db_ahsp.columns if 'uraian' in str(c).lower()), 'Uraian')
-            col_kode = next((c for c in db_ahsp.columns if 'kode' in str(c).lower() or 'no' in str(c).lower()), None)
-            col_satuan = next((c for c in db_ahsp.columns if 'satuan' in str(c).lower()), None)
-            
-            nama_lower = str(nama_pekerjaan).lower()
-            
-            # Logika Pencocokan Pintar
-            kata_kunci = nama_lower.split()[0]
-            if "kolom" in nama_lower or "balok" in nama_lower or "pelat" in nama_lower or "beton" in nama_lower:
-                kata_kunci = "beton mutu sedang" 
-            elif "dinding" in nama_lower:
-                kata_kunci = "dinding bata merah" 
-            elif "atap" in nama_lower or "roof" in nama_lower or "covering" in nama_lower:
-                kata_kunci = "atap pelana rangka" 
-            elif "pondasi" in nama_lower or "footing" in nama_lower:
-                kata_kunci = "beton mutu rendah"
+            try:
+                col_harga = next((c for c in db_ahsp.columns if 'harga' in str(c).lower()), None)
+                col_uraian_lokal = next((c for c in db_ahsp.columns if 'uraian' in str(c).lower()), None)
+                col_kode = next((c for c in db_ahsp.columns if 'kode' in str(c).lower() or 'no' in str(c).lower()), None)
+                col_satuan = next((c for c in db_ahsp.columns if 'satuan' in str(c).lower()), None)
                 
-            # Eksekusi pencarian di DataFrame
-            match = db_ahsp[db_ahsp[col_uraian].astype(str).str.lower().str.contains(kata_kunci, na=False)]
-            
-            if not match.empty:
-                try: 
+                nama_lower = str(nama_pekerjaan).lower()
+                
+                # Logika Pencocokan Pintar
+                kata_kunci = nama_lower.split()[0]
+                if "kolom" in nama_lower or "balok" in nama_lower or "pelat" in nama_lower or "beton" in nama_lower:
+                    kata_kunci = "beton mutu sedang" 
+                elif "dinding" in nama_lower:
+                    kata_kunci = "dinding bata merah" 
+                elif "atap" in nama_lower or "roof" in nama_lower or "covering" in nama_lower:
+                    kata_kunci = "atap pelana rangka" 
+                elif "pondasi" in nama_lower or "footing" in nama_lower:
+                    kata_kunci = "beton mutu rendah"
+                    
+                # Eksekusi pencarian di DataFrame
+                match = db_ahsp[db_ahsp[col_uraian_lokal].astype(str).str.lower().str.contains(kata_kunci, na=False)]
+                
+                if not match.empty:
                     harga_dasar = float(match.iloc[0][col_harga]) if col_harga else 1500000.0
                     kode_ahsp = str(match.iloc[0][col_kode]) if col_kode else "-"
                     satuan = str(match.iloc[0][col_satuan]) if col_satuan else "Unit"
-                    uraian_asli = str(match.iloc[0][col_uraian])
+                    uraian_asli = str(match.iloc[0][col_uraian_lokal])
                     
                     harga_terkoreksi = harga_dasar * ikk_multiplier
                     return pd.Series([kode_ahsp, uraian_asli, satuan, harga_terkoreksi])
-                except: pass
+            except Exception:
+                pass
             return pd.Series(["-", nama_pekerjaan, "m3", 1500000.0 * ikk_multiplier])
         
         # Terapkan fungsi dan pecah jadi 4 kolom baru
         df_rab[['Kode AHSP', 'Uraian AHSP 182', 'Satuan', 'Harga Satuan (Rp)']] = df_rab['Nama'].apply(dapatkan_data_ahsp)
-        df_rab['Total Harga (Rp)'] = df_rab['Volume'] * df_rab['Harga Satuan (Rp)']
+        df_rab['Total Harga (Rp)'] = pd.to_numeric(df_rab['Volume'], errors='coerce').fillna(0) * pd.to_numeric(df_rab['Harga Satuan (Rp)'], errors='coerce').fillna(0)
         
         # Susun ulang kolom agar rapi
         df_rab = df_rab[['Kode AHSP', 'Kategori', 'Uraian AHSP 182', 'Volume', 'Satuan', 'Harga Satuan (Rp)', 'Total Harga (Rp)']]
@@ -3169,6 +3186,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
         total_rab_fisik = df_rab['Total Harga (Rp)'].sum()
         ppn = total_rab_fisik * 0.11
         grand_total = total_rab_fisik + ppn
+
 
     # =========================================================
     # 3. RENDER UI 8 TAB SESUAI REQUEST
