@@ -3097,7 +3097,12 @@ elif selected_menu == "📑 Laporan RAB 5D":
     # =========================================================
     # 1. PENGAMANAN DATA BOQ (DARI REVIT/IFC)
     # =========================================================
+    # Mengambil data dengan aman (Anti-Crash)
     df_boq_aktual = st.session_state.get('real_boq_data', None)
+    
+    if df_boq_aktual is None or df_boq_aktual.empty:
+        st.warning("⚠️ Data Volume Kosong. Silakan upload dan ekstrak file JSON Revit di menu sebelah kiri terlebih dahulu sebelum membuka Laporan RAB.")
+        st.stop()
     lokasi_proyek = st.session_state.get('lokasi_bps', 'Lampung')
     
     if df_boq_aktual is None or df_boq_aktual.empty:
