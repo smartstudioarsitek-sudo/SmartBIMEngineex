@@ -3293,39 +3293,56 @@ elif selected_menu == "📑 Laporan RAB 5D":
     st.write("Cetak seluruh hasil analisis BOQ, RAB, AHSP, SMKK, dan Rekapitulasi ke dalam satu file Excel (7-Tab) standar Kementerian PUPR dan dokumen PDF.")
     
     col_export_1, col_export_2 = st.columns(2)
-    
-    # --- FITUR 1: EXPORT EXCEL 7-TAB ---
+   # --- FITUR 1: EXPORT EXCEL 7-TAB ---
     with col_export_1:
         if st.button("📊 Generate Excel 7-Tab (PUPR Standard)", type="primary", use_container_width=True):
-            with st.spinner("Memaketkan 7 Worksheet Excel beserta tautan rumusnya..."):
+            with st.spinner("Menyalin data dari layar ke dalam file Excel..."):
                 try:
-                    # Pastikan modul libs_export tersedia
-                    if 'libs_export' in sys.modules:
-                        export_engine = sys.modules['libs_export'].Export_Engine()
+                    import io
+                    output = io.BytesIO()
+                    
+                    # Gunakan Pandas ExcelWriter untuk mencetak langsung data yang SUDAH MATANG dari layar
+                    with pd.ExcelWriter(output) as writer:
+                        # Tab 1: Rekapitulasi
+                        df_rekap = pd.DataFrame({
+                            "NO": [1, 2, 3],
+                            "URAIAN PEKERJAAN": ["A. Total Biaya Fisik Struktur", "B. Pajak Pertambahan Nilai (PPN 11%)", "C. GRAND TOTAL PAGU"],
+                            "TOTAL BIAYA (Rp)": [total_rab_fisik, ppn, grand_total]
+                        })
+                        df_rekap.to_excel(writer, sheet_name="1. Rekap", index=False)
                         
-                        # [PENTING] Memanggil fungsi generate_7tab_rab_excel dari libs_export.py
-                        # Perhatikan bahwa kita melewatkan df_boq_aktual (Volume asli)
-                        # Harga dan hitungan akan dirakit ulang di dalam libs_export agar memiliki rumus Excel (=A1*B1)
-                        excel_bytes = export_engine.generate_7tab_rab_excel(
-                            project_name=nama_proyek, 
-                            df_boq=df_boq_aktual, 
-                            price_engine=sys.modules['libs_price_engine'].PriceEngine3Tier() if 'libs_price_engine' in sys.modules else None,
-                            lokasi_proyek=lokasi_proyek
-                        )
+                        # Tab 2: RAB Utama
+                        df_rab.to_excel(writer, sheet_name="2. RAB", index=False)
                         
-                        st.download_button(
-                            label="📥 Download File Excel (.xlsx)",
-                            data=excel_bytes,
-                            file_name=f"RAB_Lengkap_{nama_proyek.replace(' ', '_')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-                        st.success("✅ File Excel 7-Tab siap diunduh!")
-                    else:
-                        st.error("Modul libs_export tidak ditemukan.")
+                        # Tab 3: Backup Volume (BOQ)
+                        df_boq_aktual.to_excel(writer, sheet_name="3. Backup BOQ", index=False)
+                        
+                        # Tab 4: AHSP 182
+                        df_ahsp_used.to_excel(writer, sheet_name="4. AHSP", index=False)
+                        
+                        # Tab 5: SMKK
+                        df_smkk.to_excel(writer, sheet_name="5. SMKK", index=False)
+                        
+                        # Tab 6: TKDN
+                        df_tkdn.to_excel(writer, sheet_name="6. TKDN", index=False)
+                        
+                        # Tab 7: Basic Price (HSD BPS)
+                        df_hsd_preview.to_excel(writer, sheet_name="7. Basic Price", index=False)
+                            
+                    excel_bytes = output.getvalue()
+                    
+                    st.download_button(
+                        label="📥 Download File Excel (.xlsx)",
+                        data=excel_bytes,
+                        file_name=f"RAB_Lengkap_{nama_proyek.replace(' ', '_')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                    st.success("✅ File Excel 7-Tab siap diunduh! Data dijamin 100% sama persis dengan tampilan layar.")
+                    
                 except Exception as e:
-                    st.error(f"Gagal membuat Excel: {str(e)}")
-
+                    st.error(f"Gagal membuat Excel: {str(e)}") 
+    
     # --- FITUR 2: EXPORT LAPORAN PDF ---
     with col_export_2:
         if st.button("📄 Generate Laporan PDF (SIMBG)", type="secondary", use_container_width=True):
