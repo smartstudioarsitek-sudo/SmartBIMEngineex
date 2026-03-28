@@ -53,6 +53,8 @@ thefuzz
 python-Levenshtein
 requests
 watchdog
+supabase
+postgrest-py
 
 # === UI Components ===
 streamlit-drawable-canvas==0.9.3
