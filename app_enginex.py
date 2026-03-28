@@ -19,6 +19,7 @@ import sys
 import types
 import time  # Ditambahkan untuk fitur reload (Open Project)
 from fpdf import FPDF 
+from thefuzz import process, fuzz
 
 # ==========================================
 # 0. KONFIGURASI KEAMANAN & ENVIRONMENT (AUDIT FIX)
@@ -34,6 +35,35 @@ def get_api_key():
         return st.secrets["GOOGLE_API_KEY"]
     except (FileNotFoundError, KeyError):
         return os.environ.get("GOOGLE_API_KEY", "")
+
+# ==========================================
+# MESIN NLP (FUZZY MATCHING) UNTUK MAPPING AHSP
+# ==========================================
+def get_best_ahsp_match(nama_dari_revit, daftar_kunci_ahsp, threshold=85):
+    """
+    Fungsi cerdas menjodohkan nama Revit dengan database AHSP.
+    Menggunakan algoritma Levenshtein Distance (Token Set Ratio).
+    Threshold 85 berarti harus ada 85% kecocokan makna kata.
+    """
+    if not nama_dari_revit or not daftar_kunci_ahsp:
+        return None, 0
+        
+    # Bersihkan nama Revit dari kata pengganggu agar fokus ke material
+    nama_bersih = str(nama_dari_revit).replace("Pekerjaan ", "").strip()
+    
+    # Cari probabilitas kemiripan tertinggi
+    best_match, score = process.extractOne(
+        nama_bersih, 
+        daftar_kunci_ahsp, 
+        scorer=fuzz.token_set_ratio
+    )
+    
+    # Loloskan hanya jika kemiripannya di atas threshold (85%)
+    if score >= threshold:
+        return best_match, score
+    else:
+        return None, score
+
 
 # ==========================================
 # 1. IMPORT LIBRARY ENGINEERING (MODULAR)
