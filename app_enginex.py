@@ -64,7 +64,86 @@ def get_best_ahsp_match(nama_dari_revit, daftar_kunci_ahsp, threshold=85):
     else:
         return None, score
 
+# ==========================================
+# MESIN KONEKSI SUPABASE (DATABASE CLOUD PERMANEN)
+# ==========================================
+from supabase import create_client, Client
 
+@st.cache_resource
+def init_supabase():
+    """Menginisialisasi koneksi ke Supabase menggunakan kunci di secrets.toml"""
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        return create_client(url, key)
+    except Exception as e:
+        st.error("Kunci Supabase belum dipasang di st.secrets!")
+        return None
+
+supabase = init_supabase()
+
+@st.cache_data(ttl=3600) # Simpan di memori 1 jam agar tidak loading terus
+def get_ahsp_from_supabase():
+    """Fungsi menyedot Master AHSP dari Supabase secara instan"""
+    if supabase is None: return {}
+    
+    try:
+        response = supabase.table("master_ahsp").select("*").execute()
+        data_ahsp = response.data
+        
+        # Ubah formatnya menjadi dictionary agar langsung cocok dengan mesin NLP kita
+        dict_ahsp = {}
+        for item in data_ahsp:
+            kunci = item['uraian_pekerjaan']
+            dict_ahsp[kunci] = {
+                'Satuan': item['satuan'],
+                'Harga Satuan Pekerjaan': item['harga_satuan']
+            }
+        return dict_ahsp
+    except Exception as e:
+        st.warning(f"Gagal menarik data dari Supabase: {e}")
+        return {}
+
+def upload_ahsp_to_supabase(df_excel):
+    """Fungsi menembakkan data Excel ke Supabase (Hanya dipakai 1x seumur hidup)"""
+    if supabase is None: return
+    
+    data_to_insert = []
+    # Progress bar agar visualnya bagus
+    progress_text = "Menyuntikkan data ke Cloud Supabase..."
+    my_bar = st.progress(0, text=progress_text)
+    
+    total_rows = len(df_excel)
+    for index, row in df_excel.iterrows():
+        try:
+            data_to_insert.append({
+                "uraian_pekerjaan": str(row.get('Uraian Pekerjaan / Komponen', row.iloc[1])), 
+                "satuan": str(row.get('Satuan', row.iloc[2])),
+                # Bersihkan harga dari koma/titik jika ada
+                "harga_satuan": float(str(row.get('Harga Satuan (Rp)', row.iloc[3])).replace(',', ''))
+            })
+        except:
+            continue # Lewati baris yang kosong/error
+            
+        # Update progress bar
+        if index % 100 == 0:
+            my_bar.progress(index / total_rows, text=progress_text)
+            
+    my_bar.progress(1.0, text="Finalisasi penyimpanan...")
+    
+    # Tembakkan ke Supabase (Bulk Insert)
+    try:
+        # Hapus data lama dulu agar tidak dobel (opsional)
+        # supabase.table("master_ahsp").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        
+        # Masukkan data baru
+        supabase.table("master_ahsp").insert(data_to_insert).execute()
+        st.success("🚀 BINGO! Master AHSP berhasil dikunci permanen di Cloud Supabase!")
+        st.balloons()
+        # Bersihkan cache agar data baru langsung terbaca
+        get_ahsp_from_supabase.clear() 
+    except Exception as e:
+        st.error(f"Gagal menyimpan ke Supabase: {e}")
 # ==========================================
 # 1. IMPORT LIBRARY ENGINEERING (MODULAR)
 # ==========================================
@@ -512,16 +591,23 @@ if 'nama_proyek' not in st.session_state:
 db = st.session_state.backend
 uploaded_files = None # Inisialisasi awal
 # ==========================================
-# AUTO-LOAD MASTER DATABASE AHSP
+# AUTO-LOAD MASTER DATABASE AHSP (VIA CLOUD SUPABASE)
 # ==========================================
 if 'master_ahsp' not in st.session_state:
-    df_ahsp_db = db.get_master_ahsp_permanen()
-    if not df_ahsp_db.empty:
+    dict_ahsp = get_ahsp_from_supabase() # Panggil fungsi Supabase kita
+    
+    if dict_ahsp:
+        # Ubah dictionary Supabase kembali menjadi tabel Pandas (DataFrame) 
+        # agar tidak merusak rumus RAB lama Kakak
+        df_ahsp_db = pd.DataFrame.from_dict(dict_ahsp, orient='index').reset_index()
+        df_ahsp_db.rename(columns={'index': 'Uraian Pekerjaan', 'Satuan': 'Satuan', 'Harga Satuan Pekerjaan': 'Harga Satuan (Rp)'}, inplace=True)
+        
         st.session_state.master_ahsp = df_ahsp_db
-        st.session_state.status_ahsp = "TERKUNCI DARI DATABASE"
+        st.session_state.status_ahsp = "TERKUNCI DARI DATABASE CLOUD"
     else:
         st.session_state.master_ahsp = None
         st.session_state.status_ahsp = "KOSONG"
+# ==========================================
 
 with st.sidebar:
     st.markdown("### 🛡️ ENGINEX GOV.VER")
@@ -3088,53 +3174,40 @@ elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
             options=semua_sheet, 
             default=sheet_relevan_default
         )
-        
         # 3. PROSES EKSEKUSI (SATU PER SATU)
-        if st.button("🚀 Sedot Sheet Terpilih & Kunci ke Database", type="primary", use_container_width=True):
+        if st.button("🚀 Sedot Sheet Terpilih & Kunci ke Cloud Supabase", type="primary", use_container_width=True):
             if not sheet_terpilih:
                 st.warning("Pilih minimal 1 sheet untuk diproses.")
             else:
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
                 total_sheet = len(sheet_terpilih)
-                total_data_masuk = 0
                 
                 for i, sheet_name in enumerate(sheet_terpilih):
-                    status_text.text(f"Mengekstrak Sheet: {sheet_name} ({i+1}/{total_sheet})...")
-                    
+                    st.info(f"Mengekstrak Sheet: {sheet_name} ({i+1}/{total_sheet})...")
                     try:
-                        # Sedot HANYA 1 sheet ini
+                        # Baca data per sheet
                         df_temp = pd.read_excel(xls, sheet_name=sheet_name)
                         
-                        # ---> DI SINI KAKAK PANGGIL FUNGSI BACKEND KAKAK <---
-                        # Misalnya: db.simpan_satu_dataframe_ke_sqlite(df_temp, nama_kategori=sheet_name)
-                        # Karena saya tidak melihat isi backend kakak, saya asumsikan ada fungsi seperti ini:
+                        # ---> INJEKSI LANGSUNG KE SUPABASE <---
+                        upload_ahsp_to_supabase(df_temp) 
                         
-                        sukses, jml_baris = db.proses_dan_simpan_dataframe(df_temp, sheet_name)
-                        
-                        if sukses:
-                            total_data_masuk += jml_baris
                     except Exception as e:
                         st.error(f"Gagal memproses sheet '{sheet_name}': {e}")
                         
-                    # Update Progress Bar
-                    progress_bar.progress((i + 1) / total_sheet)
-                    
-                    # Bersihkan RAM secara paksa (PENTING AGAR TIDAK CRASH)
+                    # Bersihkan RAM secara paksa agar tidak lambat
                     import gc
                     del df_temp
                     gc.collect() 
                 
-                status_text.text("Proses Selesai!")
-                st.success(f"✅ BINGO! Total {total_data_masuk} baris data dari {total_sheet} sheet berhasil dimasukkan ke Database secara aman.")
+                st.success(f"✅ BINGO! Data dari {total_sheet} sheet berhasil ditembakkan ke Cloud Supabase!")
                 
-                # Reload memori
-                st.session_state.master_ahsp = db.get_master_ahsp_permanen()
-                st.session_state.status_ahsp = "TERKUNCI DARI DATABASE"
+                # Hapus memori lama agar sistem terpaksa membaca ulang data segar dari Supabase
+                if 'master_ahsp' in st.session_state:
+                    del st.session_state['master_ahsp']
+                    
                 import time
                 time.sleep(2)
                 st.rerun()
+        
 # --- E. MODE LAPORAN RAB 5D (WORKSPACE ONLINE) ---
 elif selected_menu == "📑 Laporan RAB 5D":
     st.header("📑 Workspace RAB 5D Interaktif")
