@@ -693,14 +693,24 @@ with st.sidebar:
                                     # --- SABUK PENGAMAN KELAS BAJA (ANTI-CRASH) ---
                                     if 'Kategori' not in df_raw.columns: df_raw['Kategori'] = "Tanpa Kategori"
                                     if 'Nama' not in df_raw.columns: df_raw['Nama'] = "Pekerjaan Tidak Diketahui"
-                                    if 'Volume' not in df_raw.columns: df_raw['Volume'] = 0.0
+                                    
+                                    # [PERBAIKAN TAHAP 1] Jembatan Adaptasi 'Kuantitas' ke 'Volume'
+                                    if 'Kuantitas' in df_raw.columns:
+                                        df_raw['Volume'] = df_raw['Kuantitas']
+                                    elif 'Volume' not in df_raw.columns: 
+                                        df_raw['Volume'] = 0.0
+                                        
+                                    # Amankan kolom 'Satuan' agar tidak error
+                                    if 'Satuan' not in df_raw.columns:
+                                        df_raw['Satuan'] = "Unit"
                                         
                                     df_raw['Kategori'] = df_raw['Kategori'].astype(str)
                                     df_raw['Nama'] = df_raw['Nama'].astype(str)
                                     df_raw['Volume'] = pd.to_numeric(df_raw['Volume'], errors='coerce').fillna(0)
                                     # ----------------------------------------
                                     
-                                    df_grouped = df_raw.groupby(['Kategori', 'Nama'], as_index=False)['Volume'].sum()
+                                    # Ikutsertakan 'Satuan' saat melakukan Grouping
+                                    df_grouped = df_raw.groupby(['Kategori', 'Nama', 'Satuan'], as_index=False)['Volume'].sum()
                                     st.session_state['real_boq_data'] = df_grouped
                                 
                                 # B. Simpan data FEM untuk digunakan di menu Gempa nanti
