@@ -20,6 +20,21 @@ import types
 import time  # Ditambahkan untuk fitur reload (Open Project)
 from fpdf import FPDF 
 from thefuzz import process, fuzz
+import types
+import time  # Ditambahkan untuk fitur reload (Open Project)
+from fpdf import FPDF 
+from thefuzz import process, fuzz
+
+# ==========================================
+# 00. WAJIB PALING ATAS: KONFIGURASI HALAMAN
+# ==========================================
+st.set_page_config(
+    page_title="ENGINEX Ultimate (Gov.Ready)", 
+    page_icon="🛡️", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 
 # ==========================================
 # 0. KONFIGURASI KEAMANAN & ENVIRONMENT (AUDIT FIX)
@@ -269,15 +284,7 @@ if has_geotek:
         sys.modules['libs_bps'] = libs_bps
     except ImportError:
         pass
-# ==========================================
-# 2. KONFIGURASI HALAMAN & STYLE
-# ==========================================
-st.set_page_config(
-    page_title="ENGINEX Ultimate (Gov.Ready)", 
-    page_icon="🛡️", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+
 
 st.markdown("""
 <style>
