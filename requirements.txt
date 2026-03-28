@@ -49,6 +49,8 @@ duckdb
 pyarrow
 beautifulsoup4
 selectolax
+thefuzz
+python-Levenshtein
 requests
 watchdog
 
