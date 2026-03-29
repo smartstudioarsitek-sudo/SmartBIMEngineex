@@ -3367,64 +3367,68 @@ elif selected_menu == "📑 Laporan RAB 5D":
         st.stop()
 
     # =========================================================
-    # 3. KALKULASI RAB ONLINE (SMART MATCHER V2)
+    # 3. KALKULASI RAB ONLINE (THE TRUE SMART MATCHER V3)
     # =========================================================
-    with st.spinner("Menyelaraskan Volume BIM dengan Database SE BK 182 & IKK BPS..."):
+    with st.spinner("🤖 AI sedang mengawinkan Volume BIM dengan Database AHSP PUPR..."):
         df_rab = df_boq_aktual.copy()
         
-        # Simulasi IKK BPS (Indeks Kemahalan Konstruksi)
+        # Simulasi IKK BPS
         ikk_multiplier = 1.0
         if "papua" in lokasi_proyek.lower(): ikk_multiplier = 1.45
         elif "maluku" in lokasi_proyek.lower(): ikk_multiplier = 1.25
         elif "kalimantan" in lokasi_proyek.lower(): ikk_multiplier = 1.15
         
-        def dapatkan_data_ahsp(nama_pekerjaan):
-            try:
-                col_harga = next((c for c in db_ahsp.columns if 'harga' in str(c).lower()), None)
-                col_uraian_lokal = next((c for c in db_ahsp.columns if 'uraian' in str(c).lower()), None)
-                col_kode = next((c for c in db_ahsp.columns if 'kode' in str(c).lower() or 'no' in str(c).lower()), None)
-                col_satuan = next((c for c in db_ahsp.columns if 'satuan' in str(c).lower()), None)
+        # Ambil daftar SEMUA Uraian Pekerjaan dari Supabase untuk "Kamus" NLP
+        daftar_uraian_ahsp = db_ahsp['Uraian Pekerjaan'].astype(str).tolist()
+
+        def ai_ahsp_matcher(nama_pekerjaan_revit):
+            """Fungsi NLP sesungguhnya untuk menjodohkan kata bahasa Inggris Revit ke bahasa Indonesia PUPR"""
+            nama_lower = str(nama_pekerjaan_revit).lower()
+            
+            # --- 1. PRE-PROCESSING (Jembatan Bahasa) ---
+            kata_pencarian = nama_lower
+            if any(k in nama_lower for k in ["concrete", "cast in situ"]): kata_pencarian = "beton bertulang"
+            elif any(k in nama_lower for k in ["brick", "wall"]): kata_pencarian = "pasangan dinding bata merah"
+            elif "ceramic" in nama_lower or "tile" in nama_lower: kata_pencarian = "pasangan lantai ubin keramik"
+            elif "roof" in nama_lower: kata_pencarian = "penutup atap genteng"
+            elif "wood" in nama_lower: kata_pencarian = "pekerjaan kayu"
+            elif "paint" in nama_lower: kata_pencarian = "pengecatan"
+            elif "door" in nama_lower or "window" in nama_lower or "aluminium" in nama_lower: kata_pencarian = "kusen pintu jendela aluminium"
+            elif "steel" in nama_lower: kata_pencarian = "struktur baja profil"
+            
+            # --- 2. NLP FUZZY MATCHING (Levenshtein Distance) ---
+            # Mencari tingkat kemiripan kata di atas 50%
+            best_match, score = get_best_ahsp_match(kata_pencarian, daftar_uraian_ahsp, threshold=50)
+            
+            # --- 3. AMBIL HARGA JIKA KETEMU JODOHNYA ---
+            if best_match:
+                # Cari baris yang Uraiannya persis sama dengan best_match
+                baris_ahsp = db_ahsp[db_ahsp['Uraian Pekerjaan'] == best_match].iloc[0]
                 
-                nama_lower = str(nama_pekerjaan).lower()
+                harga_dasar = float(baris_ahsp.get('Harga Satuan (Rp)', 1500000.0))
+                # Di Supabase, kita tadi tidak menyimpan kode untuk "Utama", jadi kita pakai "-" saja
+                kode_ahsp = "-" 
+                satuan = str(baris_ahsp.get('Satuan', "Unit"))
+                uraian_asli = str(baris_ahsp.get('Uraian Pekerjaan', best_match))
                 
-                # Logika Pencocokan Pintar
-                kata_kunci = nama_lower.split()[0]
-                if "kolom" in nama_lower or "balok" in nama_lower or "pelat" in nama_lower or "beton" in nama_lower:
-                    kata_kunci = "beton mutu sedang" 
-                elif "dinding" in nama_lower:
-                    kata_kunci = "dinding bata merah" 
-                elif "atap" in nama_lower or "roof" in nama_lower or "covering" in nama_lower:
-                    kata_kunci = "atap pelana rangka" 
-                elif "pondasi" in nama_lower or "footing" in nama_lower:
-                    kata_kunci = "beton mutu rendah"
-                    
-                # Eksekusi pencarian di DataFrame
-                match = db_ahsp[db_ahsp[col_uraian_lokal].astype(str).str.lower().str.contains(kata_kunci, na=False)]
-                
-                if not match.empty:
-                    harga_dasar = float(match.iloc[0][col_harga]) if col_harga else 1500000.0
-                    kode_ahsp = str(match.iloc[0][col_kode]) if col_kode else "-"
-                    satuan = str(match.iloc[0][col_satuan]) if col_satuan else "Unit"
-                    uraian_asli = str(match.iloc[0][col_uraian_lokal])
-                    
-                    harga_terkoreksi = harga_dasar * ikk_multiplier
-                    return pd.Series([kode_ahsp, uraian_asli, satuan, harga_terkoreksi])
-            except Exception:
-                pass
-            return pd.Series(["-", nama_pekerjaan, "m3", 1500000.0 * ikk_multiplier])
+                harga_terkoreksi = harga_dasar * ikk_multiplier
+                return pd.Series([kode_ahsp, uraian_asli, satuan, harga_terkoreksi, score])
+            
+            # --- 4. FALLBACK (JIKA BENAR-BENAR GAGAL KETEMU) ---
+            return pd.Series(["-", f"⚠️ {nama_pekerjaan_revit} (TIDAK DITEMUKAN DI AHSP)", "m3", 1500000.0 * ikk_multiplier, 0])
         
-        # Terapkan fungsi dan pecah jadi 4 kolom baru
-        df_rab[['Kode AHSP', 'Uraian AHSP 182', 'Satuan', 'Harga Satuan (Rp)']] = df_rab['Nama'].apply(dapatkan_data_ahsp)
+        # Eksekusi AI Matcher ke seluruh baris RAB
+        df_rab[['Kode AHSP', 'Uraian AHSP 182', 'Satuan', 'Harga Satuan (Rp)', 'Akurasi NLP (%)']] = df_rab['Nama'].apply(ai_ahsp_matcher)
         df_rab['Total Harga (Rp)'] = pd.to_numeric(df_rab['Volume'], errors='coerce').fillna(0) * pd.to_numeric(df_rab['Harga Satuan (Rp)'], errors='coerce').fillna(0)
         
-        # Susun ulang kolom agar rapi
+        # Susun ulang kolom agar rapi (Sembunyikan Akurasi NLP)
         df_rab = df_rab[['Kode AHSP', 'Kategori', 'Uraian AHSP 182', 'Volume', 'Satuan', 'Harga Satuan (Rp)', 'Total Harga (Rp)']]
         
         # Hitung Grand Total
         total_rab_fisik = df_rab['Total Harga (Rp)'].sum()
         ppn = total_rab_fisik * 0.11
         grand_total = total_rab_fisik + ppn
-
+    
 
     # =========================================================
     # 3. RENDER UI 8 TAB SESUAI REQUEST
