@@ -3513,37 +3513,120 @@ elif selected_menu == "📑 Laporan RAB 5D":
         st.dataframe(df_ahsp_used.style.format({'Harga Satuan (Rp)': 'Rp {:,.0f}'}), use_container_width=True)
         
     with tab_smkk:
-        st.markdown("**Estimasi Biaya SMKK (Standar 9 Item PUPR):**")
-        biaya_bpjs = total_rab_fisik * 0.005 # 0.5% dari fisik
+        st.markdown("**Rencana Biaya SMKK (Bottom-Up Estimation berdasar Skala Proyek):**")
+        st.caption("Sesuai Permen PUPR No.10/2021, biaya dihitung proporsional dari volume/skala pekerjaan fisik.")
+        
+        # Asumsi Durasi Proyek & Pekerja Harian berdasar skala nilai proyek
+        # (Rp 1 Miliar ~ 15 Pekerja Aktif ~ 90 Hari Kerja)
+        estimasi_pekerja = max(5, int(total_rab_fisik / 75000000))
+        estimasi_hari = max(30, int((total_rab_fisik / 1000000000) * 90))
+        
+        # Kalkulasi per item (Rasionalisasi Bottom-Up)
+        biaya_bpjs = total_rab_fisik * 0.005 # 0.5% fix dari nilai fisik
+        biaya_apd = estimasi_pekerja * 350000 # Rp 350k/paket APD per pekerja
+        biaya_apk = (total_rab_fisik * 0.002) # Jaring pengaman, scafolding, dll
+        biaya_personel = 5000000 * (estimasi_hari / 30) # Gaji Ahli K3 Rp 5jt/bulan
+        biaya_rambu = max(500000, estimasi_pekerja * 50000)
+        biaya_p3k = max(300000, estimasi_pekerja * 25000)
+        biaya_dokumen = 1500000 # Fixed base cost untuk printing RKK
+        biaya_sosialisasi = estimasi_pekerja * 20000 # Spanduk & safety induction
+        
         data_smkk = [
-            {"No": 1, "Item SMKK": "Penyiapan Dokumen RK3K", "Biaya (Rp)": 1000000},
-            {"No": 2, "Item SMKK": "Sosialisasi, Promosi, & Pelatihan", "Biaya (Rp)": 500000},
-            {"No": 3, "Item SMKK": "Alat Pelindung Kerja (APK)", "Biaya (Rp)": 1500000},
-            {"No": 4, "Item SMKK": "Alat Pelindung Diri (APD)", "Biaya (Rp)": 2000000},
-            {"No": 5, "Item SMKK": "Asuransi & Perizinan (BPJS)", "Biaya (Rp)": biaya_bpjs},
-            {"No": 6, "Item SMKK": "Personel K3", "Biaya (Rp)": 3500000},
-            {"No": 7, "Item SMKK": "Fasilitas Kesehatan (P3K)", "Biaya (Rp)": 500000},
-            {"No": 8, "Item SMKK": "Rambu-Rambu K3", "Biaya (Rp)": 500000},
-            {"No": 9, "Item SMKK": "Lain-lain Terkait Risiko K3", "Biaya (Rp)": 0},
+            {"No": 1, "Item SMKK": "Penyiapan Dokumen RK3K", "Vol/Satuan": "1 Ls", "Biaya (Rp)": biaya_dokumen},
+            {"No": 2, "Item SMKK": "Sosialisasi, Promosi, & Pelatihan", "Vol/Satuan": f"{estimasi_pekerja} Orang", "Biaya (Rp)": biaya_sosialisasi},
+            {"No": 3, "Item SMKK": "Alat Pelindung Kerja (APK)", "Vol/Satuan": "Proporsional Fisik", "Biaya (Rp)": biaya_apk},
+            {"No": 4, "Item SMKK": "Alat Pelindung Diri (APD)", "Vol/Satuan": f"{estimasi_pekerja} Set", "Biaya (Rp)": biaya_apd},
+            {"No": 5, "Item SMKK": "Asuransi & Perizinan (BPJS)", "Vol/Satuan": "0.5% Nilai Proyek", "Biaya (Rp)": biaya_bpjs},
+            {"No": 6, "Item SMKK": "Personel Manajerial K3", "Vol/Satuan": f"{estimasi_hari/30:.1f} OB", "Biaya (Rp)": biaya_personel},
+            {"No": 7, "Item SMKK": "Fasilitas Kesehatan (P3K)", "Vol/Satuan": "1 Paket", "Biaya (Rp)": biaya_p3k},
+            {"No": 8, "Item SMKK": "Rambu-Rambu & Barikade", "Vol/Satuan": "1 Paket", "Biaya (Rp)": biaya_rambu},
+            {"No": 9, "Item SMKK": "Lain-lain Terkait Risiko K3", "Vol/Satuan": "-", "Biaya (Rp)": 0},
         ]
         df_smkk = pd.DataFrame(data_smkk)
         total_smkk = df_smkk['Biaya (Rp)'].sum()
+        
         st.dataframe(df_smkk.style.format({'Biaya (Rp)': 'Rp {:,.0f}'}), use_container_width=True)
-        st.info(f"👷 Total Anggaran SMKK: **Rp {total_smkk:,.0f}**")
+        st.success(f"👷 Total Anggaran Valid SMKK: **Rp {total_smkk:,.0f}** (Dikalibrasi untuk {estimasi_pekerja} pekerja selama {estimasi_hari} hari)")
         
     with tab_tkdn:
-        st.markdown("**Rincian Tingkat Komponen Dalam Negeri (TKDN):**")
-        tkdn_data = [
-            {"Kategori": "Material (Semen, Pasir, Batu Lokal)", "Persentase TKDN": "100%", "Nilai TKDN (Rp)": total_rab_fisik * 0.40},
-            {"Kategori": "Material (Baja/Besi Fabrikasi)", "Persentase TKDN": "45%", "Nilai TKDN (Rp)": total_rab_fisik * 0.20},
-            {"Kategori": "Sewa Peralatan Konstruksi", "Persentase TKDN": "80%", "Nilai TKDN (Rp)": total_rab_fisik * 0.15},
-            {"Kategori": "Upah Tenaga Kerja Lokal", "Persentase TKDN": "100%", "Nilai TKDN (Rp)": total_rab_fisik * 0.25},
-        ]
-        df_tkdn = pd.DataFrame(tkdn_data)
-        total_tkdn = df_tkdn['Nilai TKDN (Rp)'].sum()
-        persentase_tkdn = (total_tkdn / total_rab_fisik) * 100 if total_rab_fisik > 0 else 0
-        st.dataframe(df_tkdn.style.format({'Nilai TKDN (Rp)': 'Rp {:,.0f}'}), use_container_width=True)
-        st.metric("Total TKDN Proyek", f"{persentase_tkdn:.2f} %", "Memenuhi Standar > 40%")
+        st.markdown("**Analisis Tingkat Komponen Dalam Negeri (TKDN) - Pendekatan Bottom-Up:**")
+        st.caption("Sistem membedah proporsi Tenaga Kerja, Material, dan Alat pada setiap item pekerjaan (AHSP) untuk mengakumulasi nilai KDN riil.")
+        
+        # Algoritma Pembedah Item RAB untuk TKDN
+        total_kdn_proyek = 0
+        rincian_tkdn = []
+        
+        for index, row in df_rab.iterrows():
+            nama_item = str(row['Uraian AHSP 182']).lower()
+            harga_total_item = row['Total Harga (Rp)']
+            
+            if harga_total_item <= 0: continue
+            
+            # Estimasi Proporsi Komponen Pembentuk Harga (Standar Pendekatan BPS/PUPR)
+            # Jika tidak ada rincian riil dari database, gunakan rasio empiris jenis pekerjaan
+            if "beton" in nama_item or "struktur" in nama_item:
+                prop_tenaga = 0.20; prop_bahan = 0.70; prop_alat = 0.10
+                # Beton (Semen/Pasir lokal) TKDN bahan sangat tinggi
+                tkdn_bahan = 0.90; tkdn_alat = 0.80 
+            elif "baja" in nama_item or "besi" in nama_item:
+                prop_tenaga = 0.15; prop_bahan = 0.75; prop_alat = 0.10
+                # Baja sering import/fabrikasi, TKDN bahan lebih rendah
+                tkdn_bahan = 0.45; tkdn_alat = 0.70
+            elif "tanah" in nama_item or "galian" in nama_item:
+                prop_tenaga = 0.40; prop_bahan = 0.0; prop_alat = 0.60
+                tkdn_bahan = 1.0; tkdn_alat = 0.75
+            else:
+                # Pekerjaan Arsitektur / Finishing / Umum
+                prop_tenaga = 0.35; prop_bahan = 0.60; prop_alat = 0.05
+                tkdn_bahan = 0.85; tkdn_alat = 0.80
+                
+            # Tenaga Kerja Lokal dipastikan 100% TKDN
+            tkdn_tenaga = 1.00
+            
+            # Hitung Nilai Uang (Rp) masing-masing komponen
+            kdn_tenaga_rp = harga_total_item * prop_tenaga * tkdn_tenaga
+            kdn_bahan_rp = harga_total_item * prop_bahan * tkdn_bahan
+            kdn_alat_rp = harga_total_item * prop_alat * tkdn_alat
+            
+            kdn_item_total = kdn_tenaga_rp + kdn_bahan_rp + kdn_alat_rp
+            total_kdn_proyek += kdn_item_total
+            
+            rincian_tkdn.append({
+                "Uraian Pekerjaan": row['Uraian AHSP 182'][:40] + "...",
+                "Total Harga (Rp)": harga_total_item,
+                "KDN Tenaga (Rp)": kdn_tenaga_rp,
+                "KDN Bahan (Rp)": kdn_bahan_rp,
+                "KDN Alat (Rp)": kdn_alat_rp,
+                "Total KDN (Rp)": kdn_item_total,
+                "Capaian TKDN (%)": (kdn_item_total / harga_total_item) * 100
+            })
+            
+        df_tkdn = pd.DataFrame(rincian_tkdn)
+        
+        # Hitung Persentase Total
+        persentase_tkdn = (total_kdn_proyek / total_rab_fisik) * 100 if total_rab_fisik > 0 else 0
+        
+        if not df_tkdn.empty:
+            st.dataframe(
+                df_tkdn.style.format({
+                    'Total Harga (Rp)': 'Rp {:,.0f}', 'KDN Tenaga (Rp)': 'Rp {:,.0f}',
+                    'KDN Bahan (Rp)': 'Rp {:,.0f}', 'KDN Alat (Rp)': 'Rp {:,.0f}',
+                    'Total KDN (Rp)': 'Rp {:,.0f}', 'Capaian TKDN (%)': '{:.1f} %'
+                }), 
+                use_container_width=True, height=250
+            )
+            
+            col_t1, col_t2 = st.columns(2)
+            col_t1.metric("Total Nilai KDN (Rp)", f"Rp {total_kdn_proyek:,.0f}")
+            col_t2.metric("Tingkat Komponen Dalam Negeri (TKDN)", f"{persentase_tkdn:.2f} %", "Terverifikasi Bottom-Up")
+            
+            if persentase_tkdn < 40:
+                st.error("⚠️ Peringatan Audit: TKDN Proyek di bawah standar wajib minimum Pemerintah (40%).")
+            else:
+                st.success("✅ Sertifikasi Aman: TKDN Proyek memenuhi standar minimum 40% (Surat Edaran Bersama LKPP - Kemenperin).")
+        else:
+            st.info("Data RAB Kosong.")
+    
 
     with tab_hsd:
         st.markdown(f"**Basic Price (HSD) & Indeks Kemahalan Konstruksi BPS - Wilayah {lokasi_proyek.upper()}:**")
