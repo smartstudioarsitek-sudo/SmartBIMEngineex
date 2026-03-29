@@ -121,12 +121,14 @@ def get_ahsp_from_supabase():
         return {}
 
 import re
+import pandas as pd
 
 def clean_number(val):
-    """Pembersih angka kebal koma, titik, dan Rp"""
+    """Pembersih angka kebal koma, titik, NaN, dan Rp"""
     if pd.isna(val): return 0.0
     val_str = str(val).replace('Rp', '').replace(' ', '').strip()
-    if val_str in ['', '-']: return 0.0
+    if val_str.lower() in ['', '-', 'nan']: return 0.0
+    # Adaptasi desimal gaya Indonesia vs Internasional
     if ',' in val_str and '.' in val_str:
         val_str = val_str.replace('.', '').replace(',', '.')
     elif ',' in val_str:
@@ -137,126 +139,134 @@ def clean_number(val):
         return 0.0
 
 def upload_ahsp_to_supabase(df_excel, nama_kategori):
-    """Mesin State Machine Parser untuk Excel AHSP PUPR (Presisi 100%)"""
+    """Mesin State Machine + Dynamic Header Mapper"""
     if supabase is None: return
     
     data_to_insert = []
-    progress_text = f"Mengekstrak State Machine: {nama_kategori}..."
+    progress_text = f"Membedah Matriks Excel: {nama_kategori}..."
     my_bar = st.progress(0, text=progress_text)
     total_rows = len(df_excel)
     
-    # === MEMORI STATE MACHINE ===
+    # 1. Default Indeks Kolom (Akan berubah otomatis jika Excelnya beda)
+    idx_uraian, idx_sat, idx_koef, idx_hs, idx_jml = 1, 2, 3, 4, 5
+    
+    # 2. Memori State Machine
     current_kode = "-"
     current_uraian_utama = ""
     current_satuan_utama = ""
     current_jenis_komponen = ""
     
     for index, row in df_excel.iterrows():
-        if len(row) < 5: continue
+        # Ubah semua isi baris jadi teks huruf kecil agar mudah dilacak
+        row_vals = [str(x).strip() for x in row.values]
+        row_lower = [x.lower() for x in row_vals]
         
-        # Ambil nilai baris mentah
-        col_no = str(row.iloc[0]).strip()
-        col_uraian = str(row.iloc[1]).strip()
-        col_satuan = str(row.iloc[2]).strip()
+        # =======================================================
+        # FITUR BARU: MATA AI PENCARI KOLOM (DYNAMIC MAPPER)
+        # =======================================================
+        if "uraian" in row_lower or "uraian pekerjaan" in row_lower:
+            for i, val in enumerate(row_lower):
+                if "uraian" in val: idx_uraian = i
+                elif "sat" in val or "satuan" in val: idx_sat = i
+                elif "koefisien" in val: idx_koef = i
+                elif "harga" in val and "jumlah" not in val: idx_hs = i
+                elif "jumlah" in val: idx_jml = i
+            continue # Lanjut ke baris berikutnya setelah merekam posisi kolom
+            
+        # Amankan baris yang terlalu pendek
+        if len(row_vals) <= max(idx_uraian, idx_sat, idx_koef, idx_hs): continue
         
-        # 1. DETEKSI INDUK PEKERJAAN (KODE AHSP)
-        # Mencari format kode seperti 1.2.1.1.1 atau uraian yang mengandung "1 m3"
+        col_no = row_vals[0]
+        col_uraian = row_vals[idx_uraian]
+        col_satuan = row_vals[idx_sat]
+        
+        if pd.isna(col_uraian) or col_uraian.lower() in ['', 'nan']: continue
+        
+        # 1. DETEKSI INDUK PEKERJAAN (KODE AHSP / JUDUL PEKERJAAN)
         is_kode = re.match(r'^\d+(\.\d+)+[a-zA-Z]?$', col_no)
-        is_uraian_utama = ("1 m" in col_uraian.lower() or "1 bh" in col_uraian.lower() or "1 titik" in col_uraian.lower())
+        is_uraian_utama = any(k in col_uraian.lower() for k in ["1 m", "1 bh", "1 titik", "1 unit", "1 kg", "1 ton", "1 ls", "1 set"])
         
-        if is_kode or (is_uraian_utama and col_no not in ['A', 'B', 'C', 'D', 'E', 'F']):
+        if is_kode or (is_uraian_utama and col_no.upper() not in ['A', 'B', 'C', 'D', 'E', 'F']):
             current_kode = col_no if is_kode else f"AUTO-{index}"
             current_uraian_utama = col_uraian
             
-            # Ekstrak otomatis satuan dari judul (misal "1 m3" -> "m3")
-            sat_match = re.search(r'1\s*(m3|m2|m\'|m|bh|buah|unit|set|ls|titik)', col_uraian.lower())
+            sat_match = re.search(r'1\s*(m3|m2|m\'|m|bh|buah|unit|set|ls|titik|kg|ton)', col_uraian.lower())
             current_satuan_utama = sat_match.group(1) if sat_match else "Ls"
-            current_jenis_komponen = "" # Reset karena masuk pekerjaan baru
+            current_jenis_komponen = "" 
             continue
             
-        # 2. DETEKSI JENIS KOMPONEN (A. Tenaga Kerja, B. Bahan, C. Alat)
+        # 2. DETEKSI JENIS KOMPONEN (Tenaga Kerja, Bahan, Alat)
         if col_no.upper() == 'A' or "TENAGA KERJA" in col_uraian.upper():
-            current_jenis_komponen = "Tenaga Kerja"
-            continue
+            current_jenis_komponen = "Tenaga Kerja"; continue
         elif col_no.upper() == 'B' or "BAHAN" in col_uraian.upper():
-            current_jenis_komponen = "Bahan"
-            continue
+            current_jenis_komponen = "Bahan"; continue
         elif col_no.upper() == 'C' or "PERALATAN" in col_uraian.upper():
-            current_jenis_komponen = "Peralatan"
-            continue
-        elif col_no.upper() == 'D' or "JUMLAH (A+B+C)" in col_uraian.upper():
-            current_jenis_komponen = "" # Berhenti merekam komponen
-            continue
+            current_jenis_komponen = "Peralatan"; continue
+        elif col_no.upper() == 'D' or "JUMLAH" in col_uraian.upper():
+            current_jenis_komponen = ""; continue
             
-        # 3. REKAM RINCIAN KOEFISIEN (ANAK)
-        if current_jenis_komponen != "" and col_uraian not in ["", "nan"]:
-            if col_satuan != "" and col_satuan.lower() != "nan":
-                koef = clean_number(row.iloc[3])
-                hs = clean_number(row.iloc[4])
-                jml = clean_number(row.iloc[5]) if len(row) > 5 else (koef * hs)
-                
-                if koef > 0: # Loloskan jika koefisien valid
-                    data_to_insert.append({
-                        "kategori": nama_kategori[:100],
-                        "kode_ahsp": current_kode[:50],
-                        "uraian_pekerjaan": col_uraian[:500],
-                        "satuan": col_satuan[:20],
-                        "koefisien": koef,
-                        "harga_satuan": hs,
-                        "jumlah_harga": jml,
-                        "jenis_komponen": current_jenis_komponen
-                    })
+        # 3. REKAM RINCIAN (ANAK)
+        if current_jenis_komponen != "" and current_uraian_utama != "":
+            koef = clean_number(row_vals[idx_koef])
+            hs = clean_number(row_vals[idx_hs])
+            jml = clean_number(row_vals[idx_jml]) if idx_jml < len(row_vals) else (koef * hs)
+            
+            if koef > 0: 
+                data_to_insert.append({
+                    "kategori": str(nama_kategori)[:100],
+                    "kode_ahsp": str(current_kode)[:50],
+                    "uraian_pekerjaan": str(col_uraian)[:500],
+                    "satuan": str(col_satuan)[:20] if col_satuan.lower() != 'nan' else "-",
+                    "koefisien": koef,
+                    "harga_satuan": hs,
+                    "jumlah_harga": jml,
+                    "jenis_komponen": current_jenis_komponen
+                })
                     
         # 4. DETEKSI FINAL (HARGA SATUAN PEKERJAAN - INDUK)
         if col_no.upper() == 'F' or "HARGA SATUAN PEKERJAAN" in col_uraian.upper():
-            # Cari harga akhir (Mundur dari kolom paling kanan ke kiri)
+            # Cari harga dari kanan ke kiri
             harga_total = 0.0
-            for c_idx in range(len(row)-1, 2, -1):
-                val = clean_number(row.iloc[c_idx])
-                if val > 0:
-                    harga_total = val
-                    break
+            for val in reversed(row_vals):
+                num = clean_number(val)
+                if num > 0:
+                    harga_total = num; break
                     
             if current_uraian_utama != "" and harga_total > 0:
                 data_to_insert.append({
-                    "kategori": nama_kategori[:100],
-                    "kode_ahsp": current_kode[:50],
-                    "uraian_pekerjaan": current_uraian_utama[:500],
-                    "satuan": current_satuan_utama[:20],
-                    "koefisien": None,  # Sesuai gambar Kakak, induk dikosongkan
+                    "kategori": str(nama_kategori)[:100],
+                    "kode_ahsp": str(current_kode)[:50],
+                    "uraian_pekerjaan": str(current_uraian_utama)[:500],
+                    "satuan": str(current_satuan_utama)[:20],
+                    "koefisien": None,
                     "harga_satuan": harga_total,
                     "jumlah_harga": harga_total,
                     "jenis_komponen": "Utama"
                 })
-            # Reset state
             current_uraian_utama = ""
             current_kode = "-"
 
         if index % 20 == 0:
             my_bar.progress(min(index / total_rows, 1.0), text=progress_text)
-    my_bar.progress(1.0, text="Menyuntik ke Database...")
+            
+    my_bar.progress(1.0, text=f"Siap menyuntik {len(data_to_insert)} baris komponen ke Supabase...")
     
     # ========================================================
-    # PENGAMAN UTAMA: Cegah Error JSON Kosong
+    # PENGAMAN FINAL ANTI-PGRST102
     # ========================================================
     if len(data_to_insert) == 0:
-        st.warning(f"⚠️ Sheet '{nama_kategori}' tidak memiliki format AHSP. Dilewati.")
+        st.warning(f"⚠️ Sheet '{nama_kategori}' dilewati (Tidak ditemukan format AHSP).")
         return
         
-    # ========================================================
-    # TEMBAKKAN KE SUPABASE (Tabel: ahsp_master)
-    # ========================================================
     try:
         chunk_size = 500
         for i in range(0, len(data_to_insert), chunk_size):
             chunk = data_to_insert[i:i + chunk_size]
             supabase.table("ahsp_master").insert(chunk).execute()
             
-        # Bersihkan cache agar tabel yang baru dimasukkan bisa langsung terbaca aplikasi
-        get_ahsp_from_supabase.clear() 
-        
+        get_ahsp_from_supabase.clear() # Bersihkan RAM setelah sukses
     except Exception as e:
-        st.error(f"Gagal menyuntik data ke Supabase: {e}")        
+        st.error(f"Gagal menyuntik data {nama_kategori} ke Supabase: {e}")   
     
         
 # ==========================================
