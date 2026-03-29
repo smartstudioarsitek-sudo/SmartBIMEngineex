@@ -50,34 +50,73 @@ def get_api_key():
         return st.secrets["GOOGLE_API_KEY"]
     except (FileNotFoundError, KeyError):
         return os.environ.get("GOOGLE_API_KEY", "")
-
 # ==========================================
 # MESIN NLP (FUZZY MATCHING) UNTUK MAPPING AHSP
 # ==========================================
-def get_best_ahsp_match(nama_dari_revit, daftar_kunci_ahsp, threshold=85):
+import re
+
+def ekstrak_spek_angka(teks):
     """
-    Fungsi cerdas menjodohkan nama Revit dengan database AHSP.
-    Menggunakan algoritma Levenshtein Distance (Token Set Ratio).
-    Threshold 85 berarti harus ada 85% kecocokan makna kata.
+    Fungsi bantuan untuk menyedot angka mutu dari teks.
+    Misal: "Beton K-300" -> akan menangkap {'300'}
+    """
+    # Cari semua angka murni dalam teks
+    matches = re.findall(r'\d+', str(teks))
+    return set(matches)
+
+def get_best_ahsp_match(nama_dari_revit, daftar_kunci_ahsp, threshold=65):
+    """
+    [AUDIT FIX] Fungsi cerdas menjodohkan nama Revit dengan database AHSP.
+    Menggunakan Hibrida: Levenshtein Distance + Deterministic Number Filter.
+    Threshold diturunkan ke 65 agar jangkauan luas, namun difilter ketat oleh angka mutu.
     """
     if not nama_dari_revit or not daftar_kunci_ahsp:
         return None, 0
         
-    # Bersihkan nama Revit dari kata pengganggu agar fokus ke material
+    # 1. Bersihkan nama Revit dari kata pengganggu agar fokus ke material
     nama_bersih = str(nama_dari_revit).replace("Pekerjaan ", "").strip()
     
-    # Cari probabilitas kemiripan tertinggi
-    best_match, score = process.extractOne(
+    # 2. Ekstrak spesifikasi angka/mutu dari Revit (Misal: 30, 250, 420)
+    spek_revit = ekstrak_spek_angka(nama_bersih)
+    
+    # 3. Cari 5 KANDIDAT TERBAIK (bukan cuma 1) dengan jaring threshold longgar (65%)
+    candidates = process.extractBests(
         nama_bersih, 
         daftar_kunci_ahsp, 
-        scorer=fuzz.token_set_ratio
+        scorer=fuzz.token_set_ratio,
+        limit=5,
+        score_cutoff=threshold
     )
     
-    # Loloskan hanya jika kemiripannya di atas threshold (85%)
-    if score >= threshold:
-        return best_match, score
+    if not candidates:
+        return None, 0
+        
+    best_candidate = None
+    best_score = 0
+    
+    # 4. FILTER LAPIS KEDUA (Pendeteksi Benturan Mutu Material)
+    for cand_text, cand_score in candidates:
+        spek_ahsp = ekstrak_spek_angka(cand_text)
+        
+        # Jika Revit bawa angka spek (misal 30) DAN AHSP juga punya angka (misal 15)
+        if spek_revit and spek_ahsp:
+            # Cek apakah ada angka yang sama persis (irisan)
+            if not spek_revit.intersection(spek_ahsp):
+                # FATAL: Benturan Mutu Terdeteksi! 
+                # Kata-kata mirip tapi spek beda (K-175 vs K-300).
+                # Berikan penalti skor ekstrim (-50) agar kandidat ini gugur.
+                cand_score -= 50
+                
+        # Cari yang skornya bertahan paling tinggi setelah melewati filter
+        if cand_score > best_score:
+            best_score = cand_score
+            best_candidate = cand_text
+            
+    # 5. Evaluasi Final
+    if best_score >= threshold:
+        return best_candidate, best_score
     else:
-        return None, score
+        return None, best_score
 
 # ==========================================
 # MESIN KONEKSI SUPABASE (DATABASE CLOUD PERMANEN)
