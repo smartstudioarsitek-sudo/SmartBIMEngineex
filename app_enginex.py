@@ -118,47 +118,73 @@ def get_ahsp_from_supabase():
     except Exception as e:
         st.warning(f"Gagal menarik data dari Supabase: {e}")
         return {}
-
 def upload_ahsp_to_supabase(df_excel):
-    """Fungsi menembakkan data Excel ke Supabase (Hanya dipakai 1x seumur hidup)"""
+    """Fungsi menembakkan data Excel ke Supabase dengan aman (Anti-PGRST102)"""
     if supabase is None: return
     
     data_to_insert = []
-    # Progress bar agar visualnya bagus
-    progress_text = "Menyuntikkan data ke Cloud Supabase..."
+    progress_text = "Mengekstrak dan membersihkan data Excel..."
     my_bar = st.progress(0, text=progress_text)
     
     total_rows = len(df_excel)
+    
     for index, row in df_excel.iterrows():
         try:
+            # 1. Ambil data dengan aman (Fallback ke indeks jika nama kolom berubah)
+            uraian = row.get('Uraian Pekerjaan / Komponen', row.iloc[1] if len(row) > 1 else None)
+            satuan = row.get('Satuan', row.iloc[2] if len(row) > 2 else "-")
+            harga_raw = row.get('Harga Satuan (Rp)', row.iloc[3] if len(row) > 3 else 0)
+            
+            # 2. Filter baris yang benar-benar kosong atau NaN (Not a Number)
+            if pd.isna(uraian) or str(uraian).strip() == "":
+                continue
+                
+            # 3. Bersihkan format harga (Buang titik pemisah ribuan agar bisa masuk Database)
+            if pd.isna(harga_raw) or str(harga_raw).strip() in ["", "-", "NaN", "nan"]:
+                harga_bersih = 0.0
+            else:
+                # Ubah ke text, buang Rp, spasi, dan titik ribuan. Lalu ubah koma jadi titik desimal
+                harga_str = str(harga_raw).replace('Rp', '').replace('.', '').replace(' ', '')
+                harga_str = harga_str.replace(',', '.') 
+                try:
+                    harga_bersih = float(harga_str)
+                except ValueError:
+                    harga_bersih = 0.0 # Jika isinya teks aneh, jadikan 0
+                
+            # 4. Masukkan ke keranjang dengan panjang teks yang dibatasi agar aman
             data_to_insert.append({
-                "uraian_pekerjaan": str(row.get('Uraian Pekerjaan / Komponen', row.iloc[1])), 
-                "satuan": str(row.get('Satuan', row.iloc[2])),
-                # Bersihkan harga dari koma/titik jika ada
-                "harga_satuan": float(str(row.get('Harga Satuan (Rp)', row.iloc[3])).replace(',', ''))
+                "uraian_pekerjaan": str(uraian).strip()[:500], 
+                "satuan": str(satuan).strip()[:50] if not pd.isna(satuan) else "-",
+                "harga_satuan": float(harga_bersih)
             })
-        except:
-            continue # Lewati baris yang kosong/error
+        except Exception as e:
+            continue # Lewati baris yang strukturnya hancur total
             
         # Update progress bar
-        if index % 100 == 0:
-            my_bar.progress(index / total_rows, text=progress_text)
+        if index % 50 == 0:
+            my_bar.progress(min(index / total_rows, 1.0), text=progress_text)
             
-    my_bar.progress(1.0, text="Finalisasi penyimpanan...")
+    my_bar.progress(1.0, text="Finalisasi ekstraksi...")
     
-    # Tembakkan ke Supabase (Bulk Insert)
-    try:
-        # Hapus data lama dulu agar tidak dobel (opsional)
-        # supabase.table("master_ahsp").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    # ========================================================
+    # 5. [PENGAMAN UTAMA] Cegah Error PGRST102 (Empty JSON)
+    # ========================================================
+    if len(data_to_insert) == 0:
+        st.warning("⚠️ Sheet ini tidak memiliki tabel harga yang valid. Dilewati secara otomatis.")
+        return
         
-        # Masukkan data baru
-        supabase.table("master_ahsp").insert(data_to_insert).execute()
-        st.success("🚀 BINGO! Master AHSP berhasil dikunci permanen di Cloud Supabase!")
-        st.balloons()
-        # Bersihkan cache agar data baru langsung terbaca
+    # 6. Tembakkan ke Supabase dengan sistem "Chunking" (Nyicil 500 baris agar server tidak jebol/timeout)
+    try:
+        chunk_size = 500
+        for i in range(0, len(data_to_insert), chunk_size):
+            chunk = data_to_insert[i:i + chunk_size]
+            supabase.table("master_ahsp").insert(chunk).execute()
+            
+        # Bersihkan cache memori agar data baru langsung terbaca
         get_ahsp_from_supabase.clear() 
     except Exception as e:
         st.error(f"Gagal menyimpan ke Supabase: {e}")
+
 # ==========================================
 # 1. IMPORT LIBRARY ENGINEERING (MODULAR)
 # ==========================================
