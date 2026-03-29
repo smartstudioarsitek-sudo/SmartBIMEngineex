@@ -3295,38 +3295,35 @@ elif selected_menu == "⚙️ Admin: Ekstraksi AHSP":
             default=sheet_relevan_default
         )
         # 3. PROSES EKSEKUSI (SATU PER SATU)
-        if st.button("🚀 Sedot Sheet Terpilih & Kunci ke Cloud Supabase", type="primary", use_container_width=True):
+        if st.button("🚀 Sedot State Machine ke Cloud Supabase", type="primary", use_container_width=True):
             if not sheet_terpilih:
                 st.warning("Pilih minimal 1 sheet untuk diproses.")
             else:
                 total_sheet = len(sheet_terpilih)
                 
                 for i, sheet_name in enumerate(sheet_terpilih):
-                    st.info(f"Mengekstrak Sheet: {sheet_name} ({i+1}/{total_sheet})...")
                     try:
-                        # Baca data per sheet
                         df_temp = pd.read_excel(xls, sheet_name=sheet_name)
                         
-                        # ---> INJEKSI LANGSUNG KE SUPABASE <---
-                        upload_ahsp_to_supabase(df_temp) 
+                        # ---> Panggil mesin dengan 2 variabel <---
+                        upload_ahsp_to_supabase(df_temp, sheet_name) 
                         
                     except Exception as e:
                         st.error(f"Gagal memproses sheet '{sheet_name}': {e}")
                         
-                    # Bersihkan RAM secara paksa agar tidak lambat
                     import gc
                     del df_temp
                     gc.collect() 
                 
-                st.success(f"✅ BINGO! Data dari {total_sheet} sheet berhasil ditembakkan ke Cloud Supabase!")
+                st.success(f"✅ BINGO! Proses Selesai!")
                 
-                # Hapus memori lama agar sistem terpaksa membaca ulang data segar dari Supabase
                 if 'master_ahsp' in st.session_state:
                     del st.session_state['master_ahsp']
                     
                 import time
                 time.sleep(2)
                 st.rerun()
+        
         
 # --- E. MODE LAPORAN RAB 5D (WORKSPACE ONLINE) ---
 elif selected_menu == "📑 Laporan RAB 5D":
