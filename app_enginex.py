@@ -3415,8 +3415,10 @@ elif selected_menu == "📑 Laporan RAB 5D":
                 return pd.Series([kode_ahsp, uraian_asli, satuan, harga_terkoreksi, score])
             
             # --- 4. FALLBACK (JIKA BENAR-BENAR GAGAL KETEMU) ---
-            return pd.Series(["-", f"⚠️ {nama_pekerjaan_revit} (TIDAK DITEMUKAN DI AHSP)", "m3", 1500000.0 * ikk_multiplier, 0])
-        
+            # Jangan asumsikan harga! Beri nilai 0 agar mencolok, 
+            # lalu nanti di UI kita beri tombol agar user menginput secara manual.
+            return pd.Series(["-", f"⚠️ {nama_pekerjaan_revit} (HARGA TIDAK DITEMUKAN - INPUT MANUAL)", "m3", 0.0, 0])
+            
         # Eksekusi AI Matcher ke seluruh baris RAB
         df_rab[['Kode AHSP', 'Uraian AHSP 182', 'Satuan', 'Harga Satuan (Rp)', 'Akurasi NLP (%)']] = df_rab['Nama'].apply(ai_ahsp_matcher)
         df_rab['Total Harga (Rp)'] = pd.to_numeric(df_rab['Volume'], errors='coerce').fillna(0) * pd.to_numeric(df_rab['Harga Satuan (Rp)'], errors='coerce').fillna(0)
@@ -3424,11 +3426,20 @@ elif selected_menu == "📑 Laporan RAB 5D":
         # Susun ulang kolom agar rapi (Sembunyikan Akurasi NLP)
         df_rab = df_rab[['Kode AHSP', 'Kategori', 'Uraian AHSP 182', 'Volume', 'Satuan', 'Harga Satuan (Rp)', 'Total Harga (Rp)']]
         
-        # Hitung Grand Total
+        # Hitung Grand Total & Margin (Sesuai SE DJBK 30/2025 & UU HPP)
         total_rab_fisik = df_rab['Total Harga (Rp)'].sum()
-        ppn = total_rab_fisik * 0.11
-        grand_total = total_rab_fisik + ppn
-    
+        
+        # 1. Tambahkan Overhead & Profit (Misal kita set 10% untuk kewajaran)
+        # Nanti Anda bisa buat slider di UI agar user bisa memilih (0% - 15%)
+        overhead_profit = total_rab_fisik * 0.10 
+        
+        total_sebelum_pajak = total_rab_fisik + overhead_profit
+        
+        # 2. PPN Efektif 2025 adalah 12%
+        ppn = total_sebelum_pajak * 0.12 
+        
+        grand_total = total_sebelum_pajak + ppn 
+           
 
     # =========================================================
     # 3. RENDER UI 8 TAB SESUAI REQUEST
