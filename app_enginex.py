@@ -629,58 +629,7 @@ def process_ai_json(json_str):
             
     except json.JSONDecodeError:
         pass # Abaikan jika gagal baca JSON, kemungkinan hanya teks biasa
-    except Exception as e:
-        st.error(f"Gagal memproses instruksi visual: {e}")
-
-        # [AUDIT PATCH]: PASTIKAN LIBRARY INI TERBACA OLEH AI
-        import math
-        import networkx as nx
-        import scipy
-
-        # Inject library & helper (Environment Terisolasi)
-        library_kits = {
-            "pd": pd, "np": np, "plt": plt, "st": st, "px": px, "go": go,
-            "math": math, "nx": nx, "scipy": scipy, # <--- TAMBAHAN PENTING
-            "parse_rupiah": parse_rupiah,
-            "libs_sni": libs_sni, "libs_baja": libs_baja, "libs_bridge": libs_bridge,
-            "libs_gempa": libs_gempa, "libs_hidrologi": libs_hidrologi,
-            "libs_irigasi": libs_irigasi, "libs_bendung": libs_bendung, "libs_jiat": libs_jiat,
-            "libs_ahsp": libs_ahsp, "libs_rab_engine": libs_rab_engine,
-            "libs_optimizer": libs_optimizer, "libs_research": libs_research,
-            "libs_arch": libs_arch, "libs_zoning": libs_zoning, "libs_green": libs_green,
-            "libs_pdf": libs_pdf, "libs_export": libs_export,
-            "libs_bim_importer": libs_bim_importer,
-            "libs_loader": libs_loader
-        }
-        
-        if 'libs_fem' in globals(): library_kits['libs_fem'] = libs_fem
-        if 'libs_beton' in globals(): library_kits['libs_beton'] = libs_beton
-        if has_geotek:
-            library_kits['libs_geoteknik'] = libs_geoteknik
-            library_kits['libs_pondasi'] = libs_pondasi
-        if has_mep: library_kits['libs_mep'] = libs_mep
-        if has_legal: library_kits['libs_legal'] = libs_legal    
-        
-        local_vars.update(library_kits)
-
-        if has_4d: library_kits['libs_4d'] = libs_4d
-        if has_transport: library_kits['libs_transport'] = libs_transport
-        if file_ifc_path: local_vars["file_ifc_user"] = file_ifc_path
-        
-        # [PERBAIKAN SCOPE EXEC KRUSIAL] 
-        # local_vars dipasang dua kali untuk menggabungkan scope Globals & Locals 
-        # Ini akan menyelesaikan 100% masalah "name X is not defined"
-        exec(code_str, local_vars, local_vars)
-        
-        for k, v in local_vars.items():
-            if k not in library_kits and not k.startswith('__') and not isinstance(v, types.ModuleType):
-                st.session_state.shared_execution_vars[k] = v
-        return True
-
-    except Exception as e:
-        with st.expander("⚠️ Detail Teknis (Ada kendala pada script ini)", expanded=False):
-            st.warning(f"Sistem mendeteksi ketidaksesuaian: {e}")
-        return False
+    
 
 # ==========================================
 # 5. FUNGSI EXPORT (PDF SIMBG READY)
@@ -3444,7 +3393,8 @@ elif selected_menu == "📑 Laporan RAB 5D":
                 # Cari baris yang Uraiannya persis sama dengan best_match
                 baris_ahsp = db_ahsp[db_ahsp['Uraian Pekerjaan'] == best_match].iloc[0]
                 
-                harga_dasar = float(baris_ahsp.get('Harga Satuan (Rp)', 1500000.0))
+                harga_dasar = float(baris_ahsp.get('Harga Satuan (Rp)', 0.0))
+                
                 # Di Supabase, kita tadi tidak menyimpan kode untuk "Utama", jadi kita pakai "-" saja
                 kode_ahsp = "-" 
                 satuan = str(baris_ahsp.get('Satuan', "Unit"))
@@ -3587,7 +3537,7 @@ elif selected_menu == "📑 Laporan RAB 5D":
                         # Tab 1: Rekapitulasi
                         df_rekap = pd.DataFrame({
                             "NO": [1, 2, 3],
-                            "URAIAN PEKERJAAN": ["A. Total Biaya Fisik Struktur", "B. Pajak Pertambahan Nilai (PPN 11%)", "C. GRAND TOTAL PAGU"],
+                            "URAIAN PEKERJAAN": ["A. Total Biaya Fisik Struktur", "B. Pajak Pertambahan Nilai (PPN 12%)", "C. GRAND TOTAL PAGU"],
                             "TOTAL BIAYA (Rp)": [total_rab_fisik, ppn, grand_total]
                         })
                         df_rekap.to_excel(writer, sheet_name="1. Rekap", index=False)
@@ -3637,7 +3587,7 @@ Lokasi Indeks BPS: {lokasi_proyek}
 
 A. REKAPITULASI BIAYA
 1. Total Biaya Fisik Struktur: Rp {total_rab_fisik:,.2f}
-2. Pajak Pertambahan Nilai (PPN 11%): Rp {ppn:,.2f}
+2. Pajak Pertambahan Nilai (PPN 12%): Rp {ppn:,.2f}
 3. Grand Total Estimasi Biaya: Rp {grand_total:,.2f}
 
 B. BIAYA SISTEM MANAJEMEN KESELAMATAN KONSTRUKSI (SMKK)
