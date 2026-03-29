@@ -591,26 +591,46 @@ def render_project_file_manager():
 # ==========================================
 if 'shared_execution_vars' not in st.session_state:
     st.session_state.shared_execution_vars = {}
-
-def execute_generated_code(code_str, file_ifc_path=None):
+def process_ai_json(json_str):
+    """
+    [PENGGANTI AMAN execute_generated_code]
+    AI tidak lagi menulis Python, melainkan memberikan data JSON.
+    Kita gunakan fungsi bawaan Streamlit untuk memproses data tersebut.
+    """
+    import json
+    import pandas as pd
+    import plotly.express as px
+    
     try:
-        # [AUDIT PATCH]: SECURITY SANDBOX FILTER (DILONGGARKAN)
-        forbidden_keywords = ['import os', 'import sys', 'import subprocess', 'open(', 'shutil', 'st.secrets']
-        for keyword in forbidden_keywords:
-            if keyword in code_str:
-                st.error(f"🚨 SECURITY BLOCK: AI mencoba mengeksekusi perintah sistem terlarang (`{keyword}`).")
-                return False
-
-        local_vars = st.session_state.shared_execution_vars.copy()
+        data = json.loads(json_str)
+        action = data.get("action")
         
-        # Helper function untuk parsing rupiah
-        def parse_rupiah(txt):
-            if isinstance(txt, (int, float)): return txt
-            if isinstance(txt, str):
-                clean = txt.replace("Rp", "").replace(" ", "").replace(".", "").replace(",", ".")
-                try: return float(clean)
-                except: return 0
-            return 0
+        # 1. JIKA AI INGIN MENGGAMBAR GRAFIK
+        if action == "render_grafik":
+            df_grafik = pd.DataFrame(data.get("data", []))
+            judul = data.get("judul", "Visualisasi Data")
+            tipe = data.get("tipe_grafik", "bar")
+            
+            if not df_grafik.empty:
+                if tipe == "bar":
+                    fig = px.bar(df_grafik, x=df_grafik.columns[0], y=df_grafik.columns[1], title=judul)
+                elif tipe == "line":
+                    fig = px.line(df_grafik, x=df_grafik.columns[0], y=df_grafik.columns[1], title=judul)
+                else:
+                    fig = px.pie(df_grafik, names=df_grafik.columns[0], values=df_grafik.columns[1], title=judul)
+                
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("Data grafik dari AI kosong.")
+                
+        # 2. JIKA ADA AKSI LAIN (Bisa ditambah di kemudian hari)
+        elif action == "notifikasi":
+            st.info(f"🤖 Pesan Sistem AI: {data.get('pesan', '')}")
+            
+    except json.JSONDecodeError:
+        pass # Abaikan jika gagal baca JSON, kemungkinan hanya teks biasa
+    except Exception as e:
+        st.error(f"Gagal memproses instruksi visual: {e}")
 
         # [AUDIT PATCH]: PASTIKAN LIBRARY INI TERBACA OLEH AI
         import math
@@ -1005,16 +1025,21 @@ if selected_menu == "🤖 AI Assistant":
     for msg in history:
         with st.chat_message(msg['role']):
             content = msg['content']
-            parts = re.split(r"(```python.*?```)", content, flags=re.DOTALL)
+            # Sekarang kita tangkap blok json, bukan python
+            parts = re.split(r"(```json.*?```)", content, flags=re.DOTALL | re.IGNORECASE)
             for part in parts:
-                if part.startswith("```python"):
-                    download_btn_counter += 1
-                    code_content = part.replace("```python", "").replace("```", "").strip()
-                    with st.expander("🛠️ Detail Teknis"):
-                        st.code(code_content, language='python')
-                    execute_generated_code(code_content)
+                part_lower = part.lower()
+                if part_lower.startswith("```json"):
+                    json_content = part.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+                    if '"action"' in json_content: # Pastikan ini instruksi aksi, bukan JSON dari Revit
+                        with st.expander("📊 Render Visualisasi Data"):
+                            st.json(json_content)
+                        process_ai_json(json_content)
+                    else:
+                        st.markdown(part) # Tampilkan sebagai teks biasa jika bukan action
                 else:
                     st.markdown(part)
+   
                     # --- INDIKATOR DEBUGGING MEMORI AHSP ---
                     if 'master_ahsp_data' in st.session_state:
                         st.success(f"🔗 STATUS: Terhubung dengan Database Master AHSP ({len(st.session_state['master_ahsp_data'])} item data). AI siap membaca data pasti!")
@@ -1250,12 +1275,21 @@ if selected_menu == "🤖 AI Assistant":
                     # [PERBAIKAN AUDIT FASE 3: DOKTRIN TOOL CALLING]
                     # =================================================================
                     SYS = persona_instr + """
-                    \n[INSTRUKSI WAJIB - MODE DETERMINISTIK]:
+                    \n[INSTRUKSI WAJIB - MODE KEPATUHAN]:
                     1. Gunakan Bahasa Indonesia Baku dan Formal (EYD).
-                    2. DILARANG KERAS menulis blok kode skrip Python (```python).
-                    3. Anda WAJIB MENGGUNAKAN TOOLS (Function Calling) untuk menghitung. Dilarang keras berasumsi angka sendiri.
-                    4. Narasikan hasil komputasi dari Tools tersebut dengan gaya profesional.
+                    2. Anda WAJIB MENGGUNAKAN TOOLS (Function Calling) untuk menghitung.
+                    3. HARAM HUKUMNYA menulis blok kode skrip Python (```python). 
+                    4. Jika Anda merasa perlu menampilkan GRAFIK/VISUALISASI, Anda WAJIB memberikan format JSON seperti contoh berikut:
+                    ```json
+                    {
+                      "action": "render_grafik",
+                      "tipe_grafik": "bar",
+                      "judul": "Perbandingan Harga",
+                      "data": [{"Kategori": "A", "Nilai": 10}, {"Kategori": "B", "Nilai": 20}]
+                    }
+                    ```
                     """
+                    
                     
                     try:
                         import sys
@@ -1340,15 +1374,20 @@ if selected_menu == "🤖 AI Assistant":
                         except Exception as e:
                             st.warning(f"AI mencoba membuat tabel BOQ, tapi format JSON meleset: {e}")
                             
-                    parts = re.split(r"(```python.*?```)", response.text, flags=re.DOTALL)
+                    parts = re.split(r"(```json.*?```)", response.text, flags=re.DOTALL | re.IGNORECASE)
                     for part in parts:
-                        if part.startswith("```python"):
-                            code_content = part.replace("```python", "").replace("```", "").strip()
-                            with st.expander("🛠️ Detail Teknis"):
-                                st.code(code_content, language='python')
-                            execute_generated_code(code_content)
+                        part_lower = part.lower()
+                        if part_lower.startswith("```json"):
+                            json_content = part.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+                            if '"action"' in json_content:
+                                with st.expander("📊 Render Visualisasi Data"):
+                                    st.json(json_content)
+                                process_ai_json(json_content)
+                            else:
+                                st.markdown(part)
                         else:
                             st.markdown(part)
+                    
                     
                     db.simpan_chat(nama_proyek, target_expert, "assistant", response.text)
                     
