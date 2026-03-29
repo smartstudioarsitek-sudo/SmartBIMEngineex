@@ -103,7 +103,8 @@ def get_ahsp_from_supabase():
     if supabase is None: return {}
     
     try:
-        response = supabase.table("master_ahsp").select("*").execute()
+        # Ganti "master_ahsp" menjadi "ahsp_master"
+        response = supabase.table("ahsp_master").select("*").eq("jenis_komponen", "Utama").execute()
         data_ahsp = response.data
         
         # Ubah formatnya menjadi dictionary agar langsung cocok dengan mesin NLP kita
@@ -118,6 +119,7 @@ def get_ahsp_from_supabase():
     except Exception as e:
         st.warning(f"Gagal menarik data dari Supabase: {e}")
         return {}
+
 import re
 
 def clean_number(val):
@@ -232,46 +234,31 @@ def upload_ahsp_to_supabase(df_excel, nama_kategori):
 
         if index % 20 == 0:
             my_bar.progress(min(index / total_rows, 1.0), text=progress_text)
-            
     my_bar.progress(1.0, text="Menyuntik ke Database...")
     
+    # ========================================================
+    # PENGAMAN UTAMA: Cegah Error JSON Kosong
+    # ========================================================
     if len(data_to_insert) == 0:
         st.warning(f"⚠️ Sheet '{nama_kategori}' tidak memiliki format AHSP. Dilewati.")
         return
         
+    # ========================================================
+    # TEMBAKKAN KE SUPABASE (Tabel: ahsp_master)
+    # ========================================================
     try:
         chunk_size = 500
         for i in range(0, len(data_to_insert), chunk_size):
             chunk = data_to_insert[i:i + chunk_size]
             supabase.table("ahsp_master").insert(chunk).execute()
-    except Exception as e:
-        st.error(f"Gagal menyuntik data ke Supabase: {e}")
             
-        # Update progress bar
-        if index % 50 == 0:
-            my_bar.progress(min(index / total_rows, 1.0), text=progress_text)
-            
-    my_bar.progress(1.0, text="Finalisasi ekstraksi...")
-    
-    # ========================================================
-    # 5. [PENGAMAN UTAMA] Cegah Error PGRST102 (Empty JSON)
-    # ========================================================
-    if len(data_to_insert) == 0:
-        st.warning("⚠️ Sheet ini tidak memiliki tabel harga yang valid. Dilewati secara otomatis.")
-        return
-        
-    # 6. Tembakkan ke Supabase dengan sistem "Chunking" (Nyicil 500 baris agar server tidak jebol/timeout)
-    try:
-        chunk_size = 500
-        for i in range(0, len(data_to_insert), chunk_size):
-            chunk = data_to_insert[i:i + chunk_size]
-            supabase.table("master_ahsp").insert(chunk).execute()
-            
-        # Bersihkan cache memori agar data baru langsung terbaca
+        # Bersihkan cache agar tabel yang baru dimasukkan bisa langsung terbaca aplikasi
         get_ahsp_from_supabase.clear() 
+        
     except Exception as e:
-        st.error(f"Gagal menyimpan ke Supabase: {e}")
-
+        st.error(f"Gagal menyuntik data ke Supabase: {e}")        
+    
+        
 # ==========================================
 # 1. IMPORT LIBRARY ENGINEERING (MODULAR)
 # ==========================================
